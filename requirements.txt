@@ -1,0 +1,5 @@
+google-generativeai
+openai
+fastmcp
+qdrant-client
+sentence-transformers
