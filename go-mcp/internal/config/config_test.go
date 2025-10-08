@@ -20,31 +20,7 @@ func (provider mapEnvironmentProvider) Get(key string) string {
 func TestLoadFromEnvSuccess(t *testing.T) {
 	t.Parallel()
 
-	envValues := map[string]string{
-		"MCP_NATS_URL":                        "nats://localhost:4222",
-		"MCP_NATS_STREAM":                     "mcp_stream",
-		"MCP_NATS_TASK_REQUEST_SUBJECT":       "leadership.task.request",
-		"MCP_NATS_ASSIGNMENT_SUBJECT":         "leadership.task.assignment",
-		"MCP_NATS_WORK_READY_SUBJECT":         "team.development.work.ready",
-		"MCP_NATS_BLOCKED_SUBJECT":            "team.development.blocked",
-		"MCP_NATS_VOTE_SUBJECT":               "team.development.vote",
-		"MCP_QDRANT_URL":                      "https://qdrant.local",
-		"MCP_QDRANT_API_KEY":                  "test-key",
-		"MCP_QDRANT_TIMEOUT_SECONDS":          "20",
-		"MCP_QDRANT_WORK_PACKET_COLLECTION":   "work_packets",
-		"MCP_QDRANT_TEAM_CHAT_PREFIX":         "team_chat_",
-		"MCP_QDRANT_ARTEFACT_PREFIX":          "artefacts_",
-		"MCP_LEADERSHIP_CHAT_COLLECTION":      "team_chat_leadership",
-		"MCP_LEADERSHIP_ARTEFACT_COLLECTION":  "artefacts_leadership",
-		"MCP_LEADERSHIP_COMMANDS":             "echo,ls",
-		"MCP_DEVELOPMENT_CHAT_COLLECTION":     "team_chat_development",
-		"MCP_DEVELOPMENT_ARTEFACT_COLLECTION": "artefacts_development",
-		"MCP_DEVELOPMENT_COMMANDS":            "go test,go build",
-		"MCP_MCP_HOST":                        "127.0.0.1",
-		"MCP_MCP_PORT":                        "8080",
-		"MCP_RATE_LIMIT_PER_MINUTE":           "30",
-		"MCP_DRY_RUN":                         "false",
-	}
+	envValues := buildValidEnvironmentValues()
 
 	cfg, loadErr := config.LoadWithProvider(mapEnvironmentProvider{values: envValues})
 	require.NoError(t, loadErr)
@@ -89,4 +65,62 @@ func TestLoadMissingRequiredEnvFails(t *testing.T) {
 
 	_, loadErr := config.LoadWithProvider(mapEnvironmentProvider{values: envValues})
 	require.Error(t, loadErr)
+}
+
+func TestLoadWithInvalidIntegerFails(t *testing.T) {
+	t.Parallel()
+
+	envValues := buildValidEnvironmentValues()
+	envValues["MCP_MCP_PORT"] = "invalid-port"
+
+	_, loadErr := config.LoadWithProvider(mapEnvironmentProvider{values: envValues})
+	require.ErrorIs(t, loadErr, config.ErrInvalidInteger)
+}
+
+func TestLoadWithInvalidBooleanFails(t *testing.T) {
+	t.Parallel()
+
+	envValues := buildValidEnvironmentValues()
+	envValues["MCP_DRY_RUN"] = "sometimes"
+
+	_, loadErr := config.LoadWithProvider(mapEnvironmentProvider{values: envValues})
+	require.ErrorIs(t, loadErr, config.ErrInvalidBoolean)
+}
+
+func TestLoadWithEmptyCommandListFails(t *testing.T) {
+	t.Parallel()
+
+	envValues := buildValidEnvironmentValues()
+	envValues["MCP_LEADERSHIP_COMMANDS"] = " , "
+
+	_, loadErr := config.LoadWithProvider(mapEnvironmentProvider{values: envValues})
+	require.ErrorIs(t, loadErr, config.ErrEmptyCommandList)
+}
+
+func buildValidEnvironmentValues() map[string]string {
+	return map[string]string{
+		"MCP_NATS_URL":                        "nats://localhost:4222",
+		"MCP_NATS_STREAM":                     "mcp_stream",
+		"MCP_NATS_TASK_REQUEST_SUBJECT":       "leadership.task.request",
+		"MCP_NATS_ASSIGNMENT_SUBJECT":         "leadership.task.assignment",
+		"MCP_NATS_WORK_READY_SUBJECT":         "team.development.work.ready",
+		"MCP_NATS_BLOCKED_SUBJECT":            "team.development.blocked",
+		"MCP_NATS_VOTE_SUBJECT":               "team.development.vote",
+		"MCP_QDRANT_URL":                      "https://qdrant.local",
+		"MCP_QDRANT_API_KEY":                  "test-key",
+		"MCP_QDRANT_TIMEOUT_SECONDS":          "20",
+		"MCP_QDRANT_WORK_PACKET_COLLECTION":   "work_packets",
+		"MCP_QDRANT_TEAM_CHAT_PREFIX":         "team_chat_",
+		"MCP_QDRANT_ARTEFACT_PREFIX":          "artefacts_",
+		"MCP_LEADERSHIP_CHAT_COLLECTION":      "team_chat_leadership",
+		"MCP_LEADERSHIP_ARTEFACT_COLLECTION":  "artefacts_leadership",
+		"MCP_LEADERSHIP_COMMANDS":             "echo,ls",
+		"MCP_DEVELOPMENT_CHAT_COLLECTION":     "team_chat_development",
+		"MCP_DEVELOPMENT_ARTEFACT_COLLECTION": "artefacts_development",
+		"MCP_DEVELOPMENT_COMMANDS":            "go test,go build",
+		"MCP_MCP_HOST":                        "127.0.0.1",
+		"MCP_MCP_PORT":                        "8080",
+		"MCP_RATE_LIMIT_PER_MINUTE":           "30",
+		"MCP_DRY_RUN":                         "false",
+	}
 }
