@@ -18,6 +18,7 @@ Subsequent MCP teams (QA, Documentation, DevOps, etc.) reuse the same contracts 
 - ✅ `pkg/model` and `pkg/voting` model work packets, chat messages, command execution records, and majority decisions.
 - ✅ `internal/nats` wraps `nats.go` with publish/subscribe helpers plus embedded-server contract tests.
 - ✅ `internal/qdrant` provides an HTTP adapter with integration-style tests for collection provisioning and chat upserts.
+- ✅ `internal/command` executes whitelisted shell commands while capturing full audit metadata.
 - ⏳ Leadership and development MCP entrypoints exist as stubs awaiting orchestration wiring and command whitelist enforcement.
 
 ## Architecture Overview
