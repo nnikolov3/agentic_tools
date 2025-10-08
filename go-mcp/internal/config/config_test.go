@@ -1,3 +1,4 @@
+// Package config_test verifies configuration loading using deterministic providers.
 package config_test
 
 import (
