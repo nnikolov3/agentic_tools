@@ -1,179 +1,194 @@
+# File: conf/mcp.toml
+
 [multi-agent-mcp]
 project_name = "Multi-Agent-MCP"
-project_description = "Provides independent coding tools or can entirely architect, design, validate and commit. You can create different flows by chaining different tools"
-#####################################################################
+project_description = "Agentic toolchain for architecting, designing, validating, and approving code via chained tools."
+
 [multi-agent-mcp.inference_providers]
-providers = ["groq", "sambanova", "cerebras", "google"]
+# Global provider registry and priority order
+providers = ["google", "groq", "cerebras", "sambanova"]
+
 #####################################################################
+# Architect
 [multi-agent-mcp.architect]
 prompt = """
-You are an expert software architect. Your role is to research, plan, and provide system architecture for software projects. Your responsibilities include:
-
-1. Research:
-   - Scan documents, source code, and configuration files
-   - Search the internet for best practices and solutions
-   - Create a comprehensive analysis that:
-     - Sets the configuration
-     - Defines the API
-     - Establishes best practices
-     - Clearly outlines discrepancies
-     - Follows the design principles
-     - Provides the big picture
-     - Articulates the choices made
-     - Determines pros and cons
-
-2. Planning:
-   - Makes a plan based on research + files + semantic search
-   - Defines the objective
-   - Defines the steps and a roadmap in terms of work to be done
-   - Ensures the plan obeys design principles and configuration
-   - Defines everything in a step-by-step implementation cycle for each component in the plan
-
-3. Architecture:
-   - Provides the system architecture
-   - Uses tools for research, planning, and semantic search
+You are an expert software architect. Research inputs, analyze constraints, and produce a simple, explicit architecture and plan that adheres to the Design Principles and LLM Coding Standards.
 """
 model_name = "qwen-3-235b Instruct"
 temperature = 0.5
-description = "Researches, plans and provides system architecture for software projects"
+description = "Researches and plans system architecture"
 model_providers = ["cerebras"]
 alternative_model = "gpt-oss-120b"
 alternative_model_provider = ["groq", "sambanova"]
+
 #####################################################################
-# providing which providers supply the model
+# Designer
 [multi-agent-mcp.designer]
 prompt = """
-You are a software designer. Your role is to design system components based on architectural guidelines and requirements.
+You are a software designer. Produce concrete, testable designs from architectural guidelines, keeping components simple and responsibilities singular.
 """
 model_name = "qwen-3-235b Thinking"
 temperature = 0.4
-description = "Designs system components based on requirements"
+description = "Designs system components"
 model_providers = ["cerebras"]
 alternative_model = "gpt-oss-120b"
 alternative_model_provider = ["groq", "sambanova"]
+
 #####################################################################
-# Implement the actionable steps from designer
+# Developer
 [multi-agent-mcp.developer]
 prompt = """
-You are a software developer. Your role is to implement the actionable steps from the designer by writing clean, efficient, and well-documented code that follows the design specifications.
+You are a software developer. Implement the designer's steps with clean, well-documented, type-safe code that passes linters and tests.
 """
 model_name = "qwen-3-coder-480b"
 temperature = 0.3
-description = "Implements the actionable steps from the designer"
+description = "Implements designed components"
 model_providers = ["cerebras"]
 alternative_model = "gpt-oss-120b"
 alternative_model_provider = ["groq", "sambanova"]
+
 #####################################################################
-# Debug the developer design
+# Debugger
 [multi-agent-mcp.debugger]
 prompt = """
-You are a debugger. Your role is to identify and fix issues in the developer's implementation, ensuring the code works as intended according to the design specifications.
+You are a debugger. Identify minimal, precise fixes that make the code correct, simple, and standards-compliant.
 """
 model_name = "gpt-oss-120b"
 temperature = 0.2
-description = "Debugs the developer's implementation"
+description = "Debugs implementations"
 model_providers = ["groq", "cerebras", "sambanova"]
-alternative_model = "Gemini 2.5 Flash"
+alternative_model = "models/gemini-2.5-flash"
 alternative_model_provider = ["google"]
+
 #####################################################################
-# Validates the debugger's fix works
+# Validator
 [multi-agent-mcp.validation]
 prompt = """
-You are a validator. Your role is to verify that the debugger's fixes work correctly and that the implementation meets all requirements and specifications.
+You are a validator. Verify that fixes are correct and that requirements and standards are fully met.
 """
 model_name = "gpt-oss-120b"
 temperature = 0.1
-description = "Validates the debugger's fixes"
+description = "Validates fixes"
 model_providers = ["groq", "cerebras", "sambanova"]
-alternative_model = "Gemini 2.5 Flash"
+alternative_model = "models/gemini-2.5-flash"
 alternative_model_provider = ["google"]
+
 #####################################################################
-# If there is a repeated issue, is meant to triage
+# Triager
 [multi-agent-mcp.triager]
 prompt = """
-You are a triager. Your role is to identify and categorize repeated issues, determine their priority, and suggest appropriate resolution strategies.
+You are a triager. Identify repeated issues, categorize, prioritize, and propose resolution strategies.
 """
 model_name = "qwen-3-32b"
 temperature = 0.2
 description = "Triages repeated issues"
 model_providers = ["groq", "cerebras", "sambanova"]
-alternative_model = "Gemini 2.0 Flash"
+alternative_model = "models/gemini-2.0-flash"
 alternative_model_provider = ["google"]
+
 #####################################################################
-# Updates readme and other docs
+# Writer
 [multi-agent-mcp.writer]
 prompt = """
-You are a technical writer. Your role is to update documentation including README files, API documentation, and other technical documents to reflect current implementation.
+You are a technical writer. Update and improve documentation to reflect the current implementation and standards.
 """
 model_name = "gpt-oss-120b"
 temperature = 0.3
-description = "Updates documentation including README files"
+description = "Updates documentation"
 model_providers = ["groq", "cerebras", "sambanova"]
-alternative_model = "Gemini 2.5 Flash"
+alternative_model = "models/gemini-2.5-flash"
 alternative_model_provider = ["google"]
+
 #####################################################################
-# Does git push, commit etc.
+# Version Control
 [multi-agent-mcp.version_control]
 prompt = """
-You are a version control expert. Your role is to handle Git operations like push, commit, pull, branch management, and other version control tasks.
+You are a version control expert. Perform atomic, auditable Git operations with clear messages and branches.
 """
 model_name = "qwen-3-32b"
 temperature = 0.1
-description = "Handles Git operations like push, commit, etc."
+description = "Handles Git operations"
 model_providers = ["groq", "cerebras", "sambanova"]
-alternative_model = "Gemini 2.0 Flash"
+alternative_model = "models/gemini-2.0-flash"
 alternative_model_provider = ["google"]
+
 #####################################################################
-# Helps the tech_writer create mermaid charts
+# Grapher
 [multi-agent-mcp.grapher]
 prompt = """
-You are a diagram expert. Your role is to help create Mermaid charts and other diagrams to visualize system architecture and processes.
+You are a diagram expert. Generate accurate Mermaid diagrams and visuals for systems and processes.
 """
 model_name = "qwen-3-32b"
 temperature = 0.3
-description = "Helps create Mermaid charts and diagrams"
+description = "Creates diagrams"
 model_providers = ["groq", "cerebras", "sambanova"]
-alternative_model = "Gemini 2.0 Flash"
+alternative_model = "models/gemini-2.0-flash"
 alternative_model_provider = ["google"]
+
 #####################################################################
-# Before commiting into source the solution, audits if
-# it meets the linting and testing standards
+# Auditor
 [multi-agent-mcp.auditor]
 prompt = """
-You are an auditor. Your role is to review code before it's committed to ensure it meets linting, testing, and quality standards.
+You are an auditor. Confirm linting, testing, and quality standards are fully met before commit.
 """
 model_name = "DeepSeek-V3.1"
 temperature = 0.1
-description = "Audits code to ensure it meets standards before committing"
+description = "Audits code pre-commit"
 model_providers = ["sambanova"]
 alternative_model = "gpt-oss-120b"
 alternative_model_provider = ["groq", "cerebras"]
+
 #####################################################################
-# Approver gets the auditor analysis
-# and determines the next steps
+# Approver (final gate)
 [multi-agent-mcp.approver]
 prompt = """
-You are the final gatekeeper in a software development pipeline. You will be given a complete context including design documents, and recent code changes. Your task is to make a final decision.
+You are the final gatekeeper in a software development pipeline. You will be given a complete context including design documents and recent code changes.
 
-Analyze the provided context and return ONLY a single, valid JSON object with the following structure:
+Return ONLY a single, valid JSON object with this exact structure:
 {
-  "decision": "string",
+  "decision": "APPROVED" | "CHANGES_REQUESTED",
   "summary": "string",
   "positive_points": ["string"],
   "negative_points": ["string"],
   "required_actions": ["string"]
 }
-
-- The 'decision' field must be one of: "APPROVED", "CHANGES_REQUESTED".
-- The 'summary' field must be a concise, one-sentence summary of the outcome.
-- The 'positive_points' field must be a list of aspects that were done well.
-- The 'negative_points' field must be a list of issues or deviations from standards.
-- The 'required_actions' field must be a list of concrete, actionable steps required to fix the issues.
 """
-model_name = "Gemini 2.5 Pro"
+model_name = "models/gemini-2.5-pro"
 temperature = 0.1
-description = "Reviews design and code changes and determines next steps"
+description = "Final approval decision"
 model_providers = ["google"]
-project_root= "PWD"
+project_root = "PWD"
+
+# Context assembly policy
+recent_minutes = 10
+src_dir = "src"
+include_extensions = [".py", ".rs", ".go", ".ts", ".tsx", ".js", ".json", ".md", ".toml", ".yml", ".yaml"]
+exclude_dirs = [".git", ".github", ".gitlab", "node_modules", "venv", ".venv", "dist", "build", "target", "__pycache__"]
+max_file_bytes = 262144
+max_total_bytes = 1048576
+
+# Explicit doc paths (optional): used if files exist
+docs_paths = ["DESIGN_PRINCIPLES_GUIDE.md", "CODING_FOR_LLMs.md"]
+
+# Fallback discovery when explicit docs missing or renamed
+[multi-agent-mcp.approver.doc_discovery]
+enabled = true
+patterns = [
+  "*design*principle*.md",
+  "*principle*.md",
+  "*coding*llm*.md",
+  "*coding*standard*.md",
+  "*llm*code*.md",
+]
+[[multi-agent-mcp.approver.doc_discovery.signal_groups]]
+name = "design_principles"
+keywords = ["foundational design principles", "core principles", "simplicity is non-negotiable", "single responsibility", "explicit over implicit"]
+[[multi-agent-mcp.approver.doc_discovery.signal_groups]]
+name = "llm_coding_standards"
+keywords = ["coding standards for llm-generated code", "llm-generated code", "type hints", "error handling", "determinism", "security-by-default"]
+max_docs = 2
+max_doc_bytes = 262144
+
+# Alternative model routing
 alternative_model = "gpt-oss-120b"
 alternative_model_provider = ["groq", "cerebras"]
