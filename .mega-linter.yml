@@ -1,0 +1,52 @@
+# Python-focused MegaLinter Configuration
+# Optimized for multi-agent MCP Python project
+
+---
+# Apply automatic fixes where possible
+APPLY_FIXES: "all"
+
+# Enable only Python and essential linters
+ENABLE:
+  - PYTHON
+
+# Disable all other language linters
+DISABLE:
+  - SPELL
+  - GO
+  - JAVASCRIPT
+  - TYPESCRIPT
+  - JAVA
+  - CSHARP
+  - RUBY
+  - PHP
+  - OTHER_LANGUAGES
+
+# Python-specific configurations
+PYTHON_PYLINT_ENABLED: true
+PYTHON_BLACK_ENABLED: true
+PYTHON_FLAKE8_ENABLED: true
+PYTHON_ISORT_ENABLED: true
+PYTHON_BANDIT_ENABLED: true
+PYTHON_MYPY_ENABLED: true
+PYTHON_PYRIGHT_ENABLED: true
+PYTHON_RUFF_ENABLED: true
+
+# Repository security scanners
+REPOSITORY_GITLEAKS: true
+REPOSITORY_TRIVY: true
+REPOSITORY_SECRETLINT: true
+
+# Performance and reporting settings
+PARALLEL_PROCESS_NUMBER: 4
+PRINT_ALL_FILES: false
+SHOW_ELAPSED_TIME: true
+FILEIO_REPORTER: true
+
+# Exclude patterns for faster processing
+FILTER_REGEX_EXCLUDE: "(test_|tests/|__pycache__/|node_modules/|venv/|\\.git/|build/|dist/)"
+
+# File extensions to analyze
+FILE_EXTENSIONS:
+  - ".py"
+  - ".pyi"
+  - ".ipynb"

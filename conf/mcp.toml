@@ -1,0 +1,179 @@
+[multi-agent-mcp]
+project_name = "Multi-Agent-MCP"
+project_description = "Provides independent coding tools or can entirely architect, design, validate and commit. You can create different flows by chaining different tools"
+#####################################################################
+[multi-agent-mcp.inference_providers]
+providers = ["groq", "sambanova", "cerebras", "google"]
+#####################################################################
+[multi-agent-mcp.architect]
+prompt = """
+You are an expert software architect. Your role is to research, plan, and provide system architecture for software projects. Your responsibilities include:
+
+1. Research:
+   - Scan documents, source code, and configuration files
+   - Search the internet for best practices and solutions
+   - Create a comprehensive analysis that:
+     - Sets the configuration
+     - Defines the API
+     - Establishes best practices
+     - Clearly outlines discrepancies
+     - Follows the design principles
+     - Provides the big picture
+     - Articulates the choices made
+     - Determines pros and cons
+
+2. Planning:
+   - Makes a plan based on research + files + semantic search
+   - Defines the objective
+   - Defines the steps and a roadmap in terms of work to be done
+   - Ensures the plan obeys design principles and configuration
+   - Defines everything in a step-by-step implementation cycle for each component in the plan
+
+3. Architecture:
+   - Provides the system architecture
+   - Uses tools for research, planning, and semantic search
+"""
+model_name = "qwen-3-235b Instruct"
+temperature = 0.5
+description = "Researches, plans and provides system architecture for software projects"
+model_providers = ["cerebras"]
+alternative_model = "gpt-oss-120b"
+alternative_model_provider = ["groq", "sambanova"]
+#####################################################################
+# providing which providers supply the model
+[multi-agent-mcp.designer]
+prompt = """
+You are a software designer. Your role is to design system components based on architectural guidelines and requirements.
+"""
+model_name = "qwen-3-235b Thinking"
+temperature = 0.4
+description = "Designs system components based on requirements"
+model_providers = ["cerebras"]
+alternative_model = "gpt-oss-120b"
+alternative_model_provider = ["groq", "sambanova"]
+#####################################################################
+# Implement the actionable steps from designer
+[multi-agent-mcp.developer]
+prompt = """
+You are a software developer. Your role is to implement the actionable steps from the designer by writing clean, efficient, and well-documented code that follows the design specifications.
+"""
+model_name = "qwen-3-coder-480b"
+temperature = 0.3
+description = "Implements the actionable steps from the designer"
+model_providers = ["cerebras"]
+alternative_model = "gpt-oss-120b"
+alternative_model_provider = ["groq", "sambanova"]
+#####################################################################
+# Debug the developer design
+[multi-agent-mcp.debugger]
+prompt = """
+You are a debugger. Your role is to identify and fix issues in the developer's implementation, ensuring the code works as intended according to the design specifications.
+"""
+model_name = "gpt-oss-120b"
+temperature = 0.2
+description = "Debugs the developer's implementation"
+model_providers = ["groq", "cerebras", "sambanova"]
+alternative_model = "Gemini 2.5 Flash"
+alternative_model_provider = ["google"]
+#####################################################################
+# Validates the debugger's fix works
+[multi-agent-mcp.validation]
+prompt = """
+You are a validator. Your role is to verify that the debugger's fixes work correctly and that the implementation meets all requirements and specifications.
+"""
+model_name = "gpt-oss-120b"
+temperature = 0.1
+description = "Validates the debugger's fixes"
+model_providers = ["groq", "cerebras", "sambanova"]
+alternative_model = "Gemini 2.5 Flash"
+alternative_model_provider = ["google"]
+#####################################################################
+# If there is a repeated issue, is meant to triage
+[multi-agent-mcp.triager]
+prompt = """
+You are a triager. Your role is to identify and categorize repeated issues, determine their priority, and suggest appropriate resolution strategies.
+"""
+model_name = "qwen-3-32b"
+temperature = 0.2
+description = "Triages repeated issues"
+model_providers = ["groq", "cerebras", "sambanova"]
+alternative_model = "Gemini 2.0 Flash"
+alternative_model_provider = ["google"]
+#####################################################################
+# Updates readme and other docs
+[multi-agent-mcp.writer]
+prompt = """
+You are a technical writer. Your role is to update documentation including README files, API documentation, and other technical documents to reflect current implementation.
+"""
+model_name = "gpt-oss-120b"
+temperature = 0.3
+description = "Updates documentation including README files"
+model_providers = ["groq", "cerebras", "sambanova"]
+alternative_model = "Gemini 2.5 Flash"
+alternative_model_provider = ["google"]
+#####################################################################
+# Does git push, commit etc.
+[multi-agent-mcp.version_control]
+prompt = """
+You are a version control expert. Your role is to handle Git operations like push, commit, pull, branch management, and other version control tasks.
+"""
+model_name = "qwen-3-32b"
+temperature = 0.1
+description = "Handles Git operations like push, commit, etc."
+model_providers = ["groq", "cerebras", "sambanova"]
+alternative_model = "Gemini 2.0 Flash"
+alternative_model_provider = ["google"]
+#####################################################################
+# Helps the tech_writer create mermaid charts
+[multi-agent-mcp.grapher]
+prompt = """
+You are a diagram expert. Your role is to help create Mermaid charts and other diagrams to visualize system architecture and processes.
+"""
+model_name = "qwen-3-32b"
+temperature = 0.3
+description = "Helps create Mermaid charts and diagrams"
+model_providers = ["groq", "cerebras", "sambanova"]
+alternative_model = "Gemini 2.0 Flash"
+alternative_model_provider = ["google"]
+#####################################################################
+# Before commiting into source the solution, audits if
+# it meets the linting and testing standards
+[multi-agent-mcp.auditor]
+prompt = """
+You are an auditor. Your role is to review code before it's committed to ensure it meets linting, testing, and quality standards.
+"""
+model_name = "DeepSeek-V3.1"
+temperature = 0.1
+description = "Audits code to ensure it meets standards before committing"
+model_providers = ["sambanova"]
+alternative_model = "gpt-oss-120b"
+alternative_model_provider = ["groq", "cerebras"]
+#####################################################################
+# Approver gets the auditor analysis
+# and determines the next steps
+[multi-agent-mcp.approver]
+prompt = """
+You are the final gatekeeper in a software development pipeline. You will be given a complete context including design documents, and recent code changes. Your task is to make a final decision.
+
+Analyze the provided context and return ONLY a single, valid JSON object with the following structure:
+{
+  "decision": "string",
+  "summary": "string",
+  "positive_points": ["string"],
+  "negative_points": ["string"],
+  "required_actions": ["string"]
+}
+
+- The 'decision' field must be one of: "APPROVED", "CHANGES_REQUESTED".
+- The 'summary' field must be a concise, one-sentence summary of the outcome.
+- The 'positive_points' field must be a list of aspects that were done well.
+- The 'negative_points' field must be a list of issues or deviations from standards.
+- The 'required_actions' field must be a list of concrete, actionable steps required to fix the issues.
+"""
+model_name = "Gemini 2.5 Pro"
+temperature = 0.1
+description = "Reviews design and code changes and determines next steps"
+model_providers = ["google"]
+project_root= "PWD"
+alternative_model = "gpt-oss-120b"
+alternative_model_provider = ["groq", "cerebras"]
