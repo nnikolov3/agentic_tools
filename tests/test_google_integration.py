@@ -72,7 +72,8 @@ def test_approver_returns_raw_response() -> None:
 
     result = approver_agent.execute("Integration check: echo raw output.")
     assert isinstance(result, dict)
-    assert "raw_response" in result
-    raw_payload = result["raw_response"]
+    assert "data" in result
+    assert "raw_response" in result["data"]
+    raw_payload = result["data"]["raw_response"]
     assert isinstance(raw_payload, dict)
     assert raw_payload.get("candidates"), "Expected candidates field in raw response"
