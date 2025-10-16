@@ -170,7 +170,6 @@ The `ContextPolicy` (used by *approver* and *readme_writer*) is parsed into an i
 
 ```
 multi-agent-mcp/
-├── .idea/                     # IDE configuration (IntelliJ/ PyCharm)
 ├── conf/
 │   └── mcp.toml               # Central configuration (typed by Configurator)
 ├── docs/
