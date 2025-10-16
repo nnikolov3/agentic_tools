@@ -130,3 +130,27 @@ This document is designed specifically for LLM agents to generate high-quality c
 8. **Keep generated components simple** - if a function seems complex, break it down
 
 This approach aligns with the principles from PROMPT_ENGINEERING.md by providing clear context, specific examples, and explicit instructions.
+
+## Information Processing and Documentation Creation Process
+
+When creating documentation, code, or other artifacts, follow this structured approach:
+
+### The GATHER-READ-THINK-DRAFT-WRITE-CONFIRM-UPDATE Process
+
+The GATHER INFO -> READ -> THINK -> DRAFT -> WRITE -> CONFIRM CORRECTNESS -> UPDATE / DONE process is a systematic approach to ensure high-quality, accurate outputs:
+
+1. **GATHER INFO**: Collect all relevant information from reliable sources (code, configuration files, project structure, documentation, etc.). Ensure the information is current and accurate.
+
+2. **READ**: Thoroughly examine and understand the gathered information. Identify patterns, dependencies, and relationships within the data.
+
+3. **THINK**: Analyze the information critically. Consider the purpose, audience, and context for the output. Plan the structure and content thoughtfully.
+
+4. **DRAFT**: Create a preliminary version of the output, focusing on structure and content rather than perfection.
+
+5. **WRITE**: Refine and polish the draft into a high-quality, well-formatted final version.
+
+6. **CONFIRM CORRECTNESS**: Verify that the output is accurate, consistent with the source information, and meets the intended purpose. Cross-check facts and ensure no generic placeholders are used where specific information is required.
+
+7. **UPDATE / DONE**: If discrepancies or improvements are found during verification, return to the appropriate step and update the output; otherwise, mark as complete.
+
+This systematic approach ensures that outputs are accurate, well-structured, and aligned with the project's design principles.

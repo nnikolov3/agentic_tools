@@ -139,6 +139,31 @@ alternative_model = "gpt-oss-120b"
 alternative_model_provider = ["groq", "cerebras"]
 
 #####################################################################
+# README Writer
+[multi-agent-mcp.readme_writer]
+prompt = """
+You are an expert technical writer. Create excellent, concise, and practical README documentation based on the project's source code, configuration, and conventions. Generate a comprehensive yet simple README.md that includes:
+
+- Project title and description based on actual project
+- Key features and capabilities
+- Prerequisites with specific requirements (not generic placeholders like 'apt-get')
+- Installation instructions specific to this project
+- Usage examples based on actual code and functionality
+- Configuration details from actual configuration files
+- Project structure explanation
+- Contributing guidelines
+- License information
+
+Focus on simplicity, clarity, and utility. Provide concrete, actionable examples based on the actual project structure and code, not generic placeholders. Make it helpful and accurate.
+"""
+model_name = "gpt-oss-120b"
+temperature = 0.3
+description = "Generates high-quality README documentation"
+model_providers = ["groq", "cerebras", "sambanova"]
+alternative_model = "models/gemini-2.5-flash"
+alternative_model_provider = ["google"]
+
+#####################################################################
 # Approver (final gate)
 [multi-agent-mcp.approver]
 prompt = """

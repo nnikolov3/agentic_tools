@@ -6,13 +6,16 @@ Responsibilities:
 - Collect recently modified source files with allowlists, excludes, and byte caps.
 - Load designated documentation files if present.
 - Discover documentation by patterns and semantic signals when filenames drift.
+- Gather project metadata including git information, project structure, and dependencies.
 """
 
 from __future__ import annotations
 
 import fnmatch
+import json
 import logging
 import os
+import subprocess
 import time
 from pathlib import Path
 from typing import List, Sequence, Tuple
@@ -85,6 +88,101 @@ def collect_recent_sources(
             chunks.append(piece)
             total = new_total
     return "".join(chunks)
+
+
+def get_git_info(project_root: str) -> dict[str, str | bool | None]:
+    """
+    Get git repository information including URL, branch, and status.
+    """
+    root = Path(project_root).resolve()
+    git_info: dict[str, str | bool | None] = {
+        "url": None,
+        "remote_url": None,
+        "branch": None,
+        "is_dirty": None
+    }
+    
+    try:
+        # Get remote URL
+        result = subprocess.run(
+            ["git", "-C", str(root), "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            git_info["remote_url"] = result.stdout.strip()
+            # Also set as primary URL if available
+            git_info["url"] = result.stdout.strip()
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError):
+        logger.warning("Could not get git remote URL")
+    
+    try:
+        # Get current branch
+        result = subprocess.run(
+            ["git", "-C", str(root), "branch", "--show-current"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            git_info["branch"] = result.stdout.strip() or "HEAD (detached)"
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError):
+        logger.warning("Could not get git branch")
+    
+    try:
+        # Check if repository is dirty
+        result = subprocess.run(
+            ["git", "-C", str(root), "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            git_info["is_dirty"] = bool(result.stdout.strip())
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError):
+        logger.warning("Could not check git status")
+    
+    return git_info
+
+
+def get_project_structure(project_root: str, max_depth: int = 3) -> str:
+    """
+    Get a structured view of the project directory.
+    """
+    root = Path(project_root).resolve()
+    structure_lines = [f"{root.name}/"]
+    
+    def _add_directory(path: Path, prefix: str, depth: int):
+        if depth >= max_depth:
+            return
+        
+        items = []
+        for item in path.iterdir():
+            if item.name in {'.git', '.mypy_cache', '.ruff_cache', '.pytest_cache', '__pycache__'}:
+                continue
+            items.append(item)
+        
+        items.sort(key=lambda x: (x.is_file(), x.name.lower()))
+        
+        for i, item in enumerate(items):
+            is_last = i == len(items) - 1
+            current_prefix = "└── " if is_last else "├── "
+            next_prefix = "    " if is_last else "│   "
+            
+            if item.is_dir():
+                structure_lines.append(f"{prefix}{current_prefix}{item.name}/")
+                _add_directory(item, prefix + next_prefix, depth + 1)
+            else:
+                structure_lines.append(f"{prefix}{current_prefix}{item.name}")
+    
+    try:
+        _add_directory(root, "", 0)
+    except Exception as e:
+        logger.error("Error getting project structure: %s", e)
+        return f"Could not retrieve project structure: {e}"
+    
+    return "\n".join(structure_lines)
 
 
 def _glob_candidates(root: Path, patterns: Sequence[str]) -> List[Path]:

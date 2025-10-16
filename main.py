@@ -1,6 +1,6 @@
 # File: main.py
 """
-MCP entrypoint registering the Approver tool.
+MCP entrypoint registering the Approver and ReadmeWriter tools.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from fastmcp import FastMCP
 
 from src.approver import Approver
 from src.configurator import Configurator
+from src.readme_writer_tool import ReadmeWriterTool
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -39,6 +40,16 @@ def approver_tool(user_chat: str) -> Dict[str, Any]:
     """
     agent = Approver(configurator)
     return agent.execute(user_chat=user_chat)
+
+
+@mcp.tool
+def readme_writer_tool() -> Dict[str, Any]:
+    """
+    Readme Writer tool entry point that generates high-quality README documentation
+    based on the project's source code, configuration, and conventions.
+    """
+    agent = ReadmeWriterTool(configurator)
+    return agent.execute()
 
 
 if __name__ == "__main__":
