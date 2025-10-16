@@ -6,105 +6,29 @@ Approver agent: assembles context and requests a final decision as strict JSON.
 from __future__ import annotations
 
 import logging
-import os
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-# Default value for project root when not specified
-DEFAULT_PROJECT_ROOT = "PWD"
-
-from src._api import UnifiedResponse, api_caller
-from src.configurator import Configurator, ContextPolicy
-from src.prompt_utils import serialize_raw_response
-from src.shell_tools import (
-    collect_recent_sources,
-    discover_docs_and_load,
-    load_explicit_docs,
-)
+from src.base_agent import BaseAgent, BaseInputs
+from src.configurator import Configurator
 
 logger = logging.getLogger(__name__)
 
 
-
-
-
-@dataclass(frozen=True)
-class ApproverInputs:
-    prompt: str
-    model_name: str
-    model_providers: List[str]
-    temperature: float
-    project_root: str
-    policy: ContextPolicy
-
-
-class Approver:
+class Approver(BaseAgent):
     """
     Final gatekeeper that reads design docs and recent code changes, then returns a JSON decision.
     """
 
-    def __init__(self, configurator: Configurator) -> None:
-        self._configurator = configurator
+    def get_agent_name(self) -> str:
+        return "approver"
 
-    def _load_inputs(self) -> ApproverInputs:
-        agent = self._configurator.get_agent_config("approver")
-        policy = self._configurator.get_context_policy()
-        project_root = str(agent.get("project_root", DEFAULT_PROJECT_ROOT))
-        if project_root == DEFAULT_PROJECT_ROOT:
-            project_root = os.getcwd()
-        return ApproverInputs(
-            prompt=str(agent["prompt"]),
-            model_name=str(agent["model_name"]),
-            model_providers=list(agent["model_providers"]),
-            temperature=float(agent["temperature"]),
-            project_root=project_root,
-            policy=policy,
-        )
-
-    def _assemble_docs(self, inputs: ApproverInputs) -> str:
-        # Try explicit docs first
-        explicit = load_explicit_docs(
-            project_root=inputs.project_root,
-            docs_paths=inputs.policy.docs_paths,
-            max_doc_bytes=inputs.policy.discovery.max_doc_bytes,
-        )
-        docs: List[str] = []
-        if explicit:
-            for doc_path, content in explicit:
-                docs.append(f"\n===== DOC: {doc_path} =====\n{content}\n")
-
-        # Fallback to discovery if none found
-        if not explicit and inputs.policy.discovery.enabled:
-            groups = tuple(
-                (group.name, group.keywords) for group in inputs.policy.discovery.signal_groups
-            )
-            discovered = discover_docs_and_load(
-                project_root=inputs.project_root,
-                exclude_dirs=inputs.policy.exclude_dirs,
-                patterns=inputs.policy.discovery.patterns,
-                signal_groups=groups,
-                max_docs=inputs.policy.discovery.max_docs,
-                max_doc_bytes=inputs.policy.discovery.max_doc_bytes,
-            )
-            for doc_path, content in discovered:
-                docs.append(f"\n===== DOC: {doc_path} =====\n{content}\n")
-
-        return "".join(docs)
-
-    def _assemble_sources(self, inputs: ApproverInputs) -> str:
-        return collect_recent_sources(
-            project_root=inputs.project_root,
-            include_extensions=inputs.policy.include_extensions,
-            exclude_dirs=inputs.policy.exclude_dirs,
-            recent_minutes=inputs.policy.recent_minutes,
-            max_file_bytes=inputs.policy.max_file_bytes,
-            max_total_bytes=inputs.policy.max_total_bytes,
-        )
-
-    def _messages(
-        self, inputs: ApproverInputs, docs: str, sources: str, user_chat: str
+    def _create_messages(
+        self, inputs: BaseInputs, docs: str, sources: str, payload: Dict[str, Any]
     ) -> List[Dict[str, str]]:
+        # Extract user_chat from payload
+        user_chat = payload.get('user_chat', '')
+        
         # Get skills from agent config if available
         agent_config = self._configurator.get_agent_config("approver")
         skills = agent_config.get("skills", [])
@@ -128,7 +52,7 @@ class Approver:
             {"role": "user", "content": user},
         ]
 
-    def execute(self, user_chat: str) -> Dict[str, Any]:
+    def execute(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         inputs = self._load_inputs()
         docs = self._assemble_docs(inputs)
         sources = self._assemble_sources(inputs)
@@ -149,32 +73,6 @@ class Approver:
                 "message": "No recent source files were found to analyze. Please choose a file from the list below and re-run the tool with the file path as an argument.",
             }
 
-        messages = self._messages(inputs, docs, sources, user_chat)
-
-        response: Optional[UnifiedResponse] = api_caller(
-            {
-                "prompt": inputs.prompt,
-                "model_name": inputs.model_name,
-                "model_providers": inputs.model_providers,
-                "temperature": inputs.temperature,
-            },
-            messages,
-        )
-        if response is None or not response.content:
-            return {
-                "status": "error",
-                "data": {},
-                "message": "No valid response received from any provider.",
-            }
-
-        serialized_raw = serialize_raw_response(response.raw_response)
-        return {
-            "status": "success",
-            "data": {
-                "provider": response.provider_name,
-                "model": response.model_name,
-                "raw_text": response.content,
-                "raw_response": serialized_raw,
-            },
-            "message": "Analysis complete.",
-        }
+        user_chat = payload.get('user_chat', '')
+        messages = self._create_messages(inputs, docs, sources, payload)
+        return self._make_api_call(inputs, messages)

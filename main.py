@@ -39,7 +39,7 @@ def approver_tool(user_chat: str) -> Dict[str, Any]:
     Approver tool entry point that returns a strict JSON decision or a structured error.
     """
     agent = Approver(configurator)
-    return agent.execute(user_chat=user_chat)
+    return agent.execute(payload={'user_chat': user_chat})
 
 
 @mcp.tool
@@ -49,7 +49,7 @@ def readme_writer_tool() -> Dict[str, Any]:
     based on the project's source code, configuration, and conventions.
     """
     agent = ReadmeWriterTool(configurator)
-    return agent.execute()
+    return agent.execute(payload={})
 
 
 if __name__ == "__main__":

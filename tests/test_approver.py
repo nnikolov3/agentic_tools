@@ -51,8 +51,8 @@ def test_approver_instantiation(mock_configurator: MagicMock) -> None:
     assert isinstance(approver, Approver)
 
 
-@patch("src.approver.api_caller")
-@patch("src.approver.collect_recent_sources")
+@patch("src.base_agent.api_caller")
+@patch("src.shell_tools.collect_recent_sources")
 def test_execute_success(
     mock_collect_sources: MagicMock,
     mock_api_caller: MagicMock,
@@ -68,15 +68,15 @@ def test_execute_success(
     )
 
     approver = Approver(mock_configurator)
-    result = approver.execute("test chat")
+    result = approver.execute(payload={'user_chat': 'test chat'})
 
     assert result["status"] == "success"
     assert result["data"]["provider"] == "google"
     assert result["data"]["raw_text"] == '{"decision": "APPROVED"}'
 
 
-@patch("src.approver.api_caller")
-@patch("src.approver.collect_recent_sources")
+@patch("src.base_agent.api_caller")
+@patch("src.shell_tools.collect_recent_sources")
 def test_skills_tags_in_system_prompt(
     mock_collect_sources: MagicMock,
     mock_api_caller: MagicMock,
@@ -98,7 +98,7 @@ def test_skills_tags_in_system_prompt(
     mock_api_caller.side_effect = fake_api_caller
 
     approver = Approver(mock_configurator)
-    approver.execute("test chat history")
+    approver.execute(payload={'user_chat': 'test chat history'})
 
     assert captured_prompts, "Expected to capture a system prompt"
     system_prompt = captured_prompts[0]
@@ -109,7 +109,7 @@ def test_skills_tags_in_system_prompt(
         assert skill_name in system_prompt, f"Skill '{skill_name}' missing from prompt tags"
 
 
-@patch("src.approver.collect_recent_sources")
+@patch("src.base_agent.collect_recent_sources")
 def test_execute_no_recent_files(
     mock_collect_sources: MagicMock, mock_configurator: MagicMock
 ) -> None:
@@ -117,14 +117,14 @@ def test_execute_no_recent_files(
     mock_collect_sources.return_value = ""
 
     approver = Approver(mock_configurator)
-    result = approver.execute("test chat")
+    result = approver.execute(payload={'user_chat': 'test chat'})
 
     assert result["status"] == "no_recent_files"
     assert "files" in result["data"]
 
 
-@patch("src.approver.api_caller")
-@patch("src.approver.collect_recent_sources")
+@patch("src.base_agent.api_caller")
+@patch("src.shell_tools.collect_recent_sources")
 def test_execute_api_error(
     mock_collect_sources: MagicMock,
     mock_api_caller: MagicMock,
@@ -135,7 +135,7 @@ def test_execute_api_error(
     mock_api_caller.return_value = None
 
     approver = Approver(mock_configurator)
-    result = approver.execute("test chat")
+    result = approver.execute(payload={'user_chat': 'test chat'})
 
     assert result["status"] == "error"
     assert result["message"] == "No valid response received from any provider."

@@ -50,10 +50,10 @@ def test_readme_writer_tool_instantiation(mock_configurator: MagicMock) -> None:
     assert isinstance(readme_writer, ReadmeWriterTool)
 
 
-@patch("src.readme_writer_tool.api_caller")
-@patch("src.readme_writer_tool.collect_recent_sources")
-@patch("src.readme_writer_tool.Path.iterdir")
-@patch("src.readme_writer_tool.Path.exists")
+@patch("src.base_agent.api_caller")
+@patch("src.shell_tools.collect_recent_sources")
+@patch("pathlib.Path.iterdir")
+@patch("pathlib.Path.exists")
 def test_execute_success(
     mock_path_exists: MagicMock,
     mock_path_iterdir: MagicMock,
@@ -82,15 +82,15 @@ def test_execute_success(
     mock_path_iterdir.return_value = [mock_dir, mock_file]
 
     readme_writer = ReadmeWriterTool(mock_configurator)
-    result = readme_writer.execute()
+    result = readme_writer.execute(payload={})
 
     assert result["status"] == "success"
     assert result["data"]["provider"] == "google"
     assert "Project Title" in result["data"]["readme_content"]
 
 
-@patch("src.readme_writer_tool.api_caller")
-@patch("src.readme_writer_tool.collect_recent_sources")
+@patch("src.base_agent.api_caller")
+@patch("src.shell_tools.collect_recent_sources")
 def test_skills_tags_in_system_prompt(
     mock_collect_sources: MagicMock,
     mock_api_caller: MagicMock,
@@ -112,7 +112,7 @@ def test_skills_tags_in_system_prompt(
     mock_api_caller.side_effect = fake_api_caller
 
     readme_writer = ReadmeWriterTool(mock_configurator)
-    readme_writer.execute()
+    readme_writer.execute(payload={})
 
     assert captured_system_prompt, "System prompt was not captured"
     system_prompt = captured_system_prompt[0]
@@ -123,8 +123,8 @@ def test_skills_tags_in_system_prompt(
         assert skill_name in system_prompt, f"Missing skill tag '{skill_name}' in prompt"
 
 
-@patch("src.readme_writer_tool.api_caller")
-@patch("src.readme_writer_tool.collect_recent_sources")
+@patch("src.base_agent.api_caller")
+@patch("src.shell_tools.collect_recent_sources")
 def test_execute_api_error(
     mock_collect_sources: MagicMock,
     mock_api_caller: MagicMock,
@@ -135,7 +135,7 @@ def test_execute_api_error(
     mock_api_caller.return_value = None
 
     readme_writer = ReadmeWriterTool(mock_configurator)
-    result = readme_writer.execute()
+    result = readme_writer.execute(payload={})
 
     assert result["status"] == "error"
     assert result["message"] == "No valid response received from any provider."
@@ -152,7 +152,7 @@ def test_readme_writer_tool_follows_design_principles(mock_configurator: MagicMo
     assert hasattr(readme_writer, '_assemble_sources')
     assert hasattr(readme_writer, '_assemble_project_structure')
     assert hasattr(readme_writer, '_assemble_config_info')
-    assert hasattr(readme_writer, '_messages')
+    assert hasattr(readme_writer, '_create_messages')
     assert hasattr(readme_writer, 'execute')
     
     # Check that the class follows single responsibility principle
@@ -169,7 +169,7 @@ def test_readme_writer_tool_follows_design_principles(mock_configurator: MagicMo
         '_assemble_sources', 
         '_assemble_project_structure', 
         '_assemble_config_info', 
-        '_messages'
+        '_create_messages'
     ]
     
     for method in expected_methods:
