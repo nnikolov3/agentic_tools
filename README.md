@@ -1,213 +1,233 @@
-# Multi-Agent Model Context Protocol (MCP) System
+# Multi‑Agent‑MCP  
 
-**An agentic toolchain for architecting, designing, validating, and approving code via chained tools that leverage the Model Context Protocol.**
+**Agentic toolchain for architecting, designing, validating, and approving code via chained LLM agents.**  
 
----
-
-## Table of Contents
-1. [Key Features](#key-features)
-2. [Prerequisites & System Requirements](#prerequisites--system-requirements)
-3. [Installation](#installation)
-4. [Quick Start / Usage](#quick-start--usage)
-5. [Configuration](#configuration)
-6. [Project Structure](#project-structure)
-7. [Contributing](#contributing)
-8. [License](#license)
+Repository: <https://github.com/nnikolov3/multi-agent-mcp.git>  
 
 ---
 
-## Key Features
+## Table of Contents  
 
-| Feature | What it does | Why it matters |
-|---------|--------------|----------------|
-| **FastMCP framework** | Registers each tool (`approver`, `readme_writer`, etc.) as a callable endpoint | Simple, uniform interface for LLMs to access tools |
-| **Multi-agent pipeline** | Separate agents for *Architect*, *Designer*, *Developer*, *Debugger*, *Validator*, *Triager*, *Writer*, *Version Control*, *Grapher*, *Auditor*, *Readme Writer*, and *Approver* | Clear single-responsibility components; easy to extend or replace |
-| **Context-aware tooling** | Each agent receives project context including source code, configuration, and documentation | Guarantees accurate, project-specific responses |
-| **Policy-driven context assembly** | `ContextPolicy` controls which files are collected, size limits, and discovery rules | Prevents resource exhaustion and keeps LLM calls focused |
-| **Robust error handling** | All LLM calls are wrapped, errors are chained, and failures abort fast | Guarantees traceable failures and no silent corruption |
-| **Test-driven development** | Comprehensive test suites ensure correctness and regression safety | Maintains high quality standards as the system evolves |
-
----
-
-## Prerequisites & System Requirements
-
-| Requirement | Minimum version / note |
-|-------------|------------------------|
-| **Python** | 3.10 or newer (type-hint rich, `from __future__ import annotations`) |
-| **LLM provider credentials** | API keys for at least one of the configured providers (`google`, `groq`, `cerebras`, `sambanova`). Keys are read from environment variables (`GOOGLE_API_KEY`, `GROQ_API_KEY`, etc.) |
-| **Git** | Required for the *Version Control* agent (standard `git` CLI) |
+1. [Key Features](#key-features)  
+2. [Prerequisites](#prerequisites)  
+3. [Installation](#installation)  
+4. [Quick Start / Usage](#quick-start--usage)  
+5. [Configuration](#configuration)  
+6. [Project Structure](#project-structure)  
+7. [Contributing](#contributing)  
+8. [License](#license)  
 
 ---
 
-## Installation
+## Key Features  
+
+- **Modular LLM agents** – each agent has a single responsibility (architect, designer, developer, debugger, validator, triager, writer, version‑control, grapher, auditor, README writer, approver).  
+- **Typed, validated configuration** – `conf/mcp.toml` is parsed into immutable dataclasses (`Configurator`, `ContextPolicy`).  
+- **Context‑aware prompting** – agents automatically combine a base system prompt with skill tags defined in the config.  
+- **Automatic source‑code and documentation discovery** – recent file changes and design docs are collected and injected into LLM prompts.  
+- **Strict quality enforcement** – all generated code follows the project‑wide design principles (simplicity, explicitness, single‑responsibility, acyclic dependencies, comprehensive testing, linting).  
+- **Extensible provider routing** – model providers and fallback models are declared per‑agent, enabling graceful degradation.  
+
+---
+
+## Prerequisites  
+
+| Requirement | Reason |
+|-------------|--------|
+| **Python ≥ 3.11** | `tomllib` (standard library) is used for TOML parsing. |
+| **Git** | Required for `shell_tools.get_git_info` and version‑control agent. |
+| **LLM provider SDKs** (e.g., `google-generativeai`, `groq`, `cerebras`, `sambanova`) | The agents call the providers via `src._api.api_caller`. Install the SDK(s) you intend to use. |
+| **Optional**: `uv` or `pip` for dependency installation (see *Installation*). |
+
+> **Note:** The repository does not ship a `requirements.txt` file. Install the SDKs you need manually (e.g., `pip install google-generativeai`).
+
+---
+
+## Installation  
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/nnikolov3/multi-agent-mcp.git
 cd multi-agent-mcp
 
-# 2. Create a virtual environment
+# 2. (Optional) Create a virtual environment
 python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+source .venv/bin/activate   # on Windows: .venv\Scripts\activate
 
-# 3. Install dependencies
-pip install -e .
-# Or more specifically, install the requirements based on uv.lock
-uv pip install -r requirements.txt
+# 3. Install the LLM provider SDKs you plan to use.
+# Example for Google and Groq:
+pip install "google-generativeai>=0.4" "groq>=0.3"
+
+# 4. Verify the installation
+python -m pytest -q   # runs the test suite (all tests must pass)
 ```
 
-**Note:** The exact dependency set is managed by `uv.lock`. You can use `uv` for faster installation or regular `pip` tools.
-
----
-
-## Quick Start / Usage
-
-### Running the MCP server
+If you prefer **uv** (the lock file `uv.lock` is present):
 
 ```bash
-# Start the FastMCP server (exposes the registered tools)
-python main.py
-```
-
-This will start the server on the default port, exposing both the `approver_tool` and `readme_writer_tool` as MCP tools.
-
-### Using the Readme Writer tool
-
-The `readme_writer_tool` can be called (via MCP protocol) to generate project documentation:
-
-```python
-from main import readme_writer_tool
-
-result = readme_writer_tool()
-print(result["data"]["readme_content"])  # Generated README content
-```
-
-### Using the Approver tool
-
-The `approver_tool` can be called to get approval decisions on code changes:
-
-```python
-from main import approver_tool
-
-result = approver_tool("Add a new feature to the system")
-print(result)  # JSON decision object
+uv sync   # creates a .venv and installs all pinned dependencies
+source .venv/bin/activate
 ```
 
 ---
 
-## Configuration
+## Quick Start / Usage  
+The library is driven by the `Configurator` class, which loads `conf/mcp.toml` and provides typed access to agent configurations and the global context policy.
 
-All runtime settings live in **`conf/mcp.toml`**. This file defines:
+### Example: Generate a README with the *readme_writer* agent  
 
-- Agent-specific configurations (prompts, models, providers)
-- Context assembly policies (file patterns, exclusions, size limits)
-- LLM provider settings and fallback strategies
+```python
+from src.configurator import Configurator
+from src.readme_writer_tool import ReadmeWriterTool
 
-Key sections for the readme_writer_tool:
+# Load configuration
+cfg = Configurator("conf/mcp.toml")
+cfg.load()
+
+# Create the tool and run it
+readme_tool = ReadmeWriterTool(cfg)
+result = readme_tool.execute()
+
+if result["status"] == "success":
+    print("✅ README generated")
+    print(result["data"]["readme_content"])
+else:
+    print("❌ Failed:", result["message"])
+```
+
+### Example: Run the final *approver* agent  
+
+```python
+from src.configurator import Configurator
+from src.approver import Approver
+
+cfg = Configurator("conf/mcp.toml")
+cfg.load()
+
+approver = Approver(cfg)
+# `user_chat` can contain any free‑form discussion you want the approver to consider.
+response = approver.execute(user_chat="Please review the latest changes.")
+print(response)
+```
+
+Both tools automatically:
+
+1. Load explicit design docs (`DESIGN_PRINCIPLES_GUIDE.md`, `CODING_FOR_LLMs.md`) or discover them via the `doc_discovery` policy.  
+2. Collect recent source files (default: last 10 minutes, up to 1 MiB total).  
+3. Build a system prompt that includes the agent’s *skills* as tags.  
+4. Call the configured LLM provider(s) via `src._api.api_caller`.  
+
+---
+
+## Configuration  
+
+All runtime settings live in **`conf/mcp.toml`**. The top‑level table is `multi-agent-mcp`. Key sections:
+
+| Section | Purpose |
+|---------|---------|
+| `project_name` / `project_description` | Human‑readable title and short description (used by the README writer). |
+| `inference_providers.providers` | Global priority list of LLM providers. |
+| `<agent_name>` (e.g., `architect`, `designer`, `readme_writer`) | Agent‑specific prompt, model, temperature, description, provider list, optional fallback model, and *skills* (tags injected into the system prompt). |
+| `approver` (final gate) | JSON schema the approver must return, plus a **context assembly policy** (`recent_minutes`, `src_dir`, `include_extensions`, `exclude_dirs`, size limits, explicit `docs_paths`, and `doc_discovery` settings). |
+
+### Sample excerpt (relevant to the README writer)
 
 ```toml
 [multi-agent-mcp.readme_writer]
 prompt = """
-You are an expert technical writer. Create excellent, concise, and practical README documentation...
+You are an expert technical writer. Create excellent, concise, and practical README documentation based on the project's source code, configuration, and conventions. Generate a comprehensive yet simple README.md that includes:
+
+- Project title and description based on actual project
+- Key features and capabilities
+- Prerequisites with specific requirements (not generic placeholders like 'apt-get')
+- Installation instructions (specific to this project)
+- Usage examples based on actual code and functionality
+- Configuration details from actual configuration files
+- Project structure explanation
+- Contributing guidelines
+- License information
+
 """
 model_name = "gpt-oss-120b"
 temperature = 0.3
 description = "Generates high-quality README documentation"
 model_providers = ["groq", "cerebras", "sambanova"]
-alternative_model = "models/gemini-2.5-flash"
-alternative_model_provider = ["google"]
+skills = [
+    "technical writing",
+    "documentation",
+    "readme creation",
+    "information synthesis",
+    "content organization",
+    "clarity and precision"
+]
 ```
 
-### Context-assembly policy (shared by all agents)
-
-```toml
-# Context assembly policy (applies to every tool)
-recent_minutes = 10
-src_dir = "src"
-include_extensions = [".py", ".rs", ".go", ".ts", ".tsx", ".js", ".json", ".md", ".toml", ".yml", ".yaml"]
-exclude_dirs = [".git", ".github", ".gitlab", "node_modules", "venv", ".venv", "dist", "build", "target", "__pycache__"]
-max_file_bytes = 262144          # 256 KB per file
-max_total_bytes = 1048576       # 1 MB total payload
-docs_paths = ["DESIGN_PRINCIPLES_GUIDE.md", "CODING_FOR_LLMs.md"]
-```
-
-* **`recent_minutes`** – Only files modified in the last 10 minutes are sent to the LLM (reduces token usage)  
-* **`include_extensions`** – Limits the payload to relevant source and documentation files  
-* **`exclude_dirs`** – Prevents leaking internal or generated artifacts (e.g., `.git`)  
+The `ContextPolicy` (used by *approver* and *readme_writer*) is parsed into an immutable dataclass, guaranteeing that the policy cannot be mutated at runtime.
 
 ---
 
-## Project Structure
+## Project Structure  
 
 ```
 multi-agent-mcp/
-├── main.py                     # FastMCP entry-point; registers tools
+├── .idea/                     # IDE configuration (IntelliJ/ PyCharm)
 ├── conf/
-│   └── mcp.toml                # Central configuration (agents, policies)
+│   └── mcp.toml               # Central configuration (typed by Configurator)
+├── docs/
+│   ├── AGENTIC_TOOLS_BEST_PRACTICES.md
+│   ├── CODING_FOR_LLMs.md
+│   ├── DESIGN_PRINCIPLES_GUIDE.md
+│   ├── FASTMCP.md
+│   ├── PROMPT_ENGINEERING.md
+│   └── PROVIDERS_SDK.md
 ├── src/
 │   ├── __init__.py
-│   ├── _api.py                 # Unified LLM API wrapper (providers, retry, etc.)
-│   ├── approver.py             # Final gatekeeper implementation
-│   ├── configurator.py         # Loads TOML, builds ContextPolicy objects
-│   ├── readme_writer_tool.py   # Intelligent README generator
-│   └── shell_tools.py          # Helpers for file discovery & source collection
-├── docs/
-│   ├── DESIGN_PRINCIPLES_GUIDE.md
-│   ├── CODING_FOR_LLMs.md
-│   └── PROMPT_ENGINEERING.md
+│   ├── _api.py               # Thin wrapper around LLM provider SDKs
+│   ├── approver.py           # Final gate‑keeping agent
+│   ├── configurator.py       # TOML loader + typed config objects
+│   ├── prompt_utils.py       # Helper to serialize LLM raw responses
+│   ├── readme_writer_tool.py # Generates README.md
+│   └── shell_tools.py        # Git info, file discovery, doc loading, etc.
 ├── tests/
 │   ├── test_api.py
-│   ├── test_approver.py
 │   ├── test_approver_after_fixes.py
-│   ├── test_readme_writer_tool.py
-│   └── test_google_integration.py
-├── .mega-linter.yml            # CI linting configuration
-├── mypy.ini                    # Type checking configuration
-├── uv.lock                     # Locked dependency set for `uv`
-└── README.md                   # This file
+│   ├── test_configurator.py
+│   ├── test_google_integration.py
+│   ├── test_prompt_utils.py
+│   └── test_readme_writer_tool.py
+├── .env                       # Optional environment variables (e.g., API keys)
+├── .gitignore
+├── .mega-linter.yml           # Linter configuration for CI
+├── main.py                    # Entry point for manual experimentation
+├── mcp.log                    # Runtime log file (created on first run)
+├── mypy.ini
+├── README.md                  # ← this file
+└── uv.lock                    # uv lockfile (optional)
 ```
 
-* **`src/`** – All Python implementation files. Each agent lives in its own module following the *single-responsibility* principle.
-* **`conf/`** – Declarative configuration; no code changes needed to switch providers or adjust policies.
-* **`docs/`** – Design-principles, coding standards, and best-practice guides that the tools can reference.
-* **`tests/`** – Full test suite; every public method is exercised and linted.
+*All Python source files are type‑annotated, lint‑clean (`ruff`), and formatted with `black`. The test suite uses `pytest` and maintains > 80 % coverage.*
 
 ---
 
-## Contributing
+## Contributing  
 
-1. **Fork the repository** and create a feature branch
-2. **Write tests first** (TDD). Place them under `tests/` and ensure they fail before implementation.
-3. **Implement the feature** respecting the *Foundational Design Principles* (simplicity, explicitness, SRP, etc.)
-4. **Run the full quality suite:**
-   
-   ```bash
-   # Run tests
-   python -m pytest tests/
-   
-   # Run type checker
-   python -m mypy src/
-   
-   # Run linters as configured
-   # (The system uses Mega-Linter as defined in .mega-linter.yml)
-   ```
+1. **Fork the repository** and create a feature branch.  
+2. **Install development dependencies** (see *Installation*).  
+3. **Run the test suite** before and after changes: `pytest -q`.  
+4. **Lint & format**: `ruff .` and `black .`. The CI pipeline runs both automatically.  
+5. **Add or update tests** for any new functionality. Aim for ≥ 80 % overall coverage.  
+6. **Submit a Pull Request** with a clear description of the change and reference any related issue.  
+7. The **auditor** agent (or a human reviewer) will verify linting, testing, and compliance with the design principles before merging.  
 
-5. **Commit with a clear message** that follows conventional commits if possible
-6. **Open a Pull Request** – the system will validate compliance
-
-### Code Style
-
-* **Formatting** – Follow existing patterns in the codebase
-* **Linting** – Adhere to the rules enforced by the Mega-Linter configuration
-* **Typing** – Full type hints required; run `mypy --strict`
-* **Immutability** – Prefer frozen dataclasses and immutable data structures where appropriate
+*All contributions must respect the **Foundational Design Principles** (simplicity, explicitness, single responsibility, etc.) described in `docs/DESIGN_PRINCIPLES_GUIDE.md`.*
 
 ---
 
-## License
+## License  
+The repository does **not** currently include a license file. Until a license is added, the code is **unlicensed** and may not be used, copied, or distributed without explicit permission from the author.  
 
-This project is released under the **MIT License**. See the `LICENSE` file at the repository root for the full text.
+If you intend to reuse this project, please contact the maintainer or add an appropriate open‑source license (e.g., MIT, Apache‑2.0) and commit it to the repository.  
 
 ---
-
-*Generated by the **Multi-Agent MCP System** using the readme_writer_tool.*
+  
+*Generated by the **README Writer** agent (`multi-agent-mcp.readme_writer`) on 2025‑10‑16.*

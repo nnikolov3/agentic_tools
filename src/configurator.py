@@ -93,6 +93,7 @@ class Configurator:
             "model_providers",
             "temperature",
             "description",
+            "skills",
         )
         for key in required_keys:
             if key not in section:
@@ -204,3 +205,20 @@ class Configurator:
             docs_paths=docs_paths,
             discovery=discovery,
         )
+
+    def combine_prompt_with_skills(self, base_prompt: str, skills: tuple[str, ...]) -> str:
+        """
+        Combine a base prompt with skills for tagging purposes.
+        
+        Args:
+            base_prompt: The original system prompt
+            skills: Tuple of skill strings to include as tags
+            
+        Returns:
+            Combined prompt with skills as tags
+        """
+        if skills:
+            skills_str = ", ".join(skills)
+            return f"# Tags: {skills_str}\n{base_prompt}"
+        else:
+            return base_prompt

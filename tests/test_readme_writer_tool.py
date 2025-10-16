@@ -15,6 +15,7 @@ from src.configurator import Configurator
 @pytest.fixture
 def mock_configurator() -> MagicMock:
     """Fixture for a mocked Configurator."""
+    from src.configurator import Configurator
     mock = MagicMock(spec=Configurator)
     mock.get_agent_config.return_value = {
         "prompt": "Test prompt for README generation",
@@ -22,6 +23,11 @@ def mock_configurator() -> MagicMock:
         "model_providers": ["google"],
         "temperature": 0.5,
         "project_root": os.getcwd(),
+        "skills": [
+            "documentation_strategy",
+            "technical_writing",
+            "clarity_enforcement",
+        ],
     }
     mock.get_context_policy.return_value = MagicMock(
         recent_minutes=10,
@@ -32,6 +38,9 @@ def mock_configurator() -> MagicMock:
         docs_paths=(),
         discovery=MagicMock(enabled=False, max_doc_bytes=1024),
     )
+    # Configure the combine_prompt_with_skills method to call the real implementation
+    real_configurator = Configurator.__new__(Configurator)
+    mock.combine_prompt_with_skills = real_configurator.combine_prompt_with_skills
     return mock
 
 
@@ -78,6 +87,40 @@ def test_execute_success(
     assert result["status"] == "success"
     assert result["data"]["provider"] == "google"
     assert "Project Title" in result["data"]["readme_content"]
+
+
+@patch("src.readme_writer_tool.api_caller")
+@patch("src.readme_writer_tool.collect_recent_sources")
+def test_skills_tags_in_system_prompt(
+    mock_collect_sources: MagicMock,
+    mock_api_caller: MagicMock,
+    mock_configurator: MagicMock,
+) -> None:
+    """Ensure skill tags are injected into the system prompt."""
+    captured_system_prompt: list[str] = []
+
+    def fake_api_caller(config_payload: dict[str, object], messages: list[dict[str, str]]) -> MagicMock:
+        captured_system_prompt.append(messages[0]["content"])
+        return MagicMock(
+            provider_name="google",
+            model_name="test_model",
+            content="# Project Title\n\nThis is a test README",
+            raw_response={},
+        )
+
+    mock_collect_sources.return_value = "some source code"
+    mock_api_caller.side_effect = fake_api_caller
+
+    readme_writer = ReadmeWriterTool(mock_configurator)
+    readme_writer.execute()
+
+    assert captured_system_prompt, "System prompt was not captured"
+    system_prompt = captured_system_prompt[0]
+    assert system_prompt.startswith("# Tags:"), "System prompt should start with skill tags"
+
+    expected_skills = mock_configurator.get_agent_config.return_value["skills"]
+    for skill_name in expected_skills:
+        assert skill_name in system_prompt, f"Missing skill tag '{skill_name}' in prompt"
 
 
 @patch("src.readme_writer_tool.api_caller")

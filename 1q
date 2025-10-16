@@ -20,14 +20,6 @@ description = "Researches and plans system architecture"
 model_providers = ["cerebras"]
 alternative_model = "gpt-oss-120b"
 alternative_model_provider = ["groq", "sambanova"]
-skills = [
-    "system architecture",
-    "requirements analysis",
-    "design patterns",
-    "scalability planning",
-    "technical research",
-    "solution design"
-]
 
 #####################################################################
 # Designer
@@ -41,14 +33,6 @@ description = "Designs system components"
 model_providers = ["cerebras"]
 alternative_model = "gpt-oss-120b"
 alternative_model_provider = ["groq", "sambanova"]
-skills = [
-    "software design",
-    "component design",
-    "interface design",
-    "testability planning",
-    "abstraction",
-    "decoupling"
-]
 
 #####################################################################
 # Developer
@@ -62,14 +46,6 @@ description = "Implements designed components"
 model_providers = ["cerebras"]
 alternative_model = "gpt-oss-120b"
 alternative_model_provider = ["groq", "sambanova"]
-skills = [
-    "software development",
-    "clean code",
-    "type safety",
-    "documentation",
-    "testing",
-    "linting compliance"
-]
 
 #####################################################################
 # Debugger
@@ -83,14 +59,6 @@ description = "Debugs implementations"
 model_providers = ["groq", "cerebras", "sambanova"]
 alternative_model = "models/gemini-2.5-flash"
 alternative_model_provider = ["google"]
-skills = [
-    "debugging",
-    "error identification",
-    "root cause analysis",
-    "fix implementation",
-    "code quality",
-    "standards compliance"
-]
 
 #####################################################################
 # Validator
@@ -104,14 +72,6 @@ description = "Validates fixes"
 model_providers = ["groq", "cerebras", "sambanova"]
 alternative_model = "models/gemini-2.5-flash"
 alternative_model_provider = ["google"]
-skills = [
-    "validation",
-    "verification",
-    "quality assurance",
-    "requirement checking",
-    "standards compliance",
-    "testing"
-]
 
 #####################################################################
 # Triager
@@ -125,14 +85,6 @@ description = "Triages repeated issues"
 model_providers = ["groq", "cerebras", "sambanova"]
 alternative_model = "models/gemini-2.0-flash"
 alternative_model_provider = ["google"]
-skills = [
-    "issue triage",
-    "categorization",
-    "prioritization",
-    "pattern recognition",
-    "resolution planning",
-    "problem analysis"
-]
 
 #####################################################################
 # Writer
@@ -167,14 +119,6 @@ description = "Handles Git operations"
 model_providers = ["groq", "cerebras", "sambanova"]
 alternative_model = "models/gemini-2.0-flash"
 alternative_model_provider = ["google"]
-skills = [
-    "version control",
-    "git operations",
-    "branch management",
-    "commit messaging",
-    "merge strategies",
-    "repository management"
-]
 
 #####################################################################
 # Grapher
@@ -188,14 +132,6 @@ description = "Creates diagrams"
 model_providers = ["groq", "cerebras", "sambanova"]
 alternative_model = "models/gemini-2.0-flash"
 alternative_model_provider = ["google"]
-skills = [
-    "diagram creation",
-    "visualization",
-    "Mermaid syntax",
-    "system modeling",
-    "process mapping",
-    "technical illustration"
-]
 
 #####################################################################
 # Auditor
@@ -209,14 +145,6 @@ description = "Audits code pre-commit"
 model_providers = ["sambanova"]
 alternative_model = "gpt-oss-120b"
 alternative_model_provider = ["groq", "cerebras"]
-skills = [
-    "code auditing",
-    "quality assurance",
-    "linting",
-    "testing verification",
-    "standards compliance",
-    "pre-commit validation"
-]
 
 #####################################################################
 # README Writer
@@ -242,14 +170,6 @@ description = "Generates high-quality README documentation"
 model_providers = ["groq", "cerebras", "sambanova"]
 alternative_model = "models/gemini-2.5-flash"
 alternative_model_provider = ["google"]
-skills = [
-    "technical writing",
-    "documentation",
-    "readme creation",
-    "information synthesis",
-    "content organization",
-    "clarity and precision"
-]
 
 #####################################################################
 # Approver (final gate)

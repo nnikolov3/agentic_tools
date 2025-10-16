@@ -16,6 +16,7 @@ DEFAULT_PROJECT_ROOT = "PWD"
 
 from src._api import UnifiedResponse, api_caller
 from src.configurator import Configurator, ContextPolicy
+from src.prompt_utils import serialize_raw_response
 from src.shell_tools import (
     collect_recent_sources,
     discover_docs_and_load,
@@ -25,19 +26,7 @@ from src.shell_tools import (
 logger = logging.getLogger(__name__)
 
 
-def _serialize_raw_response(raw_response: Any) -> Any:
-    if raw_response is None:
-        return None
-    if hasattr(raw_response, "model_dump"):
-        try:
-            return raw_response.model_dump(mode="json")
-        except TypeError:
-            return raw_response.model_dump()
-    if hasattr(raw_response, "dict"):
-        return raw_response.dict()
-    if isinstance(raw_response, (dict, list, str, int, float, bool)):
-        return raw_response
-    return str(raw_response)
+
 
 
 @dataclass(frozen=True)
@@ -116,7 +105,13 @@ class Approver:
     def _messages(
         self, inputs: ApproverInputs, docs: str, sources: str, user_chat: str
     ) -> List[Dict[str, str]]:
-        system = inputs.prompt.strip()
+        # Get skills from agent config if available
+        agent_config = self._configurator.get_agent_config("approver")
+        skills = agent_config.get("skills", [])
+        
+        # Use the configurator's method to combine prompt with skills
+        system = self._configurator.combine_prompt_with_skills(inputs.prompt.strip(), tuple(skills))
+        
         user = (
             "# Full Context for Final Review\n\n"
             "## 1. Design Documents & Principles:\n"
@@ -172,7 +167,7 @@ class Approver:
                 "message": "No valid response received from any provider.",
             }
 
-        serialized_raw = _serialize_raw_response(response.raw_response)
+        serialized_raw = serialize_raw_response(response.raw_response)
         return {
             "status": "success",
             "data": {
