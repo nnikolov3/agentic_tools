@@ -24,6 +24,8 @@ The system is built on the FastMCP (Model Context Protocol) framework, which all
 - **Policy Driven**: All agents follow configurable context assembly policies
 - **Quality Focused**: All agents adhere to the project's coding and design standards
 
+For a complete list of design principles, see DESIGN_PRINCIPLES_GUIDE.md.
+
 ---
 
 ## Available Agents
@@ -90,7 +92,7 @@ The system is built on the FastMCP (Model Context Protocol) framework, which all
 **Providers**: `groq, cerebras, sambanova` (primary), with Google fallback
 **Description**: Debugs implementations with minimal, precise fixes
 
-### 7. Validator Agent (`validation`)
+### 7. Validator Agent (`validator`)
 **Purpose**: Verifies that fixes are correct and that requirements and standards are fully met.
 
 **Model**: `gpt-oss-120b`
