@@ -8,7 +8,6 @@ Providers:
 - Groq: groq SDK
 - Cerebras: cerebras-cloud-sdk
 - SambaNova: sambanova SDK
-
 Features:
 - Proactive rate limit checking via response headers
 - Provider health tracking with cooldowns
@@ -23,7 +22,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -160,29 +159,44 @@ def _initialize_providers() -> None:
                 if client is not None:
                     PROVIDER_REGISTRY["google"] = client
                     PROVIDER_HEALTH["google"] = ProviderHealth()
-                    logger.info("Successfully initialized google client with GOOGLE_API_KEY")
-            except Exception as e:
-                logger.warning(f"Failed to initialize google client with GOOGLE_API_KEY: {e}")
+                    logger.info(
+                        "Successfully initialized google client with GOOGLE_API_KEY"
+                    )
+            except Exception as init_error:
+                logger.warning(
+                    f"Failed to initialize google client with GOOGLE_API_KEY: {init_error}"
+                )
                 if gemini_api_key:
-                    logger.info("Trying to initialize google client with GEMINI_API_KEY")
+                    logger.info(
+                        "Trying to initialize google client with GEMINI_API_KEY"
+                    )
                     try:
-                        client = _create_provider_client("google", GenAIModule, gemini_api_key)
+                        client = _create_provider_client(
+                            "google", GenAIModule, gemini_api_key
+                        )
                         if client is not None:
                             PROVIDER_REGISTRY["google"] = client
                             PROVIDER_HEALTH["google"] = ProviderHealth()
-                            logger.info("Successfully initialized google client with GEMINI_API_KEY")
-                    except Exception as e2:
-                        logger.warning(f"Failed to initialize google client with GEMINI_API_KEY: {e2}")
+                            logger.info(
+                                "Successfully initialized google client with GEMINI_API_KEY"
+                            )
+                    except Exception as fallback_init_error:
+                        logger.warning(
+                            f"Failed to initialize google client with GEMINI_API_KEY: {fallback_init_error}"
+                        )
         elif gemini_api_key:
             try:
                 client = _create_provider_client("google", GenAIModule, gemini_api_key)
                 if client is not None:
                     PROVIDER_REGISTRY["google"] = client
                     PROVIDER_HEALTH["google"] = ProviderHealth()
-                    logger.info("Successfully initialized google client with GEMINI_API_KEY")
-            except Exception as e:
-                logger.warning(f"Failed to initialize google client with GEMINI_API_KEY: {e}")
-
+                    logger.info(
+                        "Successfully initialized google client with GEMINI_API_KEY"
+                    )
+            except Exception as init_error:
+                logger.warning(
+                    f"Failed to initialize google client with GEMINI_API_KEY: {init_error}"
+                )
 
     # Other providers
     providers_to_init = [
@@ -200,8 +214,10 @@ def _initialize_providers() -> None:
                     PROVIDER_REGISTRY[provider_name] = client
                     PROVIDER_HEALTH[provider_name] = ProviderHealth()
                     logger.info(f"Successfully initialized {provider_name} client")
-            except Exception as e:
-                logger.warning(f"Failed to initialize {provider_name} client: {e}")
+            except Exception as init_error:
+                logger.warning(
+                    f"Failed to initialize {provider_name} client: {init_error}"
+                )
 
     _INITIALIZED = True
 
@@ -320,13 +336,13 @@ def _normalize_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, str]]:
     Handles dict, object, and Enum role types.
     """
     normalized = []
-    for m in messages:
-        if isinstance(m, dict):
-            role = m.get("role", "user")
-            content = m.get("content", "")
+    for message in messages:
+        if isinstance(message, dict):
+            role = message.get("role", "user")
+            content = message.get("content", "")
         else:
-            role = getattr(m, "role", "user")
-            content = getattr(m, "content", "")
+            role = getattr(message, "role", "user")
+            content = getattr(message, "content", "")
 
         # Handle Enum.role.name if role is an Enum
         if hasattr(role, "name"):
@@ -344,7 +360,9 @@ def _normalize_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, str]]:
 
 def _messages_to_prompt(messages: List[Dict[str, str]]) -> str:
     """Convert messages to plain text prompt for Google."""
-    return "\n\n".join(f"{m['role'].upper()}: {m['content']}" for m in messages)
+    return "\n\n".join(
+        f"{message['role'].upper()}: {message['content']}" for message in messages
+    )
 
 
 # --- Response normalization ---
@@ -370,8 +388,10 @@ def _normalize_standard_response(
             raw_response=resp,
             usage_tokens=usage,
         )
-    except Exception as e:
-        logger.error("Failed to normalize response for %s: %s", provider, e)
+    except Exception as normalization_error:
+        logger.error(
+            "Failed to normalize response for %s: %s", provider, normalization_error
+        )
         return None
 
 
@@ -410,8 +430,10 @@ def _normalize_google_response(
             raw_response=resp,
             usage_tokens=usage,
         )
-    except Exception as e:
-        logger.error("Failed to normalize Google response: %s", e)
+    except Exception as google_normalization_error:
+        logger.error(
+            "Failed to normalize Google response: %s", google_normalization_error
+        )
         return None
 
 
@@ -422,7 +444,9 @@ def _call_google(
     client: Any, model: str, temperature: float, messages: List[Dict[str, str]]
 ) -> Any:
     """Call Google Gemini API."""
-    types_module = getattr(GenAIModule, "types", None) if GenAIModule is not None else None
+    types_module = (
+        getattr(GenAIModule, "types", None) if GenAIModule is not None else None
+    )
     part_from_text = None
     content_ctor = None
     generate_config_ctor = None
@@ -434,10 +458,19 @@ def _call_google(
 
     if part_from_text and callable(part_from_text) and callable(content_ctor):
         try:
-            return _call_google_with_types_module(client, model, temperature, messages, 
-                                               part_from_text, content_ctor, generate_config_ctor)
-        except Exception as e:
-            logger.warning(f"Failed to call Google with types module: {e}. Falling back to plain text.")
+            return _call_google_with_types_module(
+                client,
+                model,
+                temperature,
+                messages,
+                part_from_text,
+                content_ctor,
+                generate_config_ctor,
+            )
+        except Exception as api_error:
+            logger.warning(
+                f"Failed to call Google with types module: {api_error}. Falling back to plain text."
+            )
             # Fall back to plain text if the structured approach fails
             return client.models.generate_content(
                 model=model,
@@ -454,13 +487,13 @@ def _call_google(
 
 
 def _call_google_with_types_module(
-    client: Any, 
-    model: str, 
-    temperature: float, 
-    messages: List[Dict[str, str]], 
-    part_from_text: Any, 
-    content_ctor: Any, 
-    generate_config_ctor: Any
+    client: Any,
+    model: str,
+    temperature: float,
+    messages: List[Dict[str, str]],
+    part_from_text: Any,
+    content_ctor: Any,
+    generate_config_ctor: Any,
 ) -> Any:
     """Call Google Gemini API using the types module with structured content."""
     system_messages: List[str] = []
@@ -480,19 +513,22 @@ def _call_google_with_types_module(
 
             part_obj = part_from_text(text=text)
             content_payload.append(content_ctor(role=mapped_role, parts=[part_obj]))
-        except Exception as e:
-            logger.warning(f"Failed to process message in Google API call: {e}. Skipping message.")
+        except Exception as message_processing_error:
+            logger.warning(
+                f"Failed to process message in Google API call: {message_processing_error}. Skipping message."
+            )
             continue
 
-    system_instruction_obj: Any = None
+    system_instruction_obj = None
     try:
         if system_messages:
             system_text = "\n\n".join(system_messages)
-            system_instruction_obj = content_ctor(
-                role="system", parts=[part_from_text(text=system_text)]  # type: ignore[call-arg]
-            )
-    except Exception as e:
-        logger.warning(f"Failed to create system instruction for Google API: {e}")
+            # Create system instruction using part_from_text directly for Google API
+            system_instruction_obj = part_from_text(text=system_text)
+    except Exception as system_instruction_error:
+        logger.warning(
+            f"Failed to create system instruction for Google API: {system_instruction_error}"
+        )
 
     config_kwargs: Dict[str, Any] = {"temperature": temperature}
     if system_instruction_obj is not None:
@@ -505,10 +541,12 @@ def _call_google_with_types_module(
         try:
             default_part = part_from_text(text="") if part_from_text else None
             content_payload = (
-                [content_ctor(role="user", parts=[default_part])] if default_part else []
+                [content_ctor(role="user", parts=[default_part])]
+                if default_part
+                else []
             )
-        except Exception as e:
-            logger.warning(f"Failed to create default content payload: {e}")
+        except Exception as payload_error:
+            logger.warning(f"Failed to create default content payload: {payload_error}")
             # Return empty payload if we can't create even a default one
             content_payload = []
 
@@ -518,8 +556,8 @@ def _call_google_with_types_module(
             contents=content_payload,
             config=config_object,
         )
-    except Exception as e:
-        logger.error(f"Failed to make Google API call: {e}")
+    except Exception as api_call_error:
+        logger.error(f"Failed to make Google API call: {api_call_error}")
         raise
 
 
@@ -533,7 +571,9 @@ def _map_google_role(role: str) -> str:
         return "user"
 
 
-def _get_google_config_object(generate_config_ctor: Any, config_kwargs: Dict[str, Any]) -> Any:
+def _get_google_config_object(
+    generate_config_ctor: Any, config_kwargs: Dict[str, Any]
+) -> Any:
     """Get the Google configuration object based on available constructor."""
     if generate_config_ctor and callable(generate_config_ctor):
         return generate_config_ctor(**config_kwargs)
@@ -610,48 +650,51 @@ def _execute_provider_call(
 
         return None
 
-    except Exception as e:
-        return _handle_provider_call_exception(provider, e)
+    except Exception as call_error:
+        return _handle_provider_call_exception(provider, call_error)
 
 
-def _handle_provider_call_exception(provider: str, e: Exception) -> Optional[UnifiedResponse]:
+def _handle_provider_call_exception(
+    provider: str, exception: Exception
+) -> Optional[UnifiedResponse]:
     """Handle exceptions from provider calls and return appropriate response."""
-    exc_name = type(e).__name__
-    
+    exc_name = type(exception).__name__
+
     # Handle rate limit errors
     if "RateLimitError" in exc_name or (
-        hasattr(e, "status_code") and getattr(e, "status_code", 0) == 429
+        hasattr(exception, "status_code")
+        and getattr(exception, "status_code", 0) == 429
     ):
-        retry_after = _extract_retry_after_from_error(e)
+        retry_after = _extract_retry_after_from_error(exception)
         _mark_provider_rate_limited(provider, retry_after)
-        logger.warning("Rate limit error on %s: %s", provider, e)
+        logger.warning("Rate limit error on %s: %s", provider, exception)
         return None
 
     # Handle connection errors
     if "ConnectionError" in exc_name or "APIConnectionError" in exc_name:
         _mark_provider_offline(provider, 300)
-        logger.error("Connection error on %s: %s", provider, e)
+        logger.error("Connection error on %s: %s", provider, exception)
         return None
 
     # Handle other errors
-    logger.error("Unexpected error on %s: %s", provider, e, exc_info=True)
+    logger.error("Unexpected error on %s: %s", provider, exception, exc_info=True)
     _mark_provider_offline(provider, 300)
     return None
 
 
-def _extract_retry_after_from_error(e: Exception) -> int:
+def _extract_retry_after_from_error(exception: Exception) -> int:
     """Extract retry-after value from error response headers, defaulting to 60 seconds."""
     retry_after = 60
-    
+
     # Try to extract retry-after from error
-    if hasattr(e, "response") and hasattr(e.response, "headers"):
-        retry_header = e.response.headers.get("retry-after")
+    if hasattr(exception, "response") and hasattr(exception.response, "headers"):
+        retry_header = exception.response.headers.get("retry-after")
         if retry_header:
             try:
                 retry_after = int(retry_header)
             except (ValueError, TypeError):
                 pass
-    
+
     return retry_after
 
 
@@ -682,27 +725,33 @@ def api_caller(
     if not isinstance(agent_config, dict):
         logger.error("agent_config must be a dictionary")
         return None
-    
+
     required_keys = ["model_name", "temperature", "model_providers"]
     for key in required_keys:
         if key not in agent_config:
             logger.error(f"Missing required key '{key}' in agent_config")
             return None
-    
+
     # Validate model_name
-    if not agent_config["model_name"] or not isinstance(agent_config["model_name"], str):
+    if not agent_config["model_name"] or not isinstance(
+        agent_config["model_name"], str
+    ):
         logger.error("model_name must be a non-empty string")
         return None
-    
+
     # Validate temperature
     try:
         temp = float(agent_config["temperature"])
         if not (0.0 <= temp <= 2.0):  # Reasonable temperature range
-            logger.warning(f"Temperature {temp} is outside the typical range [0.0, 2.0]")
+            logger.warning(
+                f"Temperature {temp} is outside the typical range [0.0, 2.0]"
+            )
     except (TypeError, ValueError):
-        logger.error(f"temperature must be a numeric value, got {type(agent_config['temperature'])}")
+        logger.error(
+            f"temperature must be a numeric value, got {type(agent_config['temperature'])}"
+        )
         return None
-    
+
     # Validate model_providers
     providers = agent_config["model_providers"]
     if not isinstance(providers, (list, tuple)):
@@ -715,7 +764,7 @@ def api_caller(
         if not isinstance(provider, str):
             logger.error(f"Provider names must be strings, got {type(provider)}")
             return None
-    
+
     # Validate messages
     if not isinstance(messages, list):
         logger.error("messages must be a list")
@@ -723,14 +772,16 @@ def api_caller(
     if not messages:
         logger.error("messages must be a non-empty list")
         return None
-    for i, message in enumerate(messages):
+    for message_index, message in enumerate(messages):
         if not isinstance(message, dict):
-            logger.error(f"Message at index {i} must be a dictionary")
+            logger.error(f"Message at index {message_index} must be a dictionary")
             return None
         if "role" not in message or "content" not in message:
-            logger.error(f"Message at index {i} must have 'role' and 'content' keys")
+            logger.error(
+                f"Message at index {message_index} must have 'role' and 'content' keys"
+            )
             return None
-    
+
     _initialize_providers()
 
     # Try primary model with available providers
@@ -747,7 +798,9 @@ def api_caller(
     return None
 
 
-def _try_primary_model(agent_config: Dict[str, Any], messages: List[Dict[str, Any]]) -> Optional[UnifiedResponse]:
+def _try_primary_model(
+    agent_config: Dict[str, Any], messages: List[Dict[str, Any]]
+) -> Optional[UnifiedResponse]:
     """Try to get response from primary model with available providers."""
     model = str(agent_config["model_name"])
     temperature = float(agent_config["temperature"])
@@ -760,20 +813,13 @@ def _try_primary_model(agent_config: Dict[str, Any], messages: List[Dict[str, An
         if result is not None:
             logger.info("Successfully got response from %s", provider)
             return result
-        
-        # If the provider is google and the model is gemini-pro, try with flash model as a fallback
-        if provider == "google" and "gemini-2.5-pro" in model:
-            flash_model = "models/gemini-2.5-flash"
-            logger.info("Trying provider %s with flash model %s", provider, flash_model)
-            result = _execute_provider_call(provider, flash_model, temperature, messages)
-            if result is not None:
-                logger.info("Successfully got response from %s with flash model", provider)
-                return result
 
     return None
 
 
-def _try_alternative_model(agent_config: Dict[str, Any], messages: List[Dict[str, Any]]) -> Optional[UnifiedResponse]:
+def _try_alternative_model(
+    agent_config: Dict[str, Any], messages: List[Dict[str, Any]]
+) -> Optional[UnifiedResponse]:
     """Try to get response from alternative model with available providers."""
     alt_model = agent_config.get("alternative_model")
     alt_providers = agent_config.get("alternative_model_provider", [])

@@ -57,7 +57,9 @@ def test_api_caller_google_uses_config_keyword(monkeypatch) -> None:
             self.api_version = api_version
 
     class FakeGenerateContentConfig:
-        def __init__(self, temperature: float, system_instruction: Any | None = None) -> None:
+        def __init__(
+            self, temperature: float, system_instruction: Any | None = None
+        ) -> None:
             captured_arguments["temperature"] = temperature
             captured_arguments["system_instruction"] = system_instruction
             self.temperature = temperature

@@ -9,10 +9,10 @@ from typing import Any
 def serialize_raw_response(raw_response: Any) -> Any:
     """
     Serialize raw response for API return.
-    
+
     Args:
         raw_response: Raw response from LLM API call
-        
+
     Returns:
         Serialized response in appropriate format
     """

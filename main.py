@@ -10,17 +10,17 @@ from pathlib import Path
 from typing import Any, Dict
 
 from fastmcp import FastMCP
-
 from src.approver import Approver
 from src.configurator import Configurator
 from src.readme_writer_tool import ReadmeWriterTool
 
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(),
         logging.FileHandler("mcp.log"),
-    ]
+    ],
 )
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def approver_tool(user_chat: str) -> Dict[str, Any]:
     Approver tool entry point that returns a strict JSON decision or a structured error.
     """
     agent = Approver(configurator)
-    return agent.execute(payload={'user_chat': user_chat})
+    return agent.execute(payload={"user_chat": user_chat})
 
 
 @mcp.tool

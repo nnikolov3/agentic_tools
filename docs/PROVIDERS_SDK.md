@@ -607,16 +607,16 @@ Free tier limits:
 
 ## Summary: Response Schema Comparison
 
-| Feature | Cerebras/Groq/SambaNova | Google Gemini |
-| :-- | :-- | :-- |
-| **Schema format** | OpenAI-compatible | Google native format |
-| **Message access** | `choices[^0].message.content` | `candidates[^0].content.parts[^0].text` or `.text` |
-| **Role names** | `assistant` | `model` |
-| **Usage tokens** | `usage.prompt_tokens`, `usage.completion_tokens` | `usageMetadata.promptTokenCount`, `usageMetadata.candidatesTokenCount` |
-| **Tool calling** | `tool_calls[]` with `function.name` and `function.arguments` | `functionCall` in `parts[]` with `name` and `args` |
-| **Streaming chunks** | `delta.content` | `parts[].text` |
-| **Response type** | `ChatCompletion` (Pydantic model) | `GenerateContentResponse` |
-| **Headers access** | `.with_raw_response.create()` | Not available |
+| Feature              | Cerebras/Groq/SambaNova                                      | Google Gemini                                                          |
+|:---------------------|:-------------------------------------------------------------|:-----------------------------------------------------------------------|
+| **Schema format**    | OpenAI-compatible                                            | Google native format                                                   |
+| **Message access**   | `choices[^0].message.content`                                | `candidates[^0].content.parts[^0].text` or `.text`                     |
+| **Role names**       | `assistant`                                                  | `model`                                                                |
+| **Usage tokens**     | `usage.prompt_tokens`, `usage.completion_tokens`             | `usageMetadata.promptTokenCount`, `usageMetadata.candidatesTokenCount` |
+| **Tool calling**     | `tool_calls[]` with `function.name` and `function.arguments` | `functionCall` in `parts[]` with `name` and `args`                     |
+| **Streaming chunks** | `delta.content`                                              | `parts[].text`                                                         |
+| **Response type**    | `ChatCompletion` (Pydantic model)                            | `GenerateContentResponse`                                              |
+| **Headers access**   | `.with_raw_response.create()`                                | Not available                                                          |
 
 ## SDK Commonalities
 
@@ -648,20 +648,20 @@ All three OpenAI-compatible SDKs (Cerebras, Groq, SambaNova) use identical respo
 
 ### Provider Documentation
 
-1. Cerebras Cloud SDK Python: https://github.com/Cerebras/cerebras-cloud-sdk-python
-2. Cerebras Inference Docs: https://inference-docs.cerebras.ai
-3. Cerebras Rate Limits: https://inference-docs.cerebras.ai/support/rate-limits
-4. Groq Python SDK: https://github.com/groq/groq-python
-5. Groq Developer Documentation: https://console.groq.com/docs
-6. Groq Rate Limits: https://console.groq.com/docs/rate-limits
-7. SambaNova SDK Announcement: https://sambanova.ai/blog/introducing-the-sambanova-sdk
-8. SambaNova PyPI: https://pypi.org/project/sambanova/
-9. SambaNova Documentation: https://docs.sambanova.ai
-10. SambaNova Rate Limits: https://docs.sambanova.ai/docs/en/models/rate-limits
-11. Google Gen AI SDK: https://github.com/googleapis/python-genai
-12. Google Gen AI Documentation: https://googleapis.github.io/python-genai/
-13. Google Gemini API Quickstart: https://ai.google.dev/gemini-api/docs/quickstart
-14. Google Gemini Rate Limits: https://ai.google.dev/gemini-api/docs/rate-limits
+1. Cerebras Cloud SDK Python: <https://github.com/Cerebras/cerebras-cloud-sdk-python>
+2. Cerebras Inference Docs: <https://inference-docs.cerebras.ai>
+3. Cerebras Rate Limits: <https://inference-docs.cerebras.ai/support/rate-limits>
+4. Groq Python SDK: <https://github.com/groq/groq-python>
+5. Groq Developer Documentation: <https://console.groq.com/docs>
+6. Groq Rate Limits: <https://console.groq.com/docs/rate-limits>
+7. SambaNova SDK Announcement: <https://sambanova.ai/blog/introducing-the-sambanova-sdk>
+8. SambaNova PyPI: <https://pypi.org/project/sambanova/>
+9. SambaNova Documentation: <https://docs.sambanova.ai>
+10. SambaNova Rate Limits: <https://docs.sambanova.ai/docs/en/models/rate-limits>
+11. Google Gen AI SDK: <https://github.com/googleapis/python-genai>
+12. Google Gen AI Documentation: <https://googleapis.github.io/python-genai/>
+13. Google Gemini API Quickstart: <https://ai.google.dev/gemini-api/docs/quickstart>
+14. Google Gemini Rate Limits: <https://ai.google.dev/gemini-api/docs/rate-limits>
 
 ### Attached Files
 
@@ -673,24 +673,24 @@ All three OpenAI-compatible SDKs (Cerebras, Groq, SambaNova) use identical respo
 
 <div align="center">⁂</div>
 
-[^1]: https://blog.dreamfactory.com/8-api-documentation-examples
+[^1]: <https://blog.dreamfactory.com/8-api-documentation-examples>
 
-[^2]: https://nordicapis.com/5-examples-of-excellent-api-documentation/
+[^2]: <https://nordicapis.com/5-examples-of-excellent-api-documentation/>
 
-[^3]: https://www.reddit.com/r/technicalwriting/comments/1e61mkd/best_api_docs_youve_seen/
+[^3]: <https://www.reddit.com/r/technicalwriting/comments/1e61mkd/best_api_docs_youve_seen/>
 
-[^4]: https://treblle.com/blog/best-api-documentation-examples
+[^4]: <https://treblle.com/blog/best-api-documentation-examples>
 
-[^5]: https://stoplight.io/api-documentation-guide
+[^5]: <https://stoplight.io/api-documentation-guide>
 
-[^6]: https://www.postman.com/api-platform/api-documentation/
+[^6]: <https://www.postman.com/api-platform/api-documentation/>
 
-[^7]: https://www.archbee.com/blog/api-documentation-examples
+[^7]: <https://www.archbee.com/blog/api-documentation-examples>
 
-[^8]: https://stackoverflow.com/questions/1966243/restful-api-documentation
+[^8]: <https://stackoverflow.com/questions/1966243/restful-api-documentation>
 
-[^9]: https://www.mintlify.com/blog/our-recommendations-for-creating-api-documentation-with-examples
+[^9]: <https://www.mintlify.com/blog/our-recommendations-for-creating-api-documentation-with-examples>
 
-[^10]: https://idratherbewriting.com/learnapidoc/docendpoints.html
+[^10]: <https://idratherbewriting.com/learnapidoc/docendpoints.html>
 
 

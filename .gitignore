@@ -3,4 +3,8 @@
 .idea/
 __pycache__/
 .qwen/
+**/.mypy_cache/
+.mypy_cache/
+
+megalinter-reports/
 .mypy_cache/

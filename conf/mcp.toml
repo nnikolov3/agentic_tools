@@ -1,222 +1,31 @@
 # File: conf/mcp.toml
 
 [multi-agent-mcp]
-project_name = "Multi-Agent-MCP"
+project_name = "Agentic Tools"
 project_description = "Agentic toolchain for architecting, designing, validating, and approving code via chained tools."
-
+design_docs = ["docs/DESIGN_PRINCIPLES_GUIDE.md", "docs/CODING_FOR_LLMs.md", "AGENTS.md"]
+source_code_directory = ["src"]
+tests_directory=["tests"]
+project_directories=["src/", "conf/", "docs/", "tests/"]
+include_extensions = [".py", ".rs", ".go", ".ts", ".tsx", ".js", ".json", ".md", ".toml", ".yml", ".yaml"]
+exclude_dirs = [".git", ".github", ".gitlab", "node_modules", "venv", ".venv", "dist", "build", "target", "__pycache__"]
+recent_minutes = 10
+max_file_bytes = 262144
+max_total_bytes = 1048576
+# Qdrant embedding model to vector size mappings
+[embedding_model_sizes]
+"sentence-transformers/all-MiniLM-L6-v2" = 384
+"sentence-transformers/all-MiniLM-L12-v2" = 384
+"sentence-transformers/all-mpnet-base-v2" = 768
+"sentence-transformers/paraphrase-MiniLM-L6-v2" = 384
+"sentence-transformers/paraphrase-MiniLM-L3-v2" = 384
+"sentence-transformers/multi-qa-MiniLM-L6-cos-v1" = 384
+"sentence-transformers/multi-qa-mpnet-base-cos-v1" = 768
+"all-MiniLM-L6-v2" = 384
+"all-MiniLM-L12-v2" = 384
 [multi-agent-mcp.inference_providers]
 # Global provider registry and priority order
 providers = ["google", "groq", "cerebras", "sambanova"]
-
-#####################################################################
-# Architect
-[multi-agent-mcp.architect]
-prompt = """
-You are an expert software architect. Research inputs, analyze constraints, and produce a simple, explicit architecture and plan that adheres to the Design Principles and LLM Coding Standards.
-"""
-model_name = "qwen-3-235b Instruct"
-temperature = 0.5
-description = "Researches and plans system architecture"
-model_providers = ["cerebras"]
-alternative_model = "gpt-oss-120b"
-alternative_model_provider = ["groq", "sambanova"]
-skills = [
-    "system architecture",
-    "requirements analysis",
-    "design patterns",
-    "scalability planning",
-    "technical research",
-    "solution design"
-]
-
-#####################################################################
-# Designer
-[multi-agent-mcp.designer]
-prompt = """
-You are a software designer. Produce concrete, testable designs from architectural guidelines, keeping components simple and responsibilities singular.
-"""
-model_name = "qwen-3-235b Thinking"
-temperature = 0.4
-description = "Designs system components"
-model_providers = ["cerebras"]
-alternative_model = "gpt-oss-120b"
-alternative_model_provider = ["groq", "sambanova"]
-skills = [
-    "software design",
-    "component design",
-    "interface design",
-    "testability planning",
-    "abstraction",
-    "decoupling"
-]
-
-#####################################################################
-# Developer
-[multi-agent-mcp.developer]
-prompt = """
-You are a software developer. Implement the designer's steps with clean, well-documented, type-safe code that passes linters and tests.
-"""
-model_name = "qwen-3-coder-480b"
-temperature = 0.3
-description = "Implements designed components"
-model_providers = ["cerebras"]
-alternative_model = "gpt-oss-120b"
-alternative_model_provider = ["groq", "sambanova"]
-skills = [
-    "software development",
-    "clean code",
-    "type safety",
-    "documentation",
-    "testing",
-    "linting compliance"
-]
-
-#####################################################################
-# Debugger
-[multi-agent-mcp.debugger]
-prompt = """
-You are a debugger. Identify minimal, precise fixes that make the code correct, simple, and standards-compliant.
-"""
-model_name = "gpt-oss-120b"
-temperature = 0.2
-description = "Debugs implementations"
-model_providers = ["groq", "cerebras", "sambanova"]
-alternative_model = "models/gemini-2.5-flash"
-alternative_model_provider = ["google"]
-skills = [
-    "debugging",
-    "error identification",
-    "root cause analysis",
-    "fix implementation",
-    "code quality",
-    "standards compliance"
-]
-
-#####################################################################
-# Validator
-[multi-agent-mcp.validation]
-prompt = """
-You are a validator. Verify that fixes are correct and that requirements and standards are fully met.
-"""
-model_name = "gpt-oss-120b"
-temperature = 0.1
-description = "Validates fixes"
-model_providers = ["groq", "cerebras", "sambanova"]
-alternative_model = "models/gemini-2.5-flash"
-alternative_model_provider = ["google"]
-skills = [
-    "validation",
-    "verification",
-    "quality assurance",
-    "requirement checking",
-    "standards compliance",
-    "testing"
-]
-
-#####################################################################
-# Triager
-[multi-agent-mcp.triager]
-prompt = """
-You are a triager. Identify repeated issues, categorize, prioritize, and propose resolution strategies.
-"""
-model_name = "qwen-3-32b"
-temperature = 0.2
-description = "Triages repeated issues"
-model_providers = ["groq", "cerebras", "sambanova"]
-alternative_model = "models/gemini-2.0-flash"
-alternative_model_provider = ["google"]
-skills = [
-    "issue triage",
-    "categorization",
-    "prioritization",
-    "pattern recognition",
-    "resolution planning",
-    "problem analysis"
-]
-
-#####################################################################
-# Writer
-[multi-agent-mcp.writer]
-prompt = """
-You are a technical writer. Update and improve documentation to reflect the current implementation and standards.
-"""
-model_name = "gpt-oss-120b"
-temperature = 0.3
-description = "Updates documentation"
-model_providers = ["groq", "cerebras", "sambanova"]
-alternative_model = "models/gemini-2.5-flash"
-alternative_model_provider = ["google"]
-skills = [
-    "technical writing",
-    "documentation",
-    "technical communication",
-    "style guide adherence",
-    "information synthesis",
-    "clarity and precision"
-]
-
-#####################################################################
-# Version Control
-[multi-agent-mcp.version_control]
-prompt = """
-You are a version control expert. Perform atomic, auditable Git operations with clear messages and branches.
-"""
-model_name = "qwen-3-32b"
-temperature = 0.1
-description = "Handles Git operations"
-model_providers = ["groq", "cerebras", "sambanova"]
-alternative_model = "models/gemini-2.0-flash"
-alternative_model_provider = ["google"]
-skills = [
-    "version control",
-    "git operations",
-    "branch management",
-    "commit messaging",
-    "merge strategies",
-    "repository management"
-]
-
-#####################################################################
-# Grapher
-[multi-agent-mcp.grapher]
-prompt = """
-You are a diagram expert. Generate accurate Mermaid diagrams and visuals for systems and processes.
-"""
-model_name = "qwen-3-32b"
-temperature = 0.3
-description = "Creates diagrams"
-model_providers = ["groq", "cerebras", "sambanova"]
-alternative_model = "models/gemini-2.0-flash"
-alternative_model_provider = ["google"]
-skills = [
-    "diagram creation",
-    "visualization",
-    "Mermaid syntax",
-    "system modeling",
-    "process mapping",
-    "technical illustration"
-]
-
-#####################################################################
-# Auditor
-[multi-agent-mcp.auditor]
-prompt = """
-You are an auditor. Confirm linting, testing, and quality standards are fully met before commit.
-"""
-model_name = "DeepSeek-V3.1"
-temperature = 0.1
-description = "Audits code pre-commit"
-model_providers = ["sambanova"]
-alternative_model = "gpt-oss-120b"
-alternative_model_provider = ["groq", "cerebras"]
-skills = [
-    "code auditing",
-    "quality assurance",
-    "linting",
-    "testing verification",
-    "standards compliance",
-    "pre-commit validation"
-]
 
 #####################################################################
 # README Writer
@@ -245,17 +54,31 @@ alternative_model_provider = ["google"]
 skills = [
     "technical writing",
     "documentation",
-    "readme creation",
+    "readme creation", 
     "information synthesis",
     "content organization",
     "clarity and precision"
 ]
+
+# Qdrant configuration for storing README generation results
+[multi-agent-mcp.readme_writer.qdrant]
+enabled = true
+local_path = "/qdrant"
+collection_name = "readme_generations"
+embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
 
 #####################################################################
 # Approver (final gate)
 [multi-agent-mcp.approver]
 prompt = """
 You are the final gatekeeper in a software development pipeline. You will be given a complete context including design documents and recent code changes.
+
+Your decision-making process:
+1. Thoroughly analyze the changes for quality, design, and adherence to principles
+2. Identify all positive and negative points with specific details
+3. Only approve if the changes meet the highest standards and have no critical negative points
+4. For any design flaws, code quality issues, or principle violations, return CHANGES_REQUESTED with specific required actions
+5. Be rigorous in your evaluation - quality over speed
 
 Return ONLY a single, valid JSON object with this exact structure:
 {
@@ -270,47 +93,25 @@ model_name = "models/gemini-2.5-pro"
 temperature = 0.1
 description = "Final approval decision"
 model_providers = ["google"]
+alternative_model = "models/gemini-2.5-flash"
+alternative_model_provider = ["google"]
 project_root = "PWD"
+src_dir = "src"
+
 skills = [
     "code review",
     "quality assurance",
     "decision making",
-    "technical analysis",
+    "technical analysis", 
     "standards compliance",
     "risk assessment",
     "context analysis"
 ]
 
-# Context assembly policy
-recent_minutes = 10
-src_dir = "src"
-include_extensions = [".py", ".rs", ".go", ".ts", ".tsx", ".js", ".json", ".md", ".toml", ".yml", ".yaml"]
-exclude_dirs = [".git", ".github", ".gitlab", "node_modules", "venv", ".venv", "dist", "build", "target", "__pycache__"]
-max_file_bytes = 262144
-max_total_bytes = 1048576
-
-# Explicit doc paths (optional): used if files exist
-docs_paths = ["DESIGN_PRINCIPLES_GUIDE.md", "CODING_FOR_LLMs.md"]
-
-# Fallback discovery when explicit docs missing or renamed
-[multi-agent-mcp.approver.doc_discovery]
+# Qdrant configuration for storing APPROVED decisions
+[multi-agent-mcp.approver.qdrant]
 enabled = true
-patterns = [
-  "*design*principle*.md",
-  "*principle*.md",
-  "*coding*llm*.md",
-  "*coding*standard*.md",
-  "*llm*code*.md",
-]
-[[multi-agent-mcp.approver.doc_discovery.signal_groups]]
-name = "design_principles"
-keywords = ["foundational design principles", "core principles", "simplicity is non-negotiable", "single responsibility", "explicit over implicit"]
-[[multi-agent-mcp.approver.doc_discovery.signal_groups]]
-name = "llm_coding_standards"
-keywords = ["coding standards for llm-generated code", "llm-generated code", "type hints", "error handling", "determinism", "security-by-default"]
-max_docs = 2
-max_doc_bytes = 262144
+local_path = "/qdrant"
+collection_name = "approver_decisions"
+embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
 
-# Alternative model routing
-alternative_model = "gpt-oss-120b"
-alternative_model_provider = ["groq", "cerebras"]
