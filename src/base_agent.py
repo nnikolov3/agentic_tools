@@ -20,6 +20,13 @@ from src.shell_tools import (
 )
 from pathlib import Path
 
+try:
+    from src.qdrant_integration import QdrantIntegration
+    HAS_QDRANT = True
+except ImportError:
+    HAS_QDRANT = False
+    QdrantIntegration = None
+
 logger = logging.getLogger(__name__)
 
 # Default value for project root when not specified
@@ -138,7 +145,7 @@ class BaseAgent(ABC):
 
     @abstractmethod
     def _create_messages(
-        self, inputs: BaseInputs, docs: str, sources: str, payload: Dict[str, Any]
+        self, inputs: BaseInputs, docs: str, sources: str, context: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, str]]:
         """
         Create the system and user messages specific to this agent.
@@ -169,14 +176,20 @@ class BaseAgent(ABC):
         agent_config = self._configurator.get_agent_config(agent_name)
         qdrant_config = agent_config.get("qdrant")
 
-        if not qdrant_config or not qdrant_config.get("enabled", False):
-            return True  # Return True if Qdrant is not enabled (not a failure)
+        if not qdrant_config or not qdrant_config.get("enabled", False) or not HAS_QDRANT:
+            if qdrant_config and qdrant_config.get("enabled", False) and not HAS_QDRANT:
+                logging.getLogger(__name__).warning(
+                    "Qdrant integration is enabled in config, but the 'qdrant-client' package is not installed. Skipping storage."
+                )
+            return True  # Return True if Qdrant is not enabled or not available
 
         try:
-            from src.qdrant_integration import QdrantIntegration
-
             # Get the policy to access embedding_model_sizes
             policy = self._configurator.get_context_policy()
+
+            if QdrantIntegration is None:
+                # This should not happen if HAS_QDRANT is True, but as a safeguard
+                raise ImportError("QdrantIntegration is not available")
 
             qdrant_integration = QdrantIntegration(
                 local_path=qdrant_config.get("local_path", "/qdrant"),
@@ -211,11 +224,6 @@ class BaseAgent(ABC):
                 logging.getLogger(__name__).error("Failed to store data in Qdrant")
                 return False
 
-        except ImportError as import_error:
-            logging.getLogger(__name__).warning(
-                f"Qdrant integration not available, skipping storage: {import_error}"
-            )
-            return True  # Don't treat import error as failure
         except Exception as general_error:
             logging.getLogger(__name__).error(
                 f"Error initializing or using Qdrant integration: {general_error}"

@@ -54,10 +54,10 @@ class Approver(BaseAgent):
         return "approver"
 
     def _create_messages(
-        self, inputs: BaseInputs, docs: str, sources: str, payload: Dict[str, Any]
+        self, inputs: BaseInputs, docs: str, sources: str, context: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, str]]:
-        # Extract user_chat from payload
-        user_chat = payload.get("user_chat", "")
+        # Extract user_chat from context
+        user_chat = context.get("user_chat", "") if context else ""
 
         # Get skills from agent config if available
         agent_config = self._configurator.get_agent_config("approver")
@@ -137,7 +137,8 @@ class Approver(BaseAgent):
             }
 
         user_chat = payload.get("user_chat", "")
-        messages = self._create_messages(inputs, docs, sources, payload)
+        context = {"user_chat": user_chat}
+        messages = self._create_messages(inputs, docs, sources, context)
         result = self._make_api_call(inputs, messages)
 
         # Check if the API call was successful and contains decision data
@@ -147,8 +148,11 @@ class Approver(BaseAgent):
             # Clean the raw response by removing markdown fences if present
             cleaned_response = raw_response.strip()
             if cleaned_response.startswith("```"):
-                # Remove the first line (e.g., ```json) and the last line (```)
-                cleaned_response = "\n".join(cleaned_response.splitlines()[1:-1])
+                # Find the start and end of the JSON object
+                start_index = cleaned_response.find('{')
+                end_index = cleaned_response.rfind('}')
+                if start_index != -1 and end_index != -1:
+                    cleaned_response = cleaned_response[start_index:end_index+1]
 
             try:
                 # Attempt to parse the response as JSON (the approver returns strict JSON)
