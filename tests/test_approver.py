@@ -81,6 +81,33 @@ def test_execute_success(
 
 @patch("src.base_agent.api_caller")
 @patch("src.base_agent.collect_recent_sources")
+def test_execute_with_markdown_json(
+    mock_collect_sources: MagicMock,
+    mock_api_caller: MagicMock,
+    mock_configurator: MagicMock,
+) -> None:
+    """Test the execute method successfully parses JSON wrapped in markdown fences."""
+    mock_collect_sources.return_value = ("some source code", [Path("src/fake.py")])
+
+    # Mock response with markdown fences
+    markdown_json = '```json\n{"decision": "APPROVED"}\n```'
+    mock_api_caller.return_value = MagicMock(
+        provider_name="google",
+        model_name="test_model",
+        content=markdown_json,
+        raw_response={},
+    )
+
+    approver = Approver(mock_configurator)
+    result = approver.execute(payload={"user_chat": "test chat"})
+
+    assert result["status"] == "success"
+    assert result["data"]["provider"] == "google"
+    assert result["data"]["raw_text"] == markdown_json
+
+
+@patch("src.base_agent.api_caller")
+@patch("src.base_agent.collect_recent_sources")
 def test_skills_tags_in_system_prompt(
     mock_collect_sources: MagicMock,
     mock_api_caller: MagicMock,

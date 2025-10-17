@@ -132,9 +132,16 @@ class Approver(BaseAgent):
         # Check if the API call was successful and contains decision data
         if result.get("status") == "success":
             raw_response = result["data"].get("raw_text", "")
+
+            # Clean the raw response by removing markdown fences if present
+            cleaned_response = raw_response.strip()
+            if cleaned_response.startswith("```"):
+                # Remove the first line (e.g., ```json) and the last line (```)
+                cleaned_response = "\n".join(cleaned_response.splitlines()[1:-1])
+
             try:
                 # Attempt to parse the response as JSON (the approver returns strict JSON)
-                decision_data = json.loads(raw_response)
+                decision_data = json.loads(cleaned_response)
 
                 # Check if the decision is APPROVED
                 if decision_data.get("decision") == "APPROVED":
