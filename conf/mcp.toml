@@ -3,7 +3,7 @@
 [multi-agent-mcp]
 project_name = "Agentic Tools"
 project_description = "Agentic toolchain for architecting, designing, validating, and approving code via chained tools."
-design_docs = ["docs/DESIGN_PRINCIPLES_GUIDE.md", "docs/CODING_FOR_LLMs.md", "AGENTS.md"]
+design_docs = ["docs/DESIGN_PRINCIPLES_GUIDE.md", "docs/PROVIDERS_SDK.md","docs/CODING_FOR_LLMs.md", "AGENTS.md"]
 source_code_directory = ["src"]
 tests_directory=["tests"]
 project_directories=["src/", "conf/", "docs/", "tests/"]
@@ -11,7 +11,7 @@ include_extensions = [".py", ".rs", ".go", ".ts", ".tsx", ".js", ".json", ".md",
 exclude_dirs = [".git", ".github", ".gitlab", "node_modules", "venv", ".venv", "dist", "build", "target", "__pycache__"]
 recent_minutes = 10
 max_file_bytes = 262144
-max_total_bytes = 1048576
+max_total_bytes = 10485760
 # Qdrant embedding model to vector size mappings
 [embedding_model_sizes]
 "sentence-transformers/all-MiniLM-L6-v2" = 384

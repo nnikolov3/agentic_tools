@@ -514,10 +514,12 @@ def _call_google_with_types_module(
             part_obj = part_from_text(text=text)
             content_payload.append(content_ctor(role=mapped_role, parts=[part_obj]))
         except Exception as message_processing_error:
-            logger.warning(
-                f"Failed to process message in Google API call: {message_processing_error}. Skipping message."
+            logger.error(
+                f"Failed to process message in Google API call: {message_processing_error}. Failing fast."
             )
-            continue
+            raise RuntimeError(
+                "Malformed message content for Google API."
+            ) from message_processing_error
 
     system_instruction_obj = None
     try:
@@ -701,6 +703,79 @@ def _extract_retry_after_from_error(exception: Exception) -> int:
 # --- Public API ---
 
 
+def _validate_api_caller_input(
+    agent_config: Dict[str, Any], messages: List[Dict[str, Any]]
+) -> bool:
+    """
+    Validates the input arguments for the api_caller function.
+
+    Returns:
+        True if validation passes, False otherwise.
+    """
+    # Validate agent_config
+    if not isinstance(agent_config, dict):
+        logger.error("agent_config must be a dictionary")
+        return False
+
+    required_keys = ["model_name", "temperature", "model_providers"]
+    for key in required_keys:
+        if key not in agent_config:
+            logger.error(f"Missing required key '{key}' in agent_config")
+            return False
+
+    # Validate model_name
+    if not agent_config["model_name"] or not isinstance(
+        agent_config["model_name"], str
+    ):
+        logger.error("model_name must be a non-empty string")
+        return False
+
+    # Validate temperature
+    try:
+        temp = float(agent_config["temperature"])
+        if not (0.0 <= temp <= 2.0):  # Reasonable temperature range
+            logger.warning(
+                f"Temperature {temp} is outside the typical range [0.0, 2.0]"
+            )
+    except (TypeError, ValueError):
+        logger.error(
+            f"temperature must be a numeric value, got {type(agent_config['temperature'])}"
+        )
+        return False
+
+    # Validate model_providers
+    providers = agent_config["model_providers"]
+    if not isinstance(providers, (list, tuple)):
+        logger.error("model_providers must be a list or tuple")
+        return False
+    if not providers:
+        logger.error("model_providers must be a non-empty list")
+        return False
+    for provider in providers:
+        if not isinstance(provider, str):
+            logger.error(f"Provider names must be strings, got {type(provider)}")
+            return False
+
+    # Validate messages
+    if not isinstance(messages, list):
+        logger.error("messages must be a list")
+        return False
+    if not messages:
+        logger.error("messages must be a non-empty list")
+        return False
+    for message_index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            logger.error(f"Message at index {message_index} must be a dictionary")
+            return False
+        if "role" not in message or "content" not in message:
+            logger.error(
+                f"Message at index {message_index} must have 'role' and 'content' keys"
+            )
+            return False
+
+    return True
+
+
 def api_caller(
     agent_config: Dict[str, Any],
     messages: List[Dict[str, Any]],
@@ -721,66 +796,8 @@ def api_caller(
     Returns:
         UnifiedResponse with normalized content, or None if all providers fail
     """
-    # Validate agent_config
-    if not isinstance(agent_config, dict):
-        logger.error("agent_config must be a dictionary")
+    if not _validate_api_caller_input(agent_config, messages):
         return None
-
-    required_keys = ["model_name", "temperature", "model_providers"]
-    for key in required_keys:
-        if key not in agent_config:
-            logger.error(f"Missing required key '{key}' in agent_config")
-            return None
-
-    # Validate model_name
-    if not agent_config["model_name"] or not isinstance(
-        agent_config["model_name"], str
-    ):
-        logger.error("model_name must be a non-empty string")
-        return None
-
-    # Validate temperature
-    try:
-        temp = float(agent_config["temperature"])
-        if not (0.0 <= temp <= 2.0):  # Reasonable temperature range
-            logger.warning(
-                f"Temperature {temp} is outside the typical range [0.0, 2.0]"
-            )
-    except (TypeError, ValueError):
-        logger.error(
-            f"temperature must be a numeric value, got {type(agent_config['temperature'])}"
-        )
-        return None
-
-    # Validate model_providers
-    providers = agent_config["model_providers"]
-    if not isinstance(providers, (list, tuple)):
-        logger.error("model_providers must be a list or tuple")
-        return None
-    if not providers:
-        logger.error("model_providers must be a non-empty list")
-        return None
-    for provider in providers:
-        if not isinstance(provider, str):
-            logger.error(f"Provider names must be strings, got {type(provider)}")
-            return None
-
-    # Validate messages
-    if not isinstance(messages, list):
-        logger.error("messages must be a list")
-        return None
-    if not messages:
-        logger.error("messages must be a non-empty list")
-        return None
-    for message_index, message in enumerate(messages):
-        if not isinstance(message, dict):
-            logger.error(f"Message at index {message_index} must be a dictionary")
-            return None
-        if "role" not in message or "content" not in message:
-            logger.error(
-                f"Message at index {message_index} must have 'role' and 'content' keys"
-            )
-            return None
 
     _initialize_providers()
 

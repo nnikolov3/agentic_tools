@@ -9,6 +9,8 @@ generation_config parameter.
 
 from __future__ import annotations
 
+import logging
+import pytest
 from typing import Any, Dict, List
 
 from src import _api
@@ -97,3 +99,82 @@ def test_api_caller_google_uses_config_keyword(monkeypatch) -> None:
     assert captured_arguments["contents"][0].parts[0]["text"] == "hello"
     assert isinstance(captured_arguments["config"], FakeGenerateContentConfig)
     assert captured_arguments["temperature"] == 0.42
+
+
+def test_validate_api_caller_input_success() -> None:
+    """Test that valid inputs pass validation."""
+    valid_agent_config = {
+        "model_name": "test-model",
+        "temperature": 0.5,
+        "model_providers": ["google"],
+    }
+    valid_messages = [{"role": "user", "content": "test"}]
+    assert _api._validate_api_caller_input(valid_agent_config, valid_messages) is True
+
+
+@pytest.mark.parametrize(
+    "agent_config, messages, expected_error_message",
+    [
+        # --- agent_config validation failures ---
+        (None, [], "agent_config must be a dictionary"),
+        ({}, [], "Missing required key 'model_name' in agent_config"),
+        (
+            {"model_name": "", "temperature": 0.5, "model_providers": ["google"]},
+            [],
+            "model_name must be a non-empty string",
+        ),
+        (
+            {"model_name": 123, "temperature": 0.5, "model_providers": ["google"]},
+            [],
+            "model_name must be a non-empty string",
+        ),
+        (
+            {"model_name": "m", "temperature": "not-float", "model_providers": ["g"]},
+            [],
+            "temperature must be a numeric value, got <class 'str'>",
+        ),
+        (
+            {"model_name": "m", "temperature": 0.5, "model_providers": "not-list"},
+            [],
+            "model_providers must be a list or tuple",
+        ),
+        (
+            {"model_name": "m", "temperature": 0.5, "model_providers": []},
+            [],
+            "model_providers must be a non-empty list",
+        ),
+        (
+            {"model_name": "m", "temperature": 0.5, "model_providers": [123]},
+            [],
+            "Provider names must be strings, got <class 'int'>",
+        ),
+        # --- messages validation failures ---
+        (
+            {"model_name": "m", "temperature": 0.5, "model_providers": ["g"]},
+            "not-list",
+            "messages must be a list",
+        ),
+        (
+            {"model_name": "m", "temperature": 0.5, "model_providers": ["g"]},
+            [],
+            "messages must be a non-empty list",
+        ),
+        (
+            {"model_name": "m", "temperature": 0.5, "model_providers": ["g"]},
+            [{"role": "user", "content": "ok"}, "not-dict"],
+            "Message at index 1 must be a dictionary",
+        ),
+        (
+            {"model_name": "m", "temperature": 0.5, "model_providers": ["g"]},
+            [{"role": "user"}],
+            "Message at index 0 must have 'role' and 'content' keys",
+        ),
+    ],
+)
+def test_validate_api_caller_input_failure(
+    agent_config: Any, messages: Any, expected_error_message: str, caplog
+) -> None:
+    """Test that invalid inputs fail validation and log the correct error message."""
+    with caplog.at_level(logging.ERROR):
+        assert _api._validate_api_caller_input(agent_config, messages) is False
+        assert expected_error_message in caplog.text
