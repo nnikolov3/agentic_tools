@@ -90,7 +90,7 @@ class BaseAgent(ABC):
         """
         Assemble source files for context based on agent-specific needs.
         Each agent can override this method to use appropriate directories.
-        Returns a tuple of (formatted_content, all_candidate_files).
+        Returns a tuple of (formatted_content, included_source_files).
         """
         # Default to original logic - this can be overridden by specific agents
         return collect_recent_sources(
