@@ -394,7 +394,7 @@ func TestAddition(t *testing.T) {
     }
 }
 
-def add(a, b int) int {
+func add(a, b int) int {
     return a + b
 }
 ```

@@ -5,14 +5,34 @@ Approver agent: assembles context and requests a final decision as strict JSON.
 
 from __future__ import annotations
 
+import json
 import logging
+import time
 from pathlib import Path
 from typing import Any, Dict, List
 
 from src.base_agent import BaseAgent, BaseInputs
-from src.configurator import Configurator
+
 
 logger = logging.getLogger(__name__)
+
+
+def store_decision(
+    qdrant_integration: Any,
+    storage_id: str,
+    content_for_embedding: str,
+    decision_data: Dict[str, Any],
+) -> bool:
+    """
+    Performs the actual storage of the approver decision in Qdrant.
+    """
+    decision_with_timestamp = dict(decision_data)
+    decision_with_timestamp["timestamp"] = time.time()
+    return bool(
+        qdrant_integration.store_approver_decision(
+            decision_with_timestamp, storage_id, content_for_embedding
+        )
+    )
 
 
 class Approver(BaseAgent):
@@ -27,15 +47,17 @@ class Approver(BaseAgent):
         self, inputs: BaseInputs, docs: str, sources: str, payload: Dict[str, Any]
     ) -> List[Dict[str, str]]:
         # Extract user_chat from payload
-        user_chat = payload.get('user_chat', '')
-        
+        user_chat = payload.get("user_chat", "")
+
         # Get skills from agent config if available
         agent_config = self._configurator.get_agent_config("approver")
         skills = agent_config.get("skills", [])
-        
+
         # Use the configurator's method to combine prompt with skills
-        system = self._configurator.combine_prompt_with_skills(inputs.prompt.strip(), tuple(skills))
-        
+        system = self._configurator.combine_prompt_with_skills(
+            inputs.prompt.strip(), tuple(skills)
+        )
+
         user = (
             "# Full Context for Final Review\n\n"
             "## 1. Design Documents & Principles:\n"
@@ -52,27 +74,81 @@ class Approver(BaseAgent):
             {"role": "user", "content": user},
         ]
 
+    def _extract_approver_content_for_embedding(self, data: Dict[str, Any]) -> str:
+        """
+        Extract content from decision data for embedding.
+
+        Args:
+            data: The decision data
+
+        Returns:
+            Content string for embedding
+        """
+        summary = data.get("summary", "")
+        positive_points = "; ".join(data.get("positive_points", []))
+        negative_points = "; ".join(data.get("negative_points", []))
+        required_actions = "; ".join(data.get("required_actions", []))
+        decision_type = data.get("decision", "")
+        return f"Decision: {decision_type}, Summary: {summary}, Positive: {positive_points}, Negative: {negative_points}, Actions: {required_actions}"
+
+    def _store_approver_decision_in_qdrant(self, decision_data: Dict[str, Any]) -> None:
+        """
+        Store approver decision in Qdrant if enabled.
+
+        Args:
+            decision_data: The decision data to store
+        """
+        self._store_in_qdrant_if_enabled(
+            agent_name=self.get_agent_name(),
+            data=decision_data,
+            store_func=store_decision,
+            content_extractor_func=self._extract_approver_content_for_embedding,
+        )
+
     def execute(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         inputs = self._load_inputs()
         docs = self._assemble_docs(inputs)
-        sources = self._assemble_sources(inputs)
+
+        # Unpack the new return value: sources content and all candidate files
+        sources, candidate_files = self._assemble_sources(inputs)
 
         if not sources:
-            src_path = Path(inputs.project_root) / inputs.policy.src_dir
-            src_files = []
-            
-            for extension in inputs.policy.include_extensions:
-                for file_path in src_path.rglob(f"*{extension}"):
-                    if file_path.is_file():
-                        relative_path = file_path.relative_to(src_path)
-                        src_files.append(str(relative_path))
-            
+            # Use the candidate_files list returned by collect_recent_sources
+            # The candidate files are already Path objects, so we convert them to relative strings
+            src_files = [
+                str(f.relative_to(Path(inputs.project_root))) for f in candidate_files
+            ]
+
             return {
                 "status": "no_recent_files",
                 "data": {"files": src_files},
                 "message": "No recent source files were found to analyze. Please choose a file from the list below and re-run the tool with the file path as an argument.",
             }
 
-        user_chat = payload.get('user_chat', '')
+        user_chat = payload.get("user_chat", "")
         messages = self._create_messages(inputs, docs, sources, payload)
-        return self._make_api_call(inputs, messages)
+        result = self._make_api_call(inputs, messages)
+
+        # Check if the API call was successful and contains decision data
+        if result.get("status") == "success":
+            raw_response = result["data"].get("raw_text", "")
+            try:
+                # Attempt to parse the response as JSON (the approver returns strict JSON)
+                decision_data = json.loads(raw_response)
+
+                # Check if the decision is APPROVED
+                if decision_data.get("decision") == "APPROVED":
+                    # Add user chat to decision data
+                    decision_data["user_chat"] = user_chat
+                    self._store_approver_decision_in_qdrant(decision_data)
+
+            except json.JSONDecodeError:
+                logger.warning(
+                    "Could not parse raw_text as JSON, skipping Qdrant storage"
+                )
+            except Exception as processing_error:
+                logger.error(
+                    f"Error processing decision for Qdrant storage: {processing_error}"
+                )
+
+        return result

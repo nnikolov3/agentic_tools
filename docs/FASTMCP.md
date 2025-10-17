@@ -25,15 +25,15 @@ mcp_with_instructions = FastMCP(
 ### Constructor Parameters
 The `FastMCP` constructor supports numerous parameters for configuration:
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `name` | `str` | `"FastMCP"` | Human-readable server name |
-| `instructions` | `str \| None` | `None` | Description of how to interact with the server |
-| `auth` | `OAuthProvider \| TokenVerifier \| None` | `None` | Authentication provider for HTTP transports |
-| `lifespan` | `AsyncContextManager \| None` | `None` | Async context manager for startup/shutdown |
-| `tools` | `list[Tool \| Callable] \| None` | `None` | List of tools to add to server |
-| `include_tags` | `set[str] \| None` | `None` | Only expose components with matching tags |
-| `exclude_tags` | `set[str] \| None` | `None` | Hide components with matching tags |
+| Parameter      | Type                                     | Default     | Description                                    |
+|----------------|------------------------------------------|-------------|------------------------------------------------|
+| `name`         | `str`                                    | `"FastMCP"` | Human-readable server name                     |
+| `instructions` | `str \| None`                            | `None`      | Description of how to interact with the server |
+| `auth`         | `OAuthProvider \| TokenVerifier \| None` | `None`      | Authentication provider for HTTP transports    |
+| `lifespan`     | `AsyncContextManager \| None`            | `None`      | Async context manager for startup/shutdown     |
+| `tools`        | `list[Tool \| Callable] \| None`         | `None`      | List of tools to add to server                 |
+| `include_tags` | `set[str] \| None`                       | `None`      | Only expose components with matching tags      |
+| `exclude_tags` | `set[str] \| None`                       | `None`      | Hide components with matching tags             |
 
 ## Core Components
 

@@ -2,12 +2,13 @@
 Unit tests for configurator functionality related to agent configuration validation
 and prompt composition with skill tags.
 """
+
 from __future__ import annotations
 
-from pathlib import Path
 import textwrap
-import pytest
+from pathlib import Path
 
+import pytest
 from src.configurator import Configurator
 
 
@@ -51,5 +52,7 @@ def test_combine_prompt_with_skills_injects_tags() -> None:
     configurator = Configurator.__new__(Configurator)  # Create without calling __init__
     combined_prompt = configurator.combine_prompt_with_skills(base_prompt, skills)
 
-    assert combined_prompt.startswith("# Tags: documentation_review, style_consistency, accuracy_audit\n")
+    assert combined_prompt.startswith(
+        "# Tags: documentation_review, style_consistency, accuracy_audit\n"
+    )
     assert combined_prompt.endswith(base_prompt)

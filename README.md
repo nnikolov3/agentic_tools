@@ -21,26 +21,26 @@
 
 ## Key Features  
 
-| Feature | Description |
-|---------|-------------|
-| **Multi‑agent pipeline** | Separate agents for architecture, design, development, debugging, validation, triage, documentation, and final approval. |
-| **Declarative configuration** | All agents, prompts, models, and policies live in a single `conf/mcp.toml` file. |
-| **Context‑aware execution** | Recent source changes and design documents are automatically assembled and fed to each agent. |
-| **Model‑agnostic** | Supports any LLM provider (Google, Groq, Cerebras, SambaNova, etc.) – the configuration chooses the preferred provider and fallback. |
-| **Strict quality gates** | The `approver` agent returns a JSON decision (`APPROVED` or `CHANGES_REQUESTED`) before any commit is made. |
-| **Extensible** | Adding a new agent only requires a TOML section and a Python class that inherits from `BaseAgent`. |
-| **Test‑driven** | A full test suite (`tests/`) ensures >80 % coverage and runs on every change. |
-| **Automated linting** | `.mega-linter.yml` together with `ruff`, `black`, and `mypy` enforce zero‑warning code. |
+| Feature                       | Description                                                                                                                          |
+|-------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| **Multi‑agent pipeline**      | Separate agents for architecture, design, development, debugging, validation, triage, documentation, and final approval.             |
+| **Declarative configuration** | All agents, prompts, models, and policies live in a single `conf/mcp.toml` file.                                                     |
+| **Context‑aware execution**   | Recent source changes and design documents are automatically assembled and fed to each agent.                                        |
+| **Model‑agnostic**            | Supports any LLM provider (Google, Groq, Cerebras, SambaNova, etc.) – the configuration chooses the preferred provider and fallback. |
+| **Strict quality gates**      | The `approver` agent returns a JSON decision (`APPROVED` or `CHANGES_REQUESTED`) before any commit is made.                          |
+| **Extensible**                | Adding a new agent only requires a TOML section and a Python class that inherits from `BaseAgent`.                                   |
+| **Test‑driven**               | A full test suite (`tests/`) ensures >80 % coverage and runs on every change.                                                        |
+| **Automated linting**         | `.mega-linter.yml` together with `ruff`, `black`, and `mypy` enforce zero‑warning code.                                              |
 
 ---  
 
 ## Prerequisites  
 
-| Requirement | Reason |
-|-------------|--------|
-| **Python 3.11+** | The code uses `from __future__ import annotations` and type‑hinted APIs that require recent Python. |
-| **uv (optional)** | Fast, reproducible Python package manager used by the project (`uv.lock` is present). |
-| **Git** | The tool inspects the repository to collect recent source files and to enforce the final approval step. |
+| Requirement                                                                       | Reason                                                                                                                          |
+|-----------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
+| **Python 3.11+**                                                                  | The code uses `from __future__ import annotations` and type‑hinted APIs that require recent Python.                             |
+| **uv (optional)**                                                                 | Fast, reproducible Python package manager used by the project (`uv.lock` is present).                                           |
+| **Git**                                                                           | The tool inspects the repository to collect recent source files and to enforce the final approval step.                         |
 | **Access to at least one LLM provider** (e.g., Google, Groq, Cerebras, SambaNova) | Agents call the provider defined in `conf/mcp.toml`. API keys must be supplied via environment variables (see *Configuration*). |
 
 > **Note** – No system‑level package manager (e.g., `apt-get`) is required; all dependencies are pure‑Python.
@@ -87,15 +87,15 @@ providers = ["google", "groq", "cerebras", "sambanova"]
 
 Each agent has its own table (`[multi-agent-mcp.<agent_name>]`) containing:
 
-| Field | Meaning |
-|-------|---------|
-| `prompt` | System prompt fed to the LLM. |
-| `model_name` | Name of the model to use (e.g., `qwen-3-235b Instruct`). |
-| `temperature` | Sampling temperature (0 = deterministic). |
-| `model_providers` | Preferred providers for this agent. |
-| `skills` | Human‑readable list of skills the agent should expose. |
-| `description` | Short human description (used by the README writer). |
-| `project_root` *(optional)* | Overrides the default working directory. |
+| Field                       | Meaning                                                  |
+|-----------------------------|----------------------------------------------------------|
+| `prompt`                    | System prompt fed to the LLM.                            |
+| `model_name`                | Name of the model to use (e.g., `qwen-3-235b Instruct`). |
+| `temperature`               | Sampling temperature (0 = deterministic).                |
+| `model_providers`           | Preferred providers for this agent.                      |
+| `skills`                    | Human‑readable list of skills the agent should expose.   |
+| `description`               | Short human description (used by the README writer).     |
+| `project_root` *(optional)* | Overrides the default working directory.                 |
 
 ### Context‑assembly policy  
 
@@ -111,12 +111,12 @@ max_total_bytes = 1048576        # 1 MB total payload
 
 ### Environment variables  
 
-| Variable | Example | Description |
-|----------|---------|-------------|
-| `GOOGLE_API_KEY` | `abcd1234` | API key for the Google provider. |
-| `GROQ_API_KEY`   | `xyz987`   | API key for the Groq provider. |
-| `CEREBRAS_API_KEY` | `...`   | API key for Cerebras. |
-| `SAMBANOVA_API_KEY` | `...`  | API key for SambaNova. |
+| Variable            | Example    | Description                      |
+|---------------------|------------|----------------------------------|
+| `GOOGLE_API_KEY`    | `abcd1234` | API key for the Google provider. |
+| `GROQ_API_KEY`      | `xyz987`   | API key for the Groq provider.   |
+| `CEREBRAS_API_KEY`  | `...`      | API key for Cerebras.            |
+| `SAMBANOVA_API_KEY` | `...`      | API key for SambaNova.           |
 
 > The `Configurator` class reads the TOML file and injects these values at runtime.
 

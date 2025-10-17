@@ -11,45 +11,27 @@ import logging
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Mapping, Sequence, Tuple
+from typing import Any, Dict, Mapping, Tuple, Optional
 
 logger = logging.getLogger(__name__)
 
 TOML_ROOT = "multi-agent-mcp"
 
-# Default configuration values
-DEFAULT_MAX_DOCS = 2
-DEFAULT_MAX_DOC_BYTES = 262_144
-DEFAULT_MAX_FILE_BYTES = 262_144
-DEFAULT_MAX_TOTAL_BYTES = 1_048_576
-DEFAULT_RECENT_MINUTES = 10
-
-
-@dataclass(frozen=True)
-class SignalGroup:
-    name: str
-    keywords: Tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class DocDiscovery:
-    enabled: bool
-    patterns: Tuple[str, ...]
-    signal_groups: Tuple[SignalGroup, ...]
-    max_docs: int
-    max_doc_bytes: int
+# Configuration values - these are defined in mcp.toml, no defaults here
 
 
 @dataclass(frozen=True)
 class ContextPolicy:
     recent_minutes: int
-    src_dir: str
     include_extensions: Tuple[str, ...]
     exclude_dirs: Tuple[str, ...]
     max_file_bytes: int
     max_total_bytes: int
-    docs_paths: Tuple[str, ...]
-    discovery: DocDiscovery
+    design_docs: Tuple[str, ...]
+    source_code_directory: Tuple[str, ...]
+    tests_directory: Tuple[str, ...]
+    project_directories: Tuple[str, ...]
+    embedding_model_sizes: Dict[str, int]
 
 
 class Configurator:
@@ -58,20 +40,20 @@ class Configurator:
         cfg = Configurator("conf/mcp.toml")
         cfg.load()
         approver_cfg = cfg.get_agent_config("approver")
-        policy = cfg.get_context_policy()
     """
 
     def __init__(self, toml_path: str) -> None:
         if not isinstance(toml_path, str) or not toml_path.strip():
             raise ValueError("toml_path must be a non-empty string")
         self._toml_path = toml_path
+        self._toml: Optional[Mapping[str, Any]] = None
 
     def load(self) -> None:
         path = Path(self._toml_path)
         if not path.exists():
             raise FileNotFoundError(f"TOML not found: {path}")
-        with path.open("rb") as f:
-            self._toml = tomllib.load(f)
+        with path.open("rb") as config_file:
+            self._toml = tomllib.load(config_file)
         logger.info("Loaded configuration: %s", path)
 
     def _root(self) -> Mapping[str, Any]:
@@ -98,122 +80,69 @@ class Configurator:
         for key in required_keys:
             if key not in section:
                 raise KeyError(f"Missing '{key}' in [{TOML_ROOT}.{agent_key}]")
-        return section
+
+        # Add Qdrant configuration if available for this agent
+        agent_section_with_additional = dict(section)
+        qdrant_section = root.get(f"{agent_key}.qdrant")
+        if isinstance(qdrant_section, dict):
+            agent_section_with_additional["qdrant"] = qdrant_section
+
+        return agent_section_with_additional
 
     def get_context_policy(self) -> ContextPolicy:
         root = self._root()
-        approver = root.get("approver", {})
-        if not isinstance(approver, dict):
-            raise KeyError(f"Missing [{TOML_ROOT}.approver]")
 
-        def _get_tuple_of_strings(key: str, default: Sequence[str]) -> Tuple[str, ...]:
-            value = approver.get(key, default)
-            if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
-                raise ValueError(
-                    f"'{key}' must be a list of strings in [{TOML_ROOT}.approver]"
-                )
+        # Helper function to get values from root configuration
+        def _get_tuple_of_strings(key: str) -> Tuple[str, ...]:
+            value = root.get(key)
+            if not isinstance(value, list) or not all(
+                isinstance(item, str) for item in value
+            ):
+                raise ValueError(f"'{key}' must be a list of strings in [{TOML_ROOT}]")
             return tuple(value)
 
-        def _get_int_value(key: str, default: int) -> int:
-            value = approver.get(key, default)
+        def _get_int_value(key: str) -> int:
+            value = root.get(key)
             if not isinstance(value, int):
-                raise ValueError(
-                    f"'{key}' must be an integer in [{TOML_ROOT}.approver]"
-                )
+                raise ValueError(f"'{key}' must be an integer in [{TOML_ROOT}]")
             return value
 
-        docs_paths = _get_tuple_of_strings("docs_paths", ())
-
-        doc_discovery_config = approver.get("doc_discovery", {})
-        if not isinstance(doc_discovery_config, dict):
-            doc_discovery_config = {}
-
-        enabled = bool(doc_discovery_config.get("enabled", True))
-        patterns = tuple(map(str, doc_discovery_config.get("patterns", [])))
-
-        raw_groups = doc_discovery_config.get("signal_groups", [])
-        groups: List[SignalGroup] = []
-        if isinstance(raw_groups, list):
-            for item in raw_groups:
-                if (
-                    isinstance(item, dict)
-                    and "name" in item
-                    and "keywords" in item
-                    and isinstance(item["keywords"], list)
-                ):
-                    groups.append(
-                        SignalGroup(
-                            name=str(item["name"]),
-                            keywords=tuple(map(str.lower, item["keywords"])),
-                        )
+        def _get_embedding_model_sizes() -> Dict[str, int]:
+            sizes_config = root.get("embedding_model_sizes", {})
+            # Validate that all values are integers
+            validated_sizes = {}
+            for model_name, size in sizes_config.items():
+                if isinstance(size, int):
+                    validated_sizes[model_name] = size
+                else:
+                    logger.warning(
+                        f"Invalid size for model {model_name}: {size} (must be integer)"
                     )
-
-        max_docs_raw = doc_discovery_config.get("max_docs", DEFAULT_MAX_DOCS)
-        max_docs = int(max_docs_raw) if isinstance(max_docs_raw, int) else DEFAULT_MAX_DOCS
-
-        max_doc_bytes_raw = doc_discovery_config.get(
-            "max_doc_bytes", approver.get("max_file_bytes", DEFAULT_MAX_DOC_BYTES)
-        )
-        max_doc_bytes = (
-            int(max_doc_bytes_raw) if isinstance(max_doc_bytes_raw, int) else DEFAULT_MAX_DOC_BYTES
-        )
-
-        discovery = DocDiscovery(
-            enabled=enabled,
-            patterns=patterns,
-            signal_groups=tuple(groups),
-            max_docs=max_docs,
-            max_doc_bytes=max_doc_bytes,
-        )
+            return validated_sizes
 
         return ContextPolicy(
-            recent_minutes=_get_int_value("recent_minutes", DEFAULT_RECENT_MINUTES),
-            src_dir=str(approver.get("src_dir", "src")),
-            include_extensions=_get_tuple_of_strings(
-                "include_extensions",
-                (
-                    ".py",
-                    ".rs",
-                    ".go",
-                    ".ts",
-                    ".tsx",
-                    ".js",
-                    ".json",
-                    ".md",
-                    ".toml",
-                    ".yml",
-                    ".yaml",
-                ),
-            ),
-            exclude_dirs=_get_tuple_of_strings(
-                "exclude_dirs",
-                (
-                    ".git",
-                    ".github",
-                    ".gitlab",
-                    "node_modules",
-                    "venv",
-                    ".venv",
-                    "dist",
-                    "build",
-                    "target",
-                    "__pycache__",
-                ),
-            ),
-            max_file_bytes=_get_int_value("max_file_bytes", DEFAULT_MAX_FILE_BYTES),
-            max_total_bytes=_get_int_value("max_total_bytes", DEFAULT_MAX_TOTAL_BYTES),
-            docs_paths=docs_paths,
-            discovery=discovery,
+            recent_minutes=_get_int_value("recent_minutes"),
+            include_extensions=_get_tuple_of_strings("include_extensions"),
+            exclude_dirs=_get_tuple_of_strings("exclude_dirs"),
+            max_file_bytes=_get_int_value("max_file_bytes"),
+            max_total_bytes=_get_int_value("max_total_bytes"),
+            design_docs=_get_tuple_of_strings("design_docs"),
+            source_code_directory=_get_tuple_of_strings("source_code_directory"),
+            tests_directory=_get_tuple_of_strings("tests_directory"),
+            project_directories=_get_tuple_of_strings("project_directories"),
+            embedding_model_sizes=_get_embedding_model_sizes(),
         )
 
-    def combine_prompt_with_skills(self, base_prompt: str, skills: tuple[str, ...]) -> str:
+    def combine_prompt_with_skills(
+        self, base_prompt: str, skills: tuple[str, ...]
+    ) -> str:
         """
         Combine a base prompt with skills for tagging purposes.
-        
+
         Args:
             base_prompt: The original system prompt
             skills: Tuple of skill strings to include as tags
-            
+
         Returns:
             Combined prompt with skills as tags
         """
