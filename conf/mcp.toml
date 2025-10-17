@@ -45,10 +45,10 @@ You are an expert technical writer. Create excellent, concise, and practical REA
 
 Focus on simplicity, clarity, and utility. Provide concrete, actionable examples based on the actual project structure and code, not generic placeholders. Make it helpful and accurate.
 """
-model_name = "gpt-oss-120b"
+model_name = "models/gemini-2.5-flash"
 temperature = 0.3
 description = "Generates high-quality README documentation"
-model_providers = ["groq", "cerebras", "sambanova"]
+model_providers = ["google"]
 alternative_model = "models/gemini-2.5-flash"
 alternative_model_provider = ["google"]
 skills = [
