@@ -193,7 +193,7 @@ class BaseAgent(ABC):
             content_for_embedding = content_extractor_func(data)
 
             # Generate a unique ID for this storage
-            storage_id = f"storage_{uuid.uuid4().hex}"
+            storage_id = str(uuid.uuid4())
 
             # Call the specific storage function provided by the agent
             # Pass the extracted content and the data payload to the storage function
