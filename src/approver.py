@@ -12,19 +12,29 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from src.base_agent import BaseAgent, BaseInputs
+from src.qdrant_integration import QdrantIntegration
 
 
 logger = logging.getLogger(__name__)
 
 
 def store_decision(
-    qdrant_integration: Any,
+    qdrant_integration: QdrantIntegration,
     storage_id: str,
     content_for_embedding: str,
     decision_data: Dict[str, Any],
 ) -> bool:
     """
     Performs the actual storage of the approver decision in Qdrant.
+
+    Args:
+        qdrant_integration: The initialized QdrantIntegration object.
+        storage_id: The unique ID for the storage point.
+        content_for_embedding: The text content used to generate the vector embedding.
+        decision_data: The dictionary containing the parsed LLM decision.
+
+    Returns:
+        True if storage was successful, False otherwise.
     """
     decision_with_timestamp = dict(decision_data)
     decision_with_timestamp["timestamp"] = time.time()
@@ -116,7 +126,8 @@ class Approver(BaseAgent):
             # Use the candidate_files list returned by collect_recent_sources
             # The candidate files are already Path objects, so we convert them to relative strings
             src_files = [
-                str(f.relative_to(Path(inputs.project_root))) for f in candidate_files
+                str(candidate_file.relative_to(Path(inputs.project_root)))
+                for candidate_file in candidate_files
             ]
 
             return {
@@ -132,12 +143,22 @@ class Approver(BaseAgent):
         # Check if the API call was successful and contains decision data
         if result.get("status") == "success":
             raw_response = result["data"].get("raw_text", "")
+
+            # Clean the raw response by removing markdown fences if present
+            cleaned_response = raw_response.strip()
+            if cleaned_response.startswith("```"):
+                # Remove the first line (e.g., ```json) and the last line (```)
+                cleaned_response = "\n".join(cleaned_response.splitlines()[1:-1])
+
             try:
                 # Attempt to parse the response as JSON (the approver returns strict JSON)
-                decision_data = json.loads(raw_response)
+                decision_data = json.loads(cleaned_response)
 
-                # Check if the decision is APPROVED
-                if decision_data.get("decision") == "APPROVED":
+                # Check if the decision is APPROVED and that the result is a dictionary
+                if (
+                    isinstance(decision_data, dict)
+                    and decision_data.get("decision") == "APPROVED"
+                ):
                     # Add user chat to decision data
                     decision_data["user_chat"] = user_chat
                     self._store_approver_decision_in_qdrant(decision_data)

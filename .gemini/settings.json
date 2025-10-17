@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "Agentic Tools": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--with",
+        "fastmcp",
+        "fastmcp",
+        "run",
+        "/home/nnikolov3/multi-agent-mcp/main.py"
+      ]
+    }
+  }
+}

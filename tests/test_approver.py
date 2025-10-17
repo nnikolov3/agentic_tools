@@ -10,8 +10,9 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from src.approver import Approver
+from src.approver import Approver, store_decision
 from src.configurator import Configurator
+from src.qdrant_integration import QdrantIntegration
 
 
 @pytest.fixture
@@ -55,11 +56,13 @@ def test_approver_instantiation(mock_configurator: MagicMock) -> None:
     assert isinstance(approver, Approver)
 
 
+@patch("src.approver.Approver._store_approver_decision_in_qdrant")
 @patch("src.base_agent.api_caller")
 @patch("src.base_agent.collect_recent_sources")
 def test_execute_success(
     mock_collect_sources: MagicMock,
     mock_api_caller: MagicMock,
+    mock_store_qdrant: MagicMock,
     mock_configurator: MagicMock,
 ) -> None:
     """Test the execute method for a successful run."""
@@ -77,6 +80,68 @@ def test_execute_success(
     assert result["status"] == "success"
     assert result["data"]["provider"] == "google"
     assert result["data"]["raw_text"] == '{"decision": "APPROVED"}'
+    mock_store_qdrant.assert_called_once()
+
+
+@patch("src.approver.Approver._store_approver_decision_in_qdrant")
+@patch("src.base_agent.api_caller")
+@patch("src.base_agent.collect_recent_sources")
+@pytest.mark.parametrize(
+    "mock_content",
+    [
+        '{"decision": "CHANGES_REQUESTED"}',  # Not APPROVED
+        '{"not_a_decision_key": "APPROVED"}',  # Missing decision key
+        "not a json string",  # JSONDecodeError
+        '["a list", "not a dict"]',  # Valid JSON, but not a dict
+    ],
+)
+def test_execute_qdrant_not_called(
+    mock_collect_sources: MagicMock,
+    mock_api_caller: MagicMock,
+    mock_store_qdrant: MagicMock,
+    mock_configurator: MagicMock,
+    mock_content: str,
+) -> None:
+    """Test that Qdrant storage is not called when decision is not APPROVED or parsing fails."""
+    mock_collect_sources.return_value = ("some source code", [Path("src/fake.py")])
+    mock_api_caller.return_value = MagicMock(
+        provider_name="google",
+        model_name="test_model",
+        content=mock_content,
+        raw_response={},
+    )
+
+    approver = Approver(mock_configurator)
+    approver.execute(payload={"user_chat": "test chat"})
+
+    mock_store_qdrant.assert_not_called()
+
+
+@patch("src.base_agent.api_caller")
+@patch("src.base_agent.collect_recent_sources")
+def test_execute_with_markdown_json(
+    mock_collect_sources: MagicMock,
+    mock_api_caller: MagicMock,
+    mock_configurator: MagicMock,
+) -> None:
+    """Test the execute method successfully parses JSON wrapped in markdown fences."""
+    mock_collect_sources.return_value = ("some source code", [Path("src/fake.py")])
+
+    # Mock response with markdown fences
+    markdown_json = '```json\n{"decision": "APPROVED"}\n```'
+    mock_api_caller.return_value = MagicMock(
+        provider_name="google",
+        model_name="test_model",
+        content=markdown_json,
+        raw_response={},
+    )
+
+    approver = Approver(mock_configurator)
+    result = approver.execute(payload={"user_chat": "test chat"})
+
+    assert result["status"] == "success"
+    assert result["data"]["provider"] == "google"
+    assert result["data"]["raw_text"] == markdown_json
 
 
 @patch("src.base_agent.api_caller")
@@ -149,6 +214,51 @@ def test_execute_api_error(
 
     assert result["status"] == "error"
     assert result["message"] == "No valid response received from any provider."
+
+
+def test_extract_approver_content_for_embedding(mock_configurator: MagicMock) -> None:
+    """Test that the content extraction method correctly formats the decision data."""
+    approver = Approver(mock_configurator)
+    decision_data = {
+        "decision": "APPROVED",
+        "summary": "The fix is good.",
+        "positive_points": ["Clean code", "Good tests"],
+        "negative_points": ["None"],
+        "required_actions": ["None"],
+    }
+    expected_content = "Decision: APPROVED, Summary: The fix is good., Positive: Clean code; Good tests, Negative: None, Actions: None"
+
+    content = approver._extract_approver_content_for_embedding(decision_data)
+    assert content == expected_content
+
+
+@patch("src.approver.time")
+def test_store_decision(mock_time: MagicMock) -> None:
+    """Test that store_decision calls QdrantIntegration correctly with a timestamp."""
+    mock_time.time.return_value = 1234567890.0
+
+    mock_qdrant = MagicMock(spec=QdrantIntegration)
+    decision_data = {"decision": "APPROVED", "summary": "Test"}
+
+    result = store_decision(
+        mock_qdrant,
+        "test_id",
+        "content for embedding",
+        decision_data,
+    )
+
+    expected_data = {
+        "decision": "APPROVED",
+        "summary": "Test",
+        "timestamp": 1234567890.0,
+    }
+
+    mock_qdrant.store_approver_decision.assert_called_once_with(
+        expected_data,
+        "test_id",
+        "content for embedding",
+    )
+    assert result is True
 
 
 def test_approver_fixes_addressed(mock_configurator: MagicMock) -> None:

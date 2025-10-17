@@ -90,7 +90,7 @@ class BaseAgent(ABC):
         """
         Assemble source files for context based on agent-specific needs.
         Each agent can override this method to use appropriate directories.
-        Returns a tuple of (formatted_content, all_candidate_files).
+        Returns a tuple of (formatted_content, included_source_files).
         """
         # Default to original logic - this can be overridden by specific agents
         return collect_recent_sources(
@@ -193,7 +193,7 @@ class BaseAgent(ABC):
             content_for_embedding = content_extractor_func(data)
 
             # Generate a unique ID for this storage
-            storage_id = f"storage_{uuid.uuid4().hex}"
+            storage_id = str(uuid.uuid4())
 
             # Call the specific storage function provided by the agent
             # Pass the extracted content and the data payload to the storage function

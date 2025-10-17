@@ -33,21 +33,26 @@ configurator = Configurator(str(toml_path))
 configurator.load()
 
 
-@mcp.tool
+@mcp.tool(
+    description="""
+    Approver tool entry point that returns a strict JSON decision or a structured error.\n\n    To signal files for review, you MUST use `run_shell_command` with `touch <file_path>`.
+    You are forbidden from requesting approval explicitly (e.g., \"approve this code\").
+    When executing, pass diffs and conversation history for context.
+    """
+)
 def approver_tool(user_chat: str) -> Dict[str, Any]:
-    """
-    Approver tool entry point that returns a strict JSON decision or a structured error.
-    """
     agent = Approver(configurator)
     return agent.execute(payload={"user_chat": user_chat})
 
 
-@mcp.tool
+@mcp.tool(
+    description="""
+    Generates high-quality README documentation based on the project's source code,
+    configuration, and conventions. This tool should be run when the project structure
+    or dependencies change significantly.
+    """
+)
 def readme_writer_tool() -> Dict[str, Any]:
-    """
-    Readme Writer tool entry point that generates high-quality README documentation
-    based on the project's source code, configuration, and conventions.
-    """
     agent = ReadmeWriterTool(configurator)
     return agent.execute(payload={})
 
