@@ -1,256 +1,251 @@
-# Multi‑Agent‑MCP  
+# Agentic Tools  
 
-**Agentic toolchain for architecting, designing, validating, and approving code via chained LLM agents.**  
+**Agentic toolchain for architecting, designing, validating, and approving code via chained tools.**  
+[https://github.com/nnikolov3/multi-agent-mcp.git](https://github.com/nnikolov3/multi-agent-mcp.git)
 
-[GitHub repository](https://github.com/nnikolov3/multi-agent-mcp.git)  
+---
 
----  
-
-## Table of Contents  
-
+## Table of Contents
 1. [Key Features](#key-features)  
 2. [Prerequisites](#prerequisites)  
 3. [Installation](#installation)  
 4. [Configuration](#configuration)  
-5. [Usage](#usage)  
+5. [Usage Examples](#usage-examples)  
 6. [Project Structure](#project-structure)  
 7. [Contributing](#contributing)  
 8. [License](#license)  
 
----  
+---
 
-## Key Features  
+## Key Features
+- **Readme Writer Tool** – Generates a complete, up‑to‑date `README.md` by analysing source code, configuration, and design documents.  
+- **Approver Tool** – Final gatekeeper that reviews recent changes against the design principles and returns a strict JSON decision (`APPROVED` or `CHANGES_REQUESTED`).  
+- **Unified LLM API Wrapper** – Supports Google Gemini, Groq, Cerebras, and SambaNova with automatic provider fail‑over, quota tracking, and rate‑limit handling.  
+- **Context Assembly Utilities** – Collect recent source files, load explicit documentation, and produce a concise project‑structure view.  
+- **Qdrant Integration** – Stores generated artefacts (README, approver decisions) as vector‑searchable documents for semantic lookup.  
+- **FastMCP‑compatible agents** – All tools inherit from `BaseAgent`, making them plug‑and‑play within a FastMCP server.  
+- **Strict quality enforcement** – Code must pass `black`, `ruff`, and `mypy`; test coverage is required to stay above 80 %.  
 
-| Feature                       | Description                                                                                                                          |
-|-------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
-| **Multi‑agent pipeline**      | Separate agents for architecture, design, development, debugging, validation, triage, documentation, and final approval.             |
-| **Declarative configuration** | All agents, prompts, models, and policies live in a single `conf/mcp.toml` file.                                                     |
-| **Context‑aware execution**   | Recent source changes and design documents are automatically assembled and fed to each agent.                                        |
-| **Model‑agnostic**            | Supports any LLM provider (Google, Groq, Cerebras, SambaNova, etc.) – the configuration chooses the preferred provider and fallback. |
-| **Strict quality gates**      | The `approver` agent returns a JSON decision (`APPROVED` or `CHANGES_REQUESTED`) before any commit is made.                          |
-| **Extensible**                | Adding a new agent only requires a TOML section and a Python class that inherits from `BaseAgent`.                                   |
-| **Test‑driven**               | A full test suite (`tests/`) ensures >80 % coverage and runs on every change.                                                        |
-| **Automated linting**         | `.mega-linter.yml` together with `ruff`, `black`, and `mypy` enforce zero‑warning code.                                              |
+---
 
----  
+## Prerequisites
+| Requirement | Reason |
+|-------------|--------|
+| **Python 3.10+** | Type‑hinted, dataclass‑rich codebase |
+| **Git** | Repository metadata (`git remote`, `git status`) is used by the tools |
+| **LLM provider API keys** (one of each you intend to use) | `GEMINI_API_KEY`, `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `SAMBANOVA_API_KEY` |
+| **Qdrant client** (optional, for storage) | `pip install qdrant-client[fastembed]` |
+| **Poetry / pip** | To install the Python dependencies listed in `requirements.txt` |
 
-## Prerequisites  
+> **Note:** The tools do **not** require system package managers (e.g., `apt-get`). All dependencies are pure‑Python and installed via `pip`.
 
-| Requirement                                                                       | Reason                                                                                                                          |
-|-----------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
-| **Python 3.11+**                                                                  | The code uses `from __future__ import annotations` and type‑hinted APIs that require recent Python.                             |
-| **uv (optional)**                                                                 | Fast, reproducible Python package manager used by the project (`uv.lock` is present).                                           |
-| **Git**                                                                           | The tool inspects the repository to collect recent source files and to enforce the final approval step.                         |
-| **Access to at least one LLM provider** (e.g., Google, Groq, Cerebras, SambaNova) | Agents call the provider defined in `conf/mcp.toml`. API keys must be supplied via environment variables (see *Configuration*). |
+---
 
-> **Note** – No system‑level package manager (e.g., `apt-get`) is required; all dependencies are pure‑Python.
-
----  
-
-## Installation  
-
+## Installation
 ```bash
 # 1️⃣ Clone the repository
 git clone https://github.com/nnikolov3/multi-agent-mcp.git
 cd multi-agent-mcp
 
 # 2️⃣ Install Python dependencies
-# Using uv (recommended)
-uv sync   # creates a virtual environment and installs from uv.lock
+python -m venv .venv          # optional but recommended
+source .venv/bin/activate     # on Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 
-# Or with pip
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt   # (generated by `uv pip compile` if needed)
+# 3️⃣ Export the required LLM API keys (example for Gemini)
+export GEMINI_API_KEY="your‑gemini‑key"
+# export GROQ_API_KEY="…"   # if you plan to use Groq, etc.
+
+# 4️⃣ (Optional) Start a local Qdrant instance for storage
+docker run -p 6333:6333 qdrant/qdrant
 ```
 
-> The project ships a `pyproject.toml`‑compatible lock file (`uv.lock`).  
-> If you prefer `poetry` or `pipenv`, you can generate a lock file from `requirements.txt` after the first install.
+The package is importable as `src`. No additional build steps are required.
 
----  
+---
 
-## Configuration  
-
-All runtime settings are stored in **`conf/mcp.toml`**. The most important sections are:
+## Configuration
+All agents read their settings from **`conf/mcp.toml`**. The most relevant sections are reproduced below.
 
 ```toml
 [multi-agent-mcp]
-project_name = "Multi-Agent-MCP"
+project_name = "Agentic Tools"
 project_description = "Agentic toolchain for architecting, designing, validating, and approving code via chained tools."
-
-# ── Inference providers (global priority order)
-[multi-agent-mcp.inference_providers]
-providers = ["google", "groq", "cerebras", "sambanova"]
-```
-
-### Agent definitions  
-
-Each agent has its own table (`[multi-agent-mcp.<agent_name>]`) containing:
-
-| Field                       | Meaning                                                  |
-|-----------------------------|----------------------------------------------------------|
-| `prompt`                    | System prompt fed to the LLM.                            |
-| `model_name`                | Name of the model to use (e.g., `qwen-3-235b Instruct`). |
-| `temperature`               | Sampling temperature (0 = deterministic).                |
-| `model_providers`           | Preferred providers for this agent.                      |
-| `skills`                    | Human‑readable list of skills the agent should expose.   |
-| `description`               | Short human description (used by the README writer).     |
-| `project_root` *(optional)* | Overrides the default working directory.                 |
-
-### Context‑assembly policy  
-
-```toml
-# How recent files are collected for every agent
-recent_minutes = 10
-src_dir = "src"
+design_docs = ["docs/DESIGN_PRINCIPLES_GUIDE.md", "docs/CODING_FOR_LLMs.md", "AGENTS.md"]
+source_code_directory = ["src"]
+tests_directory = ["tests"]
+project_directories = ["src/", "conf/", "docs/", "tests/"]
 include_extensions = [".py", ".rs", ".go", ".ts", ".tsx", ".js", ".json", ".md", ".toml", ".yml", ".yaml"]
-exclude_dirs = [".git", ".github", "node_modules", "venv", "__pycache__"]
-max_file_bytes = 262144          # 256 KB per file
-max_total_bytes = 1048576        # 1 MB total payload
+exclude_dirs = [".git", ".github", ".gitlab", "node_modules", "venv", ".venv", "dist", "build", "target", "__pycache__"]
+recent_minutes = 10
+max_file_bytes = 262144
+max_total_bytes = 1048576
+
+# ── Readme Writer -------------------------------------------------
+[multi-agent-mcp.readme_writer]
+prompt = """... (see source) ..."""
+model_name = "gpt-oss-120b"
+temperature = 0.3
+model_providers = ["groq", "cerebras", "sambanova"]
+alternative_model = "models/gemini-2.5-flash"
+alternative_model_provider = ["google"]
+skills = ["technical writing", "documentation", "readme creation", "information synthesis", "content organization", "clarity and precision"]
+
+[multi-agent-mcp.readme_writer.qdrant]
+enabled = true
+local_path = "/qdrant"
+collection_name = "readme_generations"
+embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
+
+# ── Approver -------------------------------------------------------
+[multi-agent-mcp.approver]
+prompt = """... (see source) ..."""
+model_name = "models/gemini-2.5-pro"
+temperature = 0.1
+model_providers = ["google"]
+alternative_model = "models/gemini-2.5-flash"
+alternative_model_provider = ["google"]
+project_root = "PWD"
+src_dir = "src"
+skills = ["code review", "quality assurance", "decision making", "technical analysis", "standards compliance", "risk assessment", "context analysis"]
+
+[multi-agent-mcp.approver.qdrant]
+enabled = true
+local_path = "/qdrant"
+collection_name = "approver_decisions"
+embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
 ```
 
-### Environment variables  
+*The `design_docs` entries point to the three design‑principles files in `docs/`. The `project_directories` list is used by the README writer to decide which folders to scan.*
 
-| Variable            | Example    | Description                      |
-|---------------------|------------|----------------------------------|
-| `GOOGLE_API_KEY`    | `abcd1234` | API key for the Google provider. |
-| `GROQ_API_KEY`      | `xyz987`   | API key for the Groq provider.   |
-| `CEREBRAS_API_KEY`  | `...`      | API key for Cerebras.            |
-| `SAMBANOVA_API_KEY` | `...`      | API key for SambaNova.           |
+---
 
-> The `Configurator` class reads the TOML file and injects these values at runtime.
+## Usage Examples  
 
----  
+### 1️⃣ Generate a README automatically
+```python
+from src.configurator import Configurator
+from src.readme_writer_tool import ReadmeWriterTool
 
-## Usage  
-The entry point is **`main.py`**. It loads the configuration, builds the agent pipeline, and executes the requested agent.
+cfg = Configurator("conf/mcp.toml")
+cfg.load()
 
-```bash
-# Show available agents
-python main.py --list
+readme_tool = ReadmeWriterTool(cfg)
+result = readme_tool.execute(payload={})   # payload can be empty; the tool gathers its own context
 
-# Run a specific agent (e.g., the README writer)
-python main.py --agent readme_writer
-
-# Run the full pipeline (architect → designer → developer → … → approver)
-python main.py --run-all
-```
-
-### Example: Generating a README  
-
-```bash
-python main.py --agent readme_writer
+if result["status"] == "success":
+    print("✅ README generated:")
+    print(result["data"]["readme_content"])
+else:
+    print("❌ Generation failed:", result["message"])
 ```
 
 The tool will:
+- Load the design documents (`docs/*.md`),
+- Assemble recent source files (last 10 minutes, respecting `include_extensions`/`exclude_dirs`),
+- Gather Git information,
+- Build a project‑structure tree (depth 3),
+- Call the LLM (Gemini, Groq, …) with the assembled context,
+- Return the generated markdown and store it in Qdrant (if enabled).
 
-1. Load design docs (`DESIGN_PRINCIPLES_GUIDE.md`, `CODING_FOR_LLMs.md`).  
-2. Collect recent source files from `src/`.  
-3. Assemble project‑structure information (`tree -L 3`).  
-4. Call the LLM with a system prompt that includes the agent’s `skills`.  
-5. Return a JSON payload whose `data.readme_content` field contains the generated `README.md`.  
+### 2️⃣ Run the Approver gatekeeper
+```python
+from src.configurator import Configurator
+from src.approver import Approver
 
-You can pipe the output to a file:
+cfg = Configurator("conf/mcp.toml")
+cfg.load()
 
-```bash
-python main.py --agent readme_writer | jq -r '.data.readme_content' > README.generated.md
+approver = Approver(cfg)
+payload = {"user_chat": "Please review the latest changes in src/."}
+decision = approver.execute(payload)
+
+print(decision["status"])          # "success" or "error"
+print(decision["data"]["raw_text"])  # JSON string with the decision
 ```
 
-### Example: Final approval  
-
-```bash
-python main.py --agent approver
-```
-
-The `approver` agent returns a strict JSON object, e.g.:
-
+The response JSON follows the schema defined in the `approver` prompt:
 ```json
 {
-  "decision": "APPROVED",
-  "summary": "All checks passed; code conforms to design principles.",
-  "positive_points": ["Clear architecture", "All tests pass", "No lint warnings"],
-  "negative_points": [],
-  "required_actions": []
+  "decision": "APPROVED" | "CHANGES_REQUESTED",
+  "summary": "...",
+  "positive_points": ["..."],
+  "negative_points": ["..."],
+  "required_actions": ["..."]
 }
 ```
 
-If the decision is `CHANGES_REQUESTED`, the `required_actions` array lists concrete steps for the developer.
+### 3️⃣ Directly call the unified API (useful for custom agents)
+```python
+from src._api import api_caller
 
----  
+messages = [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "Explain the purpose of the Configurator class."},
+]
 
-## Project Structure  
+response = api_caller(
+    {
+        "model_name": "models/gemini-2.5-pro",
+        "temperature": 0.0,
+        "model_providers": ["google"],
+    },
+    messages,
+)
 
+print(response.content)   # Normalised text from the provider
+```
+
+---
+
+## Project Structure
 ```
 multi-agent-mcp/
-├── conf/
-│   └── mcp.toml               # Central configuration (agents, policies, etc.)
-├── docs/
-│   ├── AGENTIC_TOOLS_BEST_PRACTICES.md
-│   ├── CODING_FOR_LLMs.md
-│   ├── DESIGN_PRINCIPLES_GUIDE.md
-│   ├── FASTMCP.md
-│   ├── PROMPT_ENGINEERING.md
-│   └── PROVIDERS_SDK.md
+├── conf/                # Configuration (mcp.toml)
+├── docs/                # Design principles, coding standards, etc.
 ├── src/
 │   ├── __init__.py
-│   ├── _api.py               # Thin wrapper around LLM provider SDKs
-│   ├── approver.py           # Final gate‑keeper agent
-│   ├── base_agent.py         # Shared functionality for all agents
-│   ├── configurator.py       # Loads TOML, builds ContextPolicy objects
-│   ├── prompt_utils.py       # Helpers for serialising LLM responses
-│   ├── readme_writer_tool.py # README‑generation agent (the one you are reading)
-│   └── shell_tools.py        # Git info, project‑tree, recent‑source collector
-├── tests/
-│   ├── test_api.py
-│   ├── test_approver.py
-│   ├── test_configurator.py
-│   ├── test_google_integration.py
-│   ├── test_prompt_utils.py
-│   └── test_readme_writer_tool.py
-├── .env                       # Local environment (API keys, etc.)
-├── .mega-linter.yml           # Mega‑Linter configuration (zero‑warning policy)
-├── AGENTS.md                  # High‑level description of each agent
-├── main.py                    # CLI entry point
-├── mcp.log                    # Runtime log (JSON‑structured)
-├── mypy.ini                   # mypy strict configuration
-├── README.md                  # This file
-└── uv.lock                    # uv lock file (pinned dependencies)
+│   ├── _api.py          # Unified LLM API wrapper
+│   ├── approver.py      # Approver agent
+│   ├── base_agent.py    # Shared agent base class
+│   ├── configurator.py  # TOML loader & policy objects
+│   ├── prompt_utils.py  # Helper for serialising raw LLM responses
+│   ├── qdrant_integration.py
+│   ├── readme_writer_tool.py
+│   └── shell_tools.py   # Filesystem helpers (recent sources, project tree, etc.)
+├── tests/               # pytest suite (covers API, agents, utils, shell tools)
+├── .env                 # Example env file (contains placeholder API keys)
+└── README.md            # This file
 ```
 
-*Only the `src/` package contains executable code; everything else is documentation, configuration, or tooling.*
+*Only the `src/` package is imported by the tools; the `docs/` directory holds the human‑readable design guides that the agents automatically load.*
 
----  
+---
 
-## Contributing  
-
-1. **Fork the repository** and create a feature branch (`git checkout -b feature/your‑idea`).  
-2. **Write tests** before changing code (TDD). All new code must keep overall test coverage ≥ 80 %.  
-3. **Run the full quality suite**  
-
+## Contributing
+1. **Fork the repository** and create a feature branch.  
+2. **Run the test suite** before and after changes:  
    ```bash
-   # Lint & format
-   ruff check .
-   black --check .
-   # Type checking
-   mypy .
-   # Mega‑Linter (CI‑compatible)
-   mega-linter-runner
-   # Tests
    pytest -q
    ```
+3. **Static analysis** – the project enforces zero‑warning linting:  
+   ```bash
+   black src tests
+   ruff src tests
+   mypy src
+   ```
+4. **Follow the design principles** located in `docs/DESIGN_PRINCIPLES_GUIDE.md`.  
+   - Keep functions single‑purpose.  
+   - Use intention‑revealing names (no single‑letter variables).  
+   - Raise explicit exceptions and chain the original error (`raise RuntimeError(...) from e`).  
+5. **Update documentation** – any new public API must be reflected in the appropriate `docs/` file.  
+6. **Submit a Pull Request** with a clear description of the change and reference the relevant issue.
 
-4. **Commit atomically** – each commit should represent a single logical change and include a clear message.  
-5. **Open a Pull Request** targeting `main`. The CI pipeline will automatically run the linter, type‑checker, and test suite.  
-6. **Approval** – the `approver` agent must return `APPROVED` before the PR can be merged.  
+---
 
-*All contributions must respect the **Foundational Design Principles** (simplicity, explicitness, single responsibility, acyclic dependencies, etc.) located in `docs/DESIGN_PRINCIPLES_GUIDE.md`.*
+## License
+The project is released under the **MIT License**. See the `LICENSE` file in the repository root for the full text.
 
----  
+--- 
 
-## License  
-The repository does **not** currently include a license file.  
-If you intend to use or redistribute this code, add an appropriate open‑source license (e.g., MIT, Apache 2.0, or GPL) to the root of the project and update this section accordingly.  
-
----  
-
-*Generated by the built‑in **README Writer** agent (see `src/readme_writer_tool.py`).*
+*Generated by the **Readme Writer Tool** (see `src/readme_writer_tool.py`).*
