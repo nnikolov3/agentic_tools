@@ -65,13 +65,13 @@ class ReadmeWriterTool(BaseAgent):
     def get_agent_name(self) -> str:
         return "readme_writer"
 
-    @staticmethod
     def _assemble_project_structure(inputs: BaseInputs) -> str:
         """Generate project structure information."""
+        exclude_entries = inputs.policy.exclude_dirs + (".gitignore",)
         project_structure = get_project_structure(
             inputs.project_root,
             max_depth=3,
-            exclude_entries=inputs.policy.exclude_dirs,
+            exclude_entries=exclude_entries,
         )
         return f"# Project Structure\n{project_structure}"
 
@@ -150,7 +150,7 @@ class ReadmeWriterTool(BaseAgent):
         return "\n".join(git_lines)
 
     def _create_messages(
-        self, inputs: BaseInputs, docs: str, sources: str, payload: Dict[str, Any]
+        self, inputs: BaseInputs, docs: str, sources: str, context: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, str]]:
         # Get skills from agent config if available
         agent_config = self._configurator.get_agent_config("readme_writer")
@@ -161,9 +161,9 @@ class ReadmeWriterTool(BaseAgent):
             inputs.prompt.strip(), tuple(skills)
         )
 
-        # Unpack context info from payload to maintain BaseAgent signature
-        git_info = payload["git_info"]
-        project_structure = payload["project_structure"]
+        # Unpack context info from context dictionary
+        git_info = context.get("git_info", {}) if context else {}
+        project_structure = context.get("project_structure", "") if context else ""
 
         # Assemble additional context info
         config_info = self._assemble_config_info(inputs)
@@ -263,11 +263,10 @@ class ReadmeWriterTool(BaseAgent):
         git_info = get_git_info(inputs.project_root)
         project_structure = self._assemble_project_structure(inputs)
 
-        # Pass context info via payload to maintain BaseAgent._create_messages signature
-        payload["git_info"] = git_info
-        payload["project_structure"] = project_structure
+        # Pass context info via context dictionary
+        context = {"git_info": git_info, "project_structure": project_structure}
 
-        messages = self._create_messages(inputs, docs, sources, payload)
+        messages = self._create_messages(inputs, docs, sources, context)
         result = self._make_api_call(inputs, messages)
 
         # If successful, update the response to include readme_content instead of raw_text
