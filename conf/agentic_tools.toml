@@ -1,37 +1,32 @@
-# File: conf/mcp.toml
-
-[multi-agent-mcp]
+[agentic-tools]
 project_name = "Agentic Tools"
 project_description = "Agentic toolchain for architecting, designing, validating, and approving code via chained tools."
 design_docs = ["docs/DESIGN_PRINCIPLES_GUIDE.md", "docs/PROVIDERS_SDK.md","docs/CODING_FOR_LLMs.md", "AGENTS.md"]
-source_code_directory = ["src"]
-tests_directory=["tests"]
-project_directories=["src/", "conf/", "docs/", "tests/"]
-include_extensions = [".py", ".rs", ".go", ".ts", ".tsx", ".js", ".json", ".md", ".toml", ".yml", ".yaml"]
-exclude_dirs = [".git", ".github", ".gitlab", "node_modules", "venv", ".venv", "dist", "build", "target", "__pycache__"]
+source = ["src"]
+project_root = "."
+tests_directory = ["tests"]
+project_directories = ["conf", "docs", "src"]
+include_extensions = [".py",  ".md", ".toml"]
+exclude_files = ["__init__.py"]
+exclude_directories = [".qwen", ".gemini",".git", ".github", ".gitlab", "node_modules", "venv", ".venv", "dist", "build", "target", "__pycache__"]
 recent_minutes = 10
 max_file_bytes = 262144
 max_total_bytes = 10485760
+
 # Qdrant embedding model to vector size mappings
-[embedding_model_sizes]
-"sentence-transformers/all-MiniLM-L6-v2" = 384
-"sentence-transformers/all-MiniLM-L12-v2" = 384
-"sentence-transformers/all-mpnet-base-v2" = 768
-"sentence-transformers/paraphrase-MiniLM-L6-v2" = 384
-"sentence-transformers/paraphrase-MiniLM-L3-v2" = 384
-"sentence-transformers/multi-qa-MiniLM-L6-cos-v1" = 384
-"sentence-transformers/multi-qa-mpnet-base-cos-v1" = 768
+[agentic-tools.embedding_model_sizes]
 "all-MiniLM-L6-v2" = 384
 "all-MiniLM-L12-v2" = 384
-[multi-agent-mcp.inference_providers]
-# Global provider registry and priority order
-providers = ["google", "groq", "cerebras", "sambanova"]
 
 #####################################################################
-# README Writer
-[multi-agent-mcp.readme_writer]
+# README Writer Configuration
+#####################################################################
+[agentic-tools.readme_writer]
 prompt = """
-You are an expert technical writer. Create excellent, concise, and practical README documentation based on the project's source code, configuration, and conventions. Generate a comprehensive yet simple README.md that includes:
+* You are an expert technical writer.
+* Create excellent, concise,and practical README documentation based on the project's source code, configuration, and conventions.
+
+__Generate a comprehensive yet simple README.md that includes:__
 
 - Project title and description based on actual project
 - Key features and capabilities
@@ -39,17 +34,19 @@ You are an expert technical writer. Create excellent, concise, and practical REA
 - Installation instructions specific to this project
 - Usage examples based on actual code and functionality
 - Configuration details from actual configuration files
-- Project structure explanation
-- Contributing guidelines
-- License information
 
-Focus on simplicity, clarity, and utility. Provide concrete, actionable examples based on the actual project structure and code, not generic placeholders. Make it helpful and accurate.
+* Use the github information provided.
+* Focus how to onboard a new user.
+* Focus on simplicity, clarity, and utility.
+* Provide concrete, actionable examples based on the actual project structure and code, not generic placeholders.
+* Make it helpful and accurate.
+
 """
-model_name = "models/gemini-2.5-flash"
-temperature = 0.3
+model_name = "gemini-2.5-flash"
+temperature = 0.1
 description = "Generates high-quality README documentation"
-model_providers = ["google"]
-alternative_model = "models/gemini-2.5-flash"
+model_provider = ["google"]
+alternative_model = "gemini-2.5-flash"
 alternative_model_provider = ["google"]
 skills = [
     "technical writing",
@@ -60,16 +57,11 @@ skills = [
     "clarity and precision"
 ]
 
-# Qdrant configuration for storing README generation results
-[multi-agent-mcp.readme_writer.qdrant]
-enabled = true
-local_path = "/qdrant"
-collection_name = "readme_generations"
-embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
+
 
 #####################################################################
 # Approver (final gate)
-[multi-agent-mcp.approver]
+[agentic-tools.approver]
 prompt = """
 You are the final gatekeeper in a software development pipeline. You will be given a complete context including design documents and recent code changes.
 
@@ -89,14 +81,14 @@ Return ONLY a single, valid JSON object with this exact structure:
   "required_actions": ["string"]
 }
 """
-model_name = "models/gemini-2.5-pro"
+model_name = "gemini-2.5-pro"
 temperature = 0.1
 description = "Final approval decision"
-model_providers = ["google"]
-alternative_model = "models/gemini-2.5-flash"
+model_provider = ["google"]
+alternative_model = "gemini-2.5-flash"
 alternative_model_provider = ["google"]
-project_root = "PWD"
-src_dir = "src"
+
+
 
 skills = [
     "code review",
@@ -108,10 +100,4 @@ skills = [
     "context analysis"
 ]
 
-# Qdrant configuration for storing APPROVED decisions
-[multi-agent-mcp.approver.qdrant]
-enabled = true
-local_path = "/qdrant"
-collection_name = "approver_decisions"
-embedding_model = "sentence-transformers/all-MiniLM-L6-v2"
 
