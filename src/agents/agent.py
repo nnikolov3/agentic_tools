@@ -24,7 +24,7 @@ class Agent:
         self.tool: Tool | None = None
         self.agent_name = ""
 
-    def run_agent(self, agent: str):
+    async def run_agent(self, agent: str):
         """Execute agent method dynamically from parent class"""
         self.agent_name = agent.lower()
         self.tool = Tool(self.agent_name, self.configuration)
@@ -32,12 +32,18 @@ class Agent:
         try:
             # Get and call the method directly on self
             method = getattr(self, self.agent_name)
-            return method()
+            return await method()
         except AttributeError:
             raise ValueError(f"Agent '{self.agent_name}' not found.")
 
-    def readme_writer(self):
+    async def readme_writer(self):
         """Execute readme writer logic"""
         logger.info("ReadmeWriter executing")
 
-        return self.tool.run_tool()
+        return await self.tool.run_tool()
+
+    async def approver(self):
+        """Executes the approver tool to audit code changes and provide a final decision."""
+        logger.info("approver executing")
+        response = await self.tool.run_tool()
+        return response
