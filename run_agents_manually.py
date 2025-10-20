@@ -41,6 +41,11 @@ async def developer_tool(chat: Optional[Any]) -> Any:
     return await agent.run_agent("developer", chat=chat)
 
 
-res = asyncio.run(readme_writer_tool("Provide an updated README file"))
-
-print(res)
+readme_result = asyncio.run(
+    readme_writer_tool(
+        "Provide an updated README file based on the recent changes."
+    )
+)
+print(readme_result)
+approval_result = asyncio.run(approver_tool("Revaluate the changes and approve or reject"))
+print(approval_result)

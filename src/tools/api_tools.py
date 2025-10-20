@@ -66,14 +66,22 @@ class ApiTools:
 
     async def google(self):
         async with self.google_client.aio as a_client:
+            system_instruction = self.agent_config.get("prompt")
+
             config = types.GenerateContentConfig(
                 temperature=self.agent_temperature,
                 http_options=types.HttpOptions(api_version="v1alpha"),
+                system_instruction=system_instruction,
+                thinking_config=types.ThinkingConfig(thinking_budget=-1),
             )
+
+            chat_message = self.payload.get('chat', '')
+            json_payload = {k: v for k, v in self.payload.items() if k != 'chat'}
+            contents = f"{chat_message}\n{json.dumps(json_payload)}"
 
             response = await a_client.models.generate_content(
                 model=self.agent_model_name,
-                contents=f"{json.dumps(self.payload)}",
+                contents=contents,
                 config=config,
             )
 

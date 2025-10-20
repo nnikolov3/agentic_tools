@@ -1,5 +1,6 @@
 [agentic-tools]
 project_name = "Agentic Tools"
+
 project_description = "Agentic toolchain for architecting, designing, validating, and approving code via chained tools."
 design_docs = ["docs/DESIGN_PRINCIPLES_GUIDE.md", "docs/CODING_FOR_LLMs.md"]
 source = ["src"]
