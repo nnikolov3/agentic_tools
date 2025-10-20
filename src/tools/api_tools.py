@@ -40,7 +40,7 @@ class ApiTools:
         self.payload: dict = {}
 
         self.google_client = Client(
-            api_key=os.getenv("GOOGLE_API_KEY"),
+            api_key=os.getenv("GEMINI_API_KEY"),
         )
 
     async def run_api(self, payload):

@@ -1,7 +1,7 @@
 [agentic-tools]
 project_name = "Agentic Tools"
 project_description = "Agentic toolchain for architecting, designing, validating, and approving code via chained tools."
-design_docs = ["DESIGN_PRINCIPLES_GUIDE.md", "CODING_FOR_LLMs.md"]
+design_docs = ["docs/DESIGN_PRINCIPLES_GUIDE.md", "docs/CODING_FOR_LLMs.md"]
 source = ["src"]
 project_root = "."
 docs = "docs"
@@ -14,7 +14,38 @@ max_file_bytes = 262144
 # Configure the target branch for git diff (e.g., main, develop, origin/main)
 git_diff_command = ["git", "diff", "--patch-with-raw", "--minimal", "--patience"]
 
+[agentic-tools.developer]
+prompt = """Follow the Coding and Design Principls
+Always aim for small and straightforward design.
+- [ ] **Simplicity is Non-Negotiable**: Strive for the most straightforward solution that fulfills all requirements, avoiding complexity that introduces bugs and maintenance issues.
+- [ ] **Explicit Over Implicit**: Make all intentions, dependencies, and behaviors clear and explicit, avoiding ambiguity, side effects, or hidden mechanisms.
+- [ ] **Self-Documenting Code and Ultimate Readability**: Use intention-revealing names for variables, functions, and classes; write comments that explain why, not what, and ensure every file starts with a purpose comment.
+- [ ] **Single Responsibility and Low Complexity**: Ensure every function, class, or module has one reason to change, keeping cognitive and cyclomatic complexity minimal for easier testing and refactoring.
+- [ ] **Acyclic Dependencies**: Maintain a Directed Acyclic Graph (DAG) for dependencies, strictly forbidding circular dependencies to avoid architectural flaws.
+- [ ] **Composition Over Inheritance**: Favor composition and interfaces for code reuse and extension, avoiding deep inheritance hierarchies to prevent fragile base class issues.
+- [ ] **Error Handling Excellence**: Handle errors explicitly and immediately, providing clear, contextual messages, and ensure the system fails fast without continuing in a corrupt state.
+- [ ] **Immutability By Default**: Design components as immutable whenever possible to eliminate bugs from side effects and state changes.
+- [ ] **Efficient Memory Management**: Be deliberate about allocations and resource lifetimes, avoiding unnecessary ones and ensuring explicit releases.
+- [ ] **Consistency Reduces Cognitive Load**: Follow established style guides and project conventions rigorously for a predictable codebase.
+- [ ] **No Premature Optimization**: Write correct, clean code first, applying optimizations only after profiling identifies bottlenecks.
+- [ ] **Remove What Isn't Used**: Delete dead code, unused variables, stale files, unnecessary abstractions, and outdated comments immediately."""
+model_name = "gemini-2.5-pro"
+temperature = 0.3
+description = "Writes high quality code"
+model_provider = ["google"]
+alternative_model = "gemini-2.5-flash"
+alternative_model_provider = ["google"]
+skills = [
+    "code writing",
+    "senior developer",
+    "detail oriented",
+    "coding standards",
+    "design principles",
+    "love and care"
+]
 
+qdrant_embedding="all-MiniLM-L6-v2"
+embedding_size = 384
 #####################################################################
 # README Writer Configuration
 #####################################################################
@@ -34,11 +65,12 @@ __Generate a comprehensive yet simple README.md that includes:__
     * Focus on simplicity, clarity, and utility.
     * Provide concrete, actionable examples based on the actual project structure and code, not generic placeholders.
     * Make it helpful and accurate.
+    * Keep it simple
 DO NOT DUPLICATE INFORMATION.
 Users can see the source code and configurations, there is no need in the README.md
 """
 model_name = "gemini-2.5-flash"
-temperature = 0.1
+temperature = 0.3
 description = "Generates high-quality README documentation"
 model_provider = ["google"]
 alternative_model = "gemini-2.5-flash"
@@ -80,6 +112,7 @@ Return ONLY a single, valid JSON object with this exact structure:
   "positive_points": ["string"],
   "negative_points": ["string"],
   "required_actions": ["string"]
+  "commit_message_if_approved": ["string"]
 }
 """
 model_name = "gemini-2.5-pro"
