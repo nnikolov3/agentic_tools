@@ -2,7 +2,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import VectorParams, Distance
 
 
-class QdrantTools:
+class QdrantCollectionTools:
     def __init__(self, agent, config: dict):
         self.agent = agent
         self.config = config

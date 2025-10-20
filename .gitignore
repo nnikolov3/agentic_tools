@@ -3,6 +3,7 @@ src/api/conf/.env
 .idea/
 __pycache__/
 .qwen/
+.gemini/
 **/.mypy_cache/
 .mypy_cache/
 megalinter-reports/

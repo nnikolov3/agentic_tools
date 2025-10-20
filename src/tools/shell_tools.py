@@ -1,11 +1,10 @@
-import os
 import shutil
 import logging
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-import subprocess
 import codecs
-
+import subprocess
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +22,9 @@ class ShellTools:
         self.agent_model_provider = self.agent_config.get("model_provider")
         self.agent_alternative_model = self.agent_config.get("alternative_model")
         self.agent_alternative_provider = self.agent_config.get("alternative_provider")
+        self.git_diff_command = self.agent_config.get(
+            "git_diff_command", ["git", "diff", "main"]
+        )
         self.project_root = config.get("project_root")
         self.agent_skills = self.agent_config.get("skills")
         self.design_docs = config.get("design_docs")
@@ -47,6 +49,7 @@ class ShellTools:
         self.directories: list = []
         self.files: list = []
         self.relative_path: Path | None = None
+        self.current_work_dir = Path.cwd()
 
     def concatenate_all_files(self):
         """Traverse the project directories and concatenate all files."""
@@ -59,6 +62,66 @@ class ShellTools:
             )
 
         return concatenated_files_dict
+
+    def process_directory(self, directory_path: str) -> str:
+        """
+        Traverse a single directory and concatenate all matching file contents into a single string.
+
+        Args:
+            directory_path: Path to the directory to process.
+
+        Returns:
+            Concatenated string of file contents, with headers like "--- File: relative/path/file.txt ---".
+            Empty string if no valid files or directory does not exist.
+        """
+        try:
+            root_dir = Path(directory_path)
+            if not root_dir.exists():
+                logger.warning(f"Directory does not exist: {directory_path}")
+                return ""
+
+            concatenated_content = ""
+            file_count = 0
+
+            for project_root, dirs, files in os.walk(root_dir):
+                # Exclude directories in-place to prevent os.walk from descending into them
+                dirs[:] = [d for d in dirs if d not in self.exclude_directories]
+
+                # Calculate relative path
+                relative_root = Path(project_root).relative_to(root_dir)
+
+                # Process files with matching extensions
+                for file in files:
+                    if file in self.exclude_files:
+                        continue
+
+                    filename = file
+                    if not self._matches_extension(file):
+                        continue
+
+                    filepath = Path(project_root) / file
+                    file_payload = self.read_file_content_for_path(filepath)
+
+                    if file_payload and not file_payload.startswith("<Error") and not file_payload.startswith("<Binary file>"):                        relative_file_path = (
+                            relative_root / filename
+                            if relative_root != Path(".")
+                            else filename
+                        )
+                        header = f"\n\n--- File: {relative_file_path} ---\n\n"
+                        concatenated_content += header + file_payload
+                        file_count += 1
+                    else:
+                        logger.info(f"Skipped file {filepath}: {file_payload}")
+
+            if file_count == 0:
+                logger.info(f"No matching files found in directory: {directory_path}")
+
+            logger.info(f"Concatenated {file_count} files from {directory_path}")
+            return concatenated_content.strip()
+
+        except Exception as e:
+            logger.error(f"Error processing directory {directory_path}: {e}")
+            return ""
 
     def _process_directories(self, directories: list, directory_type: str) -> dict:
         """
@@ -120,29 +183,28 @@ class ShellTools:
                     continue
 
                 self.filename = file
-                if self._matches_extension():
+                if self._matches_extension(file):
                     self.filepath = Path(project_root) / file
                     file_payload = self.read_file_content()
                     self.current_directory_level[file] = file_payload
 
         return self.directory_tree
 
-    def _matches_extension(self) -> bool:
+    def _matches_extension(self, filename: str) -> bool:
         """Check if file matches any of the include extensions."""
         if not self.include_extensions:
             return True
-        return any(self.filename.endswith(ext) for ext in self.include_extensions)
+        return any(filename.endswith(ext) for ext in self.include_extensions)
 
-    def read_file_content(self) -> str:
-        """Read file content, respecting max_file_bytes limit."""
+    def _read_file_content_helper(self, file_path: Path) -> str:
+        """Helper method to read file content, respecting max_file_bytes limit."""
         try:
-            file_path = Path(self.filepath)
             file_size = file_path.stat().st_size
 
             # Skip files larger than max_file_bytes
             if self.max_file_bytes and file_size > self.max_file_bytes:
                 logger.warning(
-                    f"Skipping file {self.filepath} - size {file_size} exceeds max {self.max_file_bytes} bytes"
+                    f"Skipping file {file_path} - size {file_size} exceeds max {self.max_file_bytes} bytes"
                 )
                 return f"<File too large: {file_size} bytes>"
 
@@ -153,12 +215,23 @@ class ShellTools:
 
         except UnicodeDecodeError:
             # Handle binary files
-            logger.warning(f"Skipping binary file: {self.filepath}")
+            logger.warning(f"Skipping binary file: {file_path}")
             return "<Binary file>"
 
         except Exception as readingError:
-            logger.error(f"Error reading file {self.filepath}: {readingError}")
+            logger.error(f"Error reading file {file_path}: {readingError}")
             return f"<Error reading file: {readingError}>"
+
+    def read_file_content(self) -> str:
+        """Read file content, respecting max_file_bytes limit."""
+        return self._read_file_content_helper(self.filepath)
+
+    def read_file_content_for_path(self, file_path: Path) -> str:
+        """
+        Read file content for a specific path, similar to read_file_content but without setting self.filepath.
+        Used for process_directory to avoid side effects.
+        """
+        return self._read_file_content_helper(file_path)
 
     def write_file(
         self,
@@ -291,7 +364,9 @@ class ShellTools:
             return git_info
 
         except FileNotFoundError:
-            logger.error("Git command not found. Please ensure git is installed and in your PATH.")
+            logger.error(
+                "Git command not found. Please ensure git is installed and in your PATH."
+            )
             raise
 
         except Exception as e:
@@ -317,3 +392,20 @@ class ShellTools:
             # Fallback for invalid escapes: return original
             logger.warning(f"Could not decode unicode escapes in string: {input_str}")
             return input_str
+
+    def create_patch(self):
+        """Creates a git diff patch.
+
+        Returns:
+            The git diff patch as a string.
+
+        Raises:
+            subprocess.CalledProcessError: If the git command fails.
+        """
+        return subprocess.run(
+            self.git_diff_command,
+            cwd=self.current_work_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout

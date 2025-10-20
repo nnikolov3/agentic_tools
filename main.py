@@ -24,8 +24,15 @@ mcp = FastMCP(mcp_name)
 )
 def readme_writer_tool() -> Any:
     print("readme_writer_tool")
-    agent = Agent(configuration["agentic-tools"])  # Agent class
+    agent = Agent(configuration["agentic-tools"])
     return agent.run_agent("readme_writer")
+
+
+@mcp.tool(description="Audit recent code changes, and approve or reject changes")
+def approver_tool() -> Any:
+    print("approver_tool")
+    agent = Agent(configuration["agentic-tools"])
+    return agent.run_agent("approver")
 
 
 if __name__ == "__main__":

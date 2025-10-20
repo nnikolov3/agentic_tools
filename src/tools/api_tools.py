@@ -3,17 +3,9 @@ Base class for all LLM apis, defining the required interface.
 """
 
 from __future__ import annotations
-
-from cerebras.cloud.sdk import Cerebras  # type: ignore
 import os
-from groq import Groq
-from sambanova import SambaNova  # type: ignore
 import google.generativeai as genai
 
-
-sambanova_client = SambaNova(api_key=os.environ.get("SAMBANOVA_API_KEY"))
-groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-cerebras_client = Cerebras(api_key=os.environ.get("CEREBRAS_API_KEY"))
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 
@@ -55,7 +47,7 @@ class ApiTools:
         return method()  # call api method (.i.e. sambanova, groq, cerebras)
 
     def google(self):
-        genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+        genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
         model = genai.GenerativeModel(self.agent_model_name)
         response = model.generate_content(
             f"PROMPT: {self.agent_prompt}, {self.payload}",

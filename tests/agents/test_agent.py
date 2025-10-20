@@ -1,7 +1,7 @@
-
 import unittest
 from unittest.mock import patch, MagicMock
 from src.agents.agent import Agent
+
 
 class TestAgent(unittest.TestCase):
 
@@ -15,7 +15,7 @@ class TestAgent(unittest.TestCase):
         self.assertIsNone(self.agent.tool)
         self.assertEqual(self.agent.agent_name, "")
 
-    @patch('src.agents.agent.Tool')
+    @patch("src.agents.agent.Tool")
     def test_run_agent(self, mock_tool):
         # Mock the tool and the dynamic method
         mock_tool_instance = MagicMock()
@@ -32,7 +32,7 @@ class TestAgent(unittest.TestCase):
         self.assertEqual(self.agent.tool, mock_tool_instance)
         self.agent.readme_writer.assert_called_once()
 
-    @patch('src.agents.agent.Tool')
+    @patch("src.agents.agent.Tool")
     def test_readme_writer(self, mock_tool):
         # Mock the tool
         mock_tool_instance = MagicMock()
@@ -47,12 +47,11 @@ class TestAgent(unittest.TestCase):
         self.assertEqual(result, "tool_success")
         mock_tool_instance.run_tool.assert_called_once()
 
-
     def test_run_agent_invalid_agent(self):
         with self.assertRaises(ValueError):
             self.agent.run_agent("invalid_agent_name")
 
-    @patch('src.agents.agent.Tool')
+    @patch("src.agents.agent.Tool")
     def test_run_agent_case_insensitivity(self, mock_tool):
         # Mock the tool and the dynamic method
         mock_tool_instance = MagicMock()
@@ -69,5 +68,6 @@ class TestAgent(unittest.TestCase):
         self.assertEqual(self.agent.tool, mock_tool_instance)
         self.agent.readme_writer.assert_called_once()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

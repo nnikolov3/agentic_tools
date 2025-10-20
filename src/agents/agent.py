@@ -41,3 +41,8 @@ class Agent:
         logger.info("ReadmeWriter executing")
 
         return self.tool.run_tool()
+
+    def approver(self):
+        """Executes the approver tool to audit code changes and provide a final decision."""
+        logger.info("approver executing")
+        return self.tool.run_tool()

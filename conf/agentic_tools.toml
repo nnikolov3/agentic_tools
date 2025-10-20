@@ -4,6 +4,7 @@ project_description = "Agentic toolchain for architecting, designing, validating
 design_docs = ["docs/DESIGN_PRINCIPLES_GUIDE.md", "docs/PROVIDERS_SDK.md","docs/CODING_FOR_LLMs.md", "AGENTS.md"]
 source = ["src"]
 project_root = "."
+docs = "docs"
 tests_directory = ["tests"]
 project_directories = ["conf", "docs", "src"]
 include_extensions = [".py",  ".md", ".toml"]
@@ -85,6 +86,8 @@ alternative_model = "gemini-2.5-flash"
 alternative_model_provider = ["google"]
 qdrant_embedding="all-MiniLM-L6-v2"
 embedding_size = 384
+# Configure the target branch for git diff (e.g., main, develop, origin/main)
+git_diff_command = ["git", "diff", "staging"]
 
 
 skills = [
