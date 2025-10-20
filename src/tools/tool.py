@@ -7,6 +7,7 @@ from src.tools.qdrant_tools import QdrantCollectionTools
 
 import mdformat
 from typing import Dict
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -21,70 +22,75 @@ class Tool:
         self.qdrant_collection_tools = QdrantCollectionTools(agent, config)
         self.payload: dict = {}
         self.response: dict = {}
-        self.git_information: dict = {}
         self.project_root_path = config.get("project_root")
-        self.patch: str | None = None
         self.docs = config.get("docs")
+        self.agent_skills = self.agent_config.get("skills")
+        self.agent_prompt = self.agent_config.get("prompt")
+        self.current_working_directory = os.getcwd()
 
-    def run_tool(self):
+    async def run_tool(self):
         """Execute agent method dynamically from parent class"""
 
         # Dynamically call the method based on the agent name
         method = getattr(self, self.agent)
-        return method()
+        return await method()
 
     def _get_docs_path(self) -> str:
         if self.project_root_path and self.docs:
             return str(Path(self.project_root_path) / self.docs)
         return ""
 
-    def approver(self):
+    async def approver(self):
+        self.response = None
+        patch = self.shell_tools.create_patch()
 
-        try:
-            self.patch = self.shell_tools.create_patch()
-        except Exception as e:
-            logger.error(f"Failed to create patch: {e}")
-            raise
+        design_docs_content = ""
+        design_docs_paths = self.config.get("design_docs", [])
+        for doc_path in design_docs_paths:
+            full_path = Path(self.project_root_path) / doc_path
+            if full_path.exists() and full_path.is_file():
+                design_docs_content += self.shell_tools.read_file_content_for_path(
+                    full_path
+                )
+            else:
+                logger.warning(f"Design document not found: {full_path}")
 
-        self.payload = {
-            "docs": self.shell_tools.process_directory(self._get_docs_path()),
-            "patch": self.patch,
-            "skills": self.agent_config.get("skills", []),
-        }
+        git_info = self.shell_tools.get_git_info()
 
-        self.response = self.api_tools.run_api(self.payload)
-
+        self.payload["prompt"] = self.agent_prompt
+        self.payload["skills"] = self.agent_skills
+        self.payload["git-diff-patch"] = patch
+        self.payload["design_documents"] = design_docs_content
+        self.payload["git"] = git_info
+        self.response = await self.api_tools.run_api(self.payload)
         return self.response
 
-    def readme_writer(self):
+    async def readme_writer(self):
         """Execute readme writer logic"""
+        self.response = None
         try:
-            # Step 1: Concatenate files
-            self.payload = self.shell_tools.concatenate_all_files()
+            git_info = self.shell_tools.get_git_info()
+
+            self.payload["prompt"] = self.agent_prompt
+            self.payload["skills"] = self.agent_skills
+            self.payload["project_files"] = self.shell_tools.process_directory(
+                self.current_working_directory
+            )
+            self.payload["git"] = git_info
             if not self.payload:
                 logging.warning("No payload generated from file concatenation.")
 
-            # Step 2: Get Git info and update payload
-            self.payload["skills"] = self.agent_config.get("skills", [])
-            self.git_information = self.shell_tools.get_git_info()
-            self.payload.update(self.git_information)
-
-            # Step 3: Run API
-            self.response = self.api_tools.run_api(self.payload)
+            self.response = await self.api_tools.run_api(self.payload)
             if not self.response:
                 raise ValueError("API returned empty response.")
 
-            # Step 4: Cleanup escapes
             self.response = self.shell_tools.cleanup_escapes(self.response)
 
-            # Step 5: Format Markdown
             self.response = mdformat.text(self.response, options={"wrap": "preserve"})
 
-            # Step 6: Write README file
             self.shell_tools.write_file("README.md", self.response)
 
-            # Step 7: Store in Qdrant
-            self.qdrant_collection_tools.run_qdrant(self.response)
+            await self.qdrant_collection_tools.run_qdrant(self.response)
 
             return self.response
         except Exception as e:

@@ -1,7 +1,7 @@
 [agentic-tools]
 project_name = "Agentic Tools"
 project_description = "Agentic toolchain for architecting, designing, validating, and approving code via chained tools."
-design_docs = ["docs/DESIGN_PRINCIPLES_GUIDE.md", "docs/PROVIDERS_SDK.md","docs/CODING_FOR_LLMs.md", "AGENTS.md"]
+design_docs = ["DESIGN_PRINCIPLES_GUIDE.md", "CODING_FOR_LLMs.md"]
 source = ["src"]
 project_root = "."
 docs = "docs"
@@ -10,9 +10,9 @@ project_directories = ["conf", "docs", "src"]
 include_extensions = [".py",  ".md", ".toml"]
 exclude_files = ["__init__.py"]
 exclude_directories = [".qwen", ".gemini",".git", ".github", ".gitlab", "node_modules", "venv", ".venv", "dist", "build", "target", "__pycache__"]
-recent_minutes = 10
 max_file_bytes = 262144
-max_total_bytes = 10485760
+# Configure the target branch for git diff (e.g., main, develop, origin/main)
+git_diff_command = ["git", "diff", "--patch-with-raw", "--minimal", "--patience"]
 
 
 #####################################################################
@@ -22,22 +22,20 @@ max_total_bytes = 10485760
 prompt = """
 * You are an expert technical writer.
 * Create excellent, concise,and practical README documentation based on the project's source code, configuration, and conventions.
-
 __Generate a comprehensive yet simple README.md that includes:__
-
-- Project title and description based on actual project
-- Key features and capabilities
-- Prerequisites with specific requirements (not generic placeholders like 'apt-get')
-- Installation instructions specific to this project
-- Usage examples based on actual code and functionality
-- Configuration details from actual configuration files
-
-* Use the github information provided.
-* Focus how to onboard a new user.
-* Focus on simplicity, clarity, and utility.
-* Provide concrete, actionable examples based on the actual project structure and code, not generic placeholders.
-* Make it helpful and accurate.
-
+    - Project title and description based on actual project
+    - Key features and capabilities
+    - Prerequisites with specific requirements (not generic placeholders like 'apt-get')
+    - Installation instructions specific to this project
+    - Usage examples based on actual code and functionality
+    - Configuration details from actual configuration files
+    * Use the github information provided.
+    * Focus how to onboard a new user.
+    * Focus on simplicity, clarity, and utility.
+    * Provide concrete, actionable examples based on the actual project structure and code, not generic placeholders.
+    * Make it helpful and accurate.
+DO NOT DUPLICATE INFORMATION.
+Users can see the source code and configurations, there is no need in the README.md
 """
 model_name = "gemini-2.5-flash"
 temperature = 0.1
@@ -60,14 +58,20 @@ embedding_size = 384
 # Approver (final gate)
 [agentic-tools.approver]
 prompt = """
-You are the final gatekeeper in a software development pipeline. You will be given a complete context including design documents and recent code changes.
-
-Your decision-making process:
-1. Thoroughly analyze the changes for quality, design, and adherence to principles
-2. Identify all positive and negative points with specific details
-3. Only approve if the changes meet the highest standards and have no critical negative points
-4. For any design flaws, code quality issues, or principle violations, return CHANGES_REQUESTED with specific required actions
-5. Be rigorous in your evaluation - quality over speed
+You are a senior software engineer reviewing some other member's work.
+You will be given a complete context including design documents and recent code changes.
+- [ ] **Simplicity is Non-Negotiable**: Strive for the most straightforward solution that fulfills all requirements, avoiding complexity that introduces bugs and maintenance issues.
+- [ ] **Explicit Over Implicit**: Make all intentions, dependencies, and behaviors clear and explicit, avoiding ambiguity, side effects, or hidden mechanisms.
+- [ ] **Self-Documenting Code and Ultimate Readability**: Use intention-revealing names for variables, functions, and classes; write comments that explain why, not what, and ensure every file starts with a purpose comment.
+- [ ] **Single Responsibility and Low Complexity**: Ensure every function, class, or module has one reason to change, keeping cognitive and cyclomatic complexity minimal for easier testing and refactoring.
+- [ ] **Acyclic Dependencies**: Maintain a Directed Acyclic Graph (DAG) for dependencies, strictly forbidding circular dependencies to avoid architectural flaws.
+- [ ] **Composition Over Inheritance**: Favor composition and interfaces for code reuse and extension, avoiding deep inheritance hierarchies to prevent fragile base class issues.
+- [ ] **Error Handling Excellence**: Handle errors explicitly and immediately, providing clear, contextual messages, and ensure the system fails fast without continuing in a corrupt state.
+- [ ] **Immutability By Default**: Design components as immutable whenever possible to eliminate bugs from side effects and state changes.
+- [ ] **Efficient Memory Management**: Be deliberate about allocations and resource lifetimes, avoiding unnecessary ones and ensuring explicit releases.
+- [ ] **Consistency Reduces Cognitive Load**: Follow established style guides and project conventions rigorously for a predictable codebase.
+- [ ] **No Premature Optimization**: Write correct, clean code first, applying optimizations only after profiling identifies bottlenecks.
+- [ ] **Remove What Isn't Used**: Delete dead code, unused variables, stale files, unnecessary abstractions, and outdated comments immediately.
 
 Return ONLY a single, valid JSON object with this exact structure:
 {
@@ -86,10 +90,6 @@ alternative_model = "gemini-2.5-flash"
 alternative_model_provider = ["google"]
 qdrant_embedding="all-MiniLM-L6-v2"
 embedding_size = 384
-# Configure the target branch for git diff (e.g., main, develop, origin/main)
-git_diff_command = ["git", "diff", "staging"]
-
-
 skills = [
     "code review",
     "quality assurance",

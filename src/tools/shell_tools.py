@@ -22,9 +22,7 @@ class ShellTools:
         self.agent_model_provider = self.agent_config.get("model_provider")
         self.agent_alternative_model = self.agent_config.get("alternative_model")
         self.agent_alternative_provider = self.agent_config.get("alternative_provider")
-        self.git_diff_command = self.agent_config.get(
-            "git_diff_command", ["git", "diff", "main"]
-        )
+        self.git_diff_command = self.config.get("git_diff_command")
         self.project_root = config.get("project_root")
         self.agent_skills = self.agent_config.get("skills")
         self.design_docs = config.get("design_docs")
@@ -65,53 +63,52 @@ class ShellTools:
 
     def process_directory(self, directory_path: str) -> str:
         """
-        Traverse a single directory and concatenate all matching file contents into a single string.
+        Process a directory, concatenate the contents of all text files, and return as a single string.
+
+        This function traverses the given directory, reads each text file, and combines
+        their contents into a single string, with each file's content prefixed by a
+        header indicating its relative path. This is useful for providing context to LLMs
+        in a portable way.
 
         Args:
-            directory_path: Path to the directory to process.
+            directory_path: The absolute path to the directory to process.
 
         Returns:
-            Concatenated string of file contents, with headers like "--- File: relative/path/file.txt ---".
-            Empty string if no valid files or directory does not exist.
+            A string containing the concatenated contents of all text files,
+            or an empty string if the directory does not exist or contains no matching files.
         """
         try:
             root_dir = Path(directory_path)
-            if not root_dir.exists():
-                logger.warning(f"Directory does not exist: {directory_path}")
+            if not root_dir.is_dir():
+                logger.warning(
+                    f"Directory does not exist or is not a directory: {directory_path}"
+                )
                 return ""
 
             concatenated_content = ""
             file_count = 0
 
-            for project_root, dirs, files in os.walk(root_dir):
-                # Exclude directories in-place to prevent os.walk from descending into them
-                dirs[:] = [d for d in dirs if d not in self.exclude_directories]
-
-                # Calculate relative path
-                relative_root = Path(project_root).relative_to(root_dir)
-
-                # Process files with matching extensions
-                for file in files:
-                    if file in self.exclude_files:
+            for item in root_dir.rglob("*"):
+                if (
+                    item.is_file()
+                    and self._matches_extension(item.name)
+                    and item.name not in self.exclude_files
+                ):
+                    # Check if the file is in an excluded directory
+                    if any(
+                        excluded in item.parts for excluded in self.exclude_directories
+                    ):
                         continue
 
-                    filename = file
-                    if not self._matches_extension(file):
+                    file_payload = self.read_file_content_for_path(item)
+                    logger.info(f"Reading file: {item}")
+                    # Skip files that returned an error message (e.g., "<Error...>") or are binary.
+                    if file_payload.strip().startswith("<"):
                         continue
-
-                    filepath = Path(project_root) / file
-                    file_payload = self.read_file_content_for_path(filepath)
-
-                    if file_payload and not file_payload.startswith("<Error") and not file_payload.startswith("<Binary file>"):                        relative_file_path = (
-                            relative_root / filename
-                            if relative_root != Path(".")
-                            else filename
-                        )
-                        header = f"\n\n--- File: {relative_file_path} ---\n\n"
-                        concatenated_content += header + file_payload
-                        file_count += 1
-                    else:
-                        logger.info(f"Skipped file {filepath}: {file_payload}")
+                    relative_path = item.relative_to(root_dir)
+                    header = f"\n\n--- File: {relative_path} ---\n\n"
+                    concatenated_content += header + file_payload
+                    file_count += 1
 
             if file_count == 0:
                 logger.info(f"No matching files found in directory: {directory_path}")
@@ -138,7 +135,6 @@ class ShellTools:
 
         for directory in directories:
             logger.info(f"Processing {directory_type} directory: {directory}")
-            print(f"Processing {directory_type} directory: {directory}")
 
             self.project_root_path = Path(directory)
 
@@ -179,11 +175,17 @@ class ShellTools:
 
             # Process files with matching extensions
             for file in self.files:
-                if file in self.exclude_files:
+                if (
+                    file in self.exclude_files
+                    or file.startswith(".")
+                    or file.startswith("__")
+                ):
                     continue
 
                 self.filename = file
+
                 if self._matches_extension(file):
+                    logger.info(f"Reading file: {file}")
                     self.filepath = Path(project_root) / file
                     file_payload = self.read_file_content()
                     self.current_directory_level[file] = file_payload
@@ -373,7 +375,8 @@ class ShellTools:
             logger.error(f"Error getting git info: {e}")
             return git_info
 
-    def cleanup_escapes(self, input_str):
+    @staticmethod
+    def cleanup_escapes(input_str):
         """
         Clean up escaped backslashes and newlines (e.g., \\n -> \n) in a string
         using unicode_escape decoding.

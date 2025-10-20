@@ -1,4 +1,4 @@
-from qdrant_client import QdrantClient
+from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import VectorParams, Distance
 
 
@@ -26,23 +26,23 @@ class QdrantCollectionTools:
         self.recent_minutes = config.get("recent_minutes")
         self.payload: dict = {}
         self.embedding_model = config.get("qdrant_embedding")
-        self.qdrant_client = QdrantClient(url="http://localhost:6333")
+        self.qdrant_client = AsyncQdrantClient(url="http://localhost:6333")
         self.embedding_size = config.get("embedding_size")
         self.collection_name = f"{self.project_name}_{agent}"
 
-    def run_qdrant(self, payload):
+    async def run_qdrant(self, payload):
         self.payload = payload
         method = getattr(self, self.agent)
-        return method()
+        return await method()
 
-    def readme_writer(self):
+    async def readme_writer(self):
         try:
             # Check if the collection exists; create if not.
             # This avoids the deprecated recreate_collection.
-            if not self.qdrant_client.collection_exists(
+            if not await self.qdrant_client.collection_exists(
                 collection_name=self.collection_name
             ):
-                self.qdrant_client.create_collection(
+                await self.qdrant_client.create_collection(
                     collection_name=self.collection_name,
                     vectors_config=VectorParams(
                         size=self.embedding_size, distance=Distance.COSINE
@@ -56,7 +56,7 @@ class QdrantCollectionTools:
                 if isinstance(self.payload, (list, tuple))
                 else [str(self.payload)]
             )
-            vectors = self.qdrant_client.add(
+            vectors = await self.qdrant_client.add(
                 collection_name=self.collection_name,
                 documents=documents,
                 model=self.embedding_model,

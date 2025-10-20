@@ -4,9 +4,10 @@ Base class for all LLM apis, defining the required interface.
 
 from __future__ import annotations
 import os
-import google.generativeai as genai
+import json
 
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+from google.genai import types
+from google.genai import Client
 
 
 class ApiTools:
@@ -38,18 +39,29 @@ class ApiTools:
         self.recent_minutes = config.get("recent_minutes")
         self.payload: dict = {}
 
-    def run_api(self, payload):
+        self.google_client = Client(
+            api_key=os.getenv("GOOGLE_API_KEY"),
+        )
+
+    async def run_api(self, payload):
         self.payload = payload
         # Get and call the method directly on self
         provider = self.agent_model_provider[0]
         print(f"Running {provider} api")
         method = getattr(self, provider)
-        return method()  # call api method (.i.e. sambanova, groq, cerebras)
+        return await method()  # call api method (.i.e. sambanova, groq, cerebras)
 
-    def google(self):
-        genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
-        model = genai.GenerativeModel(self.agent_model_name)
-        response = model.generate_content(
-            f"PROMPT: {self.agent_prompt}, {self.payload}",
-        )
+    async def google(self):
+        async with self.google_client.aio as a_client:
+            config = types.GenerateContentConfig(
+                temperature=self.agent_temperature,
+                http_options=types.HttpOptions(api_version="v1alpha"),
+            )
+
+            response = await a_client.models.generate_content(
+                model=self.agent_model_name,
+                contents=f"{json.dumps(self.payload)}",
+                config=config,
+            )
+
         return response.text
