@@ -1,7 +1,7 @@
 # File: run_agents_manually.py
-'''
+"""
 THIS IS ONLY A CONVENIENCE SCRIPT TO RUN THE TOOLS
-'''
+"""
 
 from __future__ import annotations
 
@@ -41,6 +41,6 @@ async def developer_tool(chat: Optional[Any]) -> Any:
     return await agent.run_agent("developer", chat=chat)
 
 
-res = asyncio.run(approver_tool("Review recent code changes"))
+res = asyncio.run(readme_writer_tool("Provide an updated README file"))
 
 print(res)
