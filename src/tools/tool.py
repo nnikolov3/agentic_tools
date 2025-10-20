@@ -76,7 +76,7 @@ class Tool:
         try:
             git_info = self.shell_tools.get_git_info()
 
-            self.payload["prompt"] = self.agent_prompt
+
             self.payload["skills"] = self.agent_skills
             self.payload["project_files"] = self.shell_tools.process_directory(
                 self.current_working_directory
