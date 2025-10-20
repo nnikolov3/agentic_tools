@@ -13,10 +13,6 @@ recent_minutes = 10
 max_file_bytes = 262144
 max_total_bytes = 10485760
 
-# Qdrant embedding model to vector size mappings
-[agentic-tools.embedding_model_sizes]
-"all-MiniLM-L6-v2" = 384
-"all-MiniLM-L12-v2" = 384
 
 #####################################################################
 # README Writer Configuration
@@ -57,8 +53,8 @@ skills = [
     "clarity and precision"
 ]
 
-
-
+qdrant_embedding="all-MiniLM-L6-v2"
+embedding_size = 384
 #####################################################################
 # Approver (final gate)
 [agentic-tools.approver]
@@ -87,7 +83,8 @@ description = "Final approval decision"
 model_provider = ["google"]
 alternative_model = "gemini-2.5-flash"
 alternative_model_provider = ["google"]
-
+qdrant_embedding="all-MiniLM-L6-v2"
+embedding_size = 384
 
 
 skills = [

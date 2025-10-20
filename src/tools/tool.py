@@ -1,5 +1,6 @@
 from src.tools.shell_tools import ShellTools
 from src.tools.api_tools import ApiTools
+from src.tools.qdrant_tools import QdrantTools
 import mdformat
 
 
@@ -9,6 +10,7 @@ class Tool:
         self.config = config
         self.shell_tools = ShellTools(agent, config)
         self.api_tools = ApiTools(agent, config)
+        self.qdrant_tools = QdrantTools(agent, config)
         self.payload: dict = {}
         self.response: dict = {}
         self.git_information: dict = {}
@@ -30,5 +32,6 @@ class Tool:
         self.response = self.shell_tools.cleanup_escapes(self.response)
         self.response = mdformat.text(self.response, options={"wrap": "preserve"})
         self.shell_tools.write_file("README.md", self.response)
+        self.qdrant_tools.run_qdrant(self.response)
 
         return self.response
