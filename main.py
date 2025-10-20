@@ -19,15 +19,14 @@ mcp_name = "Agentic Tools"
 mcp = FastMCP(mcp_name)
 
 
-def main():
-    @mcp.tool(
-        description="Walks the project directories, gets github information, and updates directly the README.md file"
-    )
-    async def readme_writer_tool() -> Any:
-        print("readme_writer_tool")
-        agent = Agent(configuration["agentic-tools"])  # Agent class
-        return agent.run_agent("readme_writer")
+@mcp.tool(
+    description="Walks the project directories, gets github information, and updates directly the README.md file"
+)
+def readme_writer_tool() -> Any:
+    print("readme_writer_tool")
+    agent = Agent(configuration["agentic-tools"])  # Agent class
+    return agent.run_agent("readme_writer")
 
 
 if __name__ == "__main__":
-    mcp.run_async()
+    mcp.run()

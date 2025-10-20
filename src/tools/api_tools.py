@@ -45,7 +45,6 @@ class ApiTools:
         self.exclude_directories = config.get("exclude_directories", [])
         self.recent_minutes = config.get("recent_minutes")
         self.payload: dict = {}
-        genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
     def run_api(self, payload):
         self.payload = payload
@@ -56,6 +55,7 @@ class ApiTools:
         return method()  # call api method (.i.e. sambanova, groq, cerebras)
 
     def google(self):
+        genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
         model = genai.GenerativeModel(self.agent_model_name)
         response = model.generate_content(
             f"PROMPT: {self.agent_prompt}, {self.payload}",

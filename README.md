@@ -1,47 +1,39 @@
-
 # Agentic Tools
 
+## Project Description
 
-Agentic Tools is a powerful framework designed to build sophisticated agentic toolchains. It enables architects, designers, and developers to automate the process of designing, validating, and approving code through a series of chained tools. By integrating Large Language Models (LLMs) with custom and external functionalities, Agentic Tools streamlines complex development workflows, ensuring adherence to design principles and coding standards.
+Agentic Tools is a powerful and flexible agentic toolchain designed for the comprehensive lifecycle of code development. It facilitates architecting, designing, validating, and approving code through a series of chained, intelligent agents and tools. This project aims to automate and enhance various aspects of the software development process, ensuring adherence to design principles and coding standards.
 
 ## Key Features and Capabilities
 
-- **Automated Code Lifecycle**: Facilitates automated architecting, design, validation, and approval of code.
-- **Modular Agent System**: Easily define and chain agents to perform specific tasks. Examples include `readme_writer` for documentation and `approver` for quality gates.
-- **LLM Integration**: Seamlessly connect with various LLM providers (Google Gemini, Groq, Cerebras, SambaNova) to leverage their capabilities within agent workflows.
-- **Flexible Tooling**: Define custom tools (Python functions) that agents can invoke, providing extensibility and integration with any external system.
-- **Comprehensive File System Utilities**: Agents can interact with the file system to read source code, configuration, design documents, and write outputs like generated documentation.
-- **Git Integration**: Retrieve Git repository information (username, URL) for context-aware operations.
-- **Configuration Management**: Robust configuration loading using TOML files, allowing for easy setup and customization of agents and tools.
-- **Qdrant Integration**: Utilize Qdrant as a vector database for semantic memory, enabling agents to store and retrieve contextual information (e.g., approver decisions, patches, design documents) for enhanced decision-making and knowledge retention.
-- **FastMCP Framework Compatibility**: Built to integrate with the FastMCP (Model Context Protocol) framework, ensuring standardized interaction with AI models and external systems.
-- **Quality Enforcement**: Incorporates strict design principles and coding standards (via `DESIGN_PRINCIPLES_GUIDE.md` and `CODING_FOR_LLMs.md`) to ensure high-quality, maintainable, and secure generated code.
+- **Modular Agent System**: A robust `Agent` class allows for the dynamic execution of various tasks, providing a flexible framework for extending capabilities.
+- **Extensible Toolset**: The `Tool` class orchestrates a suite of specialized tools, including `ShellTools`, `ApiTools`, and `QdrantTools`, enabling complex operations.
+- **Comprehensive File Processing**: `ShellTools` intelligently traverses specified project directories, concatenates relevant file contents, and applies filters based on file extensions, size, and exclusion rules.
+- **Git Information Retrieval**: Seamlessly integrates with Git to extract repository information, such as the Git username and remote URL, enriching contextual data for agents.
+- **LLM Provider Agnostic API Layer**: `ApiTools` provides a unified interface for interacting with various Large Language Model (LLM) providers, including Google Gemini, Groq, Cerebras, and SambaNova, allowing for flexible model selection.
+- **Vector Database Integration**: `QdrantTools` enables the storage and retrieval of generated content (e.g., READMEs, design documents) into Qdrant, facilitating Retrieval Augmented Generation (RAG) and maintaining historical context.
+- **Dynamic Configuration**: Utilizes a `Configurator` to load and manage project settings from TOML configuration files, ensuring parameterization and adaptability.
+- **Automated Documentation Generation**: Includes a `readme_writer` agent capable of automatically generating and updating the `README.md` based on the project's source code, configuration, and design principles.
+- **Strict Adherence to Standards**: Enforces foundational design principles and language-specific coding standards (as defined in `DESIGN_PRINCIPLES_GUIDE.md` and `CODING_FOR_LLMs.md`) to ensure high-quality, maintainable, and robust code.
 
 ## Prerequisites
 
-Before you can install and use Agentic Tools, ensure you have the following:
+Before installing and running Agentic Tools, ensure you have the following:
 
-- **Python**: Version 3.9 or higher.
-- **Git**: Installed and configured on your system.
-- **Virtual Environment**: Strongly recommended to manage dependencies.
-- **LLM API Keys**: Depending on the LLM providers you intend to use, you'll need API keys. Create a `.env` file in the project root with the following (or set them as environment variables):
-  ```ini
-  GEMINI_API_KEY="your_google_gemini_api_key"
-  GROQ_API_KEY="your_groq_api_key"
-  CEREBRAS_API_KEY="your_cerebras_api_key"
-  SAMBANOVA_API_KEY="your_sambanova_api_key"
-
-  # Optional Qdrant Configuration
-  QDRANT_URL="http://localhost:6333" # Or your cloud Qdrant URL
-  QDRANT_API_KEY="your_qdrant_api_key" # Only for cloud Qdrant
-  QDRANT_LOCAL_PATH=".qdrant_db" # For local persistent Qdrant
-  COLLECTION_NAME="agentic_decisions"
-  EMBEDDING_MODEL="all-MiniLM-L6-v2"
-  ```
+- **Python 3.11+**: The project uses `tomllib` which is built-in from Python 3.11 onwards.
+  - Verify your Python version: `python3 --version`
+- **Git**: Required for cloning the repository and for the `ShellTools` to gather repository information.
+  - Verify Git installation: `git --version`
+- **LLM API Keys**: Depending on the LLM provider you intend to use, you will need to set the corresponding API key as an environment variable.
+  - **Google Gemini**: `GEMINI_API_KEY`
+  - **Groq**: `GROQ_API_KEY`
+  - **Cerebras**: `CEREBRAS_API_KEY`
+  - **SambaNova**: `SAMBANOVA_API_KEY`
+- **Qdrant Service (Optional)**: If you plan to utilize the Qdrant vector database integration, a Qdrant instance must be running and accessible, typically at `http://localhost:6333`.
 
 ## Installation
 
-Follow these steps to set up Agentic Tools on your local machine.
+Follow these steps to get Agentic Tools up and running:
 
 1. **Clone the Repository**:
 
@@ -50,174 +42,64 @@ Follow these steps to set up Agentic Tools on your local machine.
    cd multi-agent-mcp
    ```
 
-1. **Create a Virtual Environment**:
+1. **Create and Activate a Python Virtual Environment**:
+   It's highly recommended to use a virtual environment to manage dependencies.
 
    ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
+   python3 -m venv .venv
+   source .venv/bin/activate
    ```
 
-3. **Install Dependencies**:
+1. **Install Dependencies**:
+   Install the required Python packages.
 
    ```bash
-   pip install -r requirements.txt
-   # If you are using uv, you can use the following command:
-   # uv pip sync
+   pip install mdformat groq qdrant-client google-generativeai
+   # If you plan to use Cerebras or SambaNova, install their respective SDKs:
+   # pip install cerebras-sdk
+   # pip install sambanova-sdk
    ```
 
-1. **Set Up Environment Variables**: Create a `.env` file in the project root as described in the [Prerequisites](#prerequisites) section, or export them in your shell session.
-
-## Usage
-
-### Running Tests
-
-To run the tests, use the following command:
-
-```bash
-python -m unittest discover
-```
-
-Agentic Tools are driven by agents configured in `agentic_tools.toml`. You interact with the system by running a specific agent. Here's how to run the `readme_writer` agent to generate/update your project's `README.md`.
-
-1. **Ensure Configuration**: Make sure your `agentic_tools.toml` is correctly configured for the `readme_writer` (see [Configuration Details](#configuration-details)).
-
-1. **Execute the Agent**: From the project root, you would typically have an entry point that initializes the `Agent` class and calls the desired agent method. A common pattern is to have a `main.py` or `run.py` that looks something like this:
-
-   ```python
-   # main.py
-   from __future__ import annotations
-   from src.configurator import Configurator
-   from src.agents.agent import Agent
-   from fastmcp import FastMCP
-   import os
-   from typing import Any
-   from pathlib import Path
-
-   cwd = os.getcwd()
-   configuration_path = Path(f"{cwd}/conf/agentic_tools.toml")
-   configurator = Configurator(configuration_path)
-   configuration = configurator.get_config_dictionary()
-   mcp_name = "Agentic Tools"
-   mcp = FastMCP(mcp_name)
-
-
-   def main():
-       @mcp.tool(
-           description="Walks the project directories, gets github information, and updates directly the README.md file"
-       )
-       async def readme_writer_tool() -> Any:
-           print("readme_writer_tool")
-           agent = Agent(configuration["agentic-tools"])  # Agent class
-           return agent.run_agent("readme_writer")
-
-
-   if __name__ == "__main__":
-       mcp.run_async()
-   ```
-
-1. **Run the script**:
+1. **Set Environment Variables**:
+   Set the API keys for the LLM providers you intend to use. Replace `YOUR_API_KEY` with your actual keys.
 
    ```bash
-   python run.py
+   export GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+   export GROQ_API_KEY="YOUR_GROQ_API_KEY"
+   # export CEREBRAS_API_KEY="YOUR_CEREBRAS_API_KEY"
+   # export SAMBANOVA_API_KEY="YOUR_SAMBANOVA_API_KEY"
    ```
 
-   This will execute the `readme_writer` agent, which will traverse your project files, gather information, send it to the configured LLM, and write the generated `README.md` to your project root.
+## Usage Examples
 
-### Qdrant Integration Example
+This section demonstrates how to use Agentic Tools, focusing on the `readme_writer` agent as a practical example.
 
-Agentic Tools integrates with Qdrant for semantic memory. For example, the `approver` agent might store its decisions in Qdrant. While the direct `approver` agent execution is not shown, you can infer how a `QdrantIntegration` object is used:
+### 1. Configure the Agent (agentic_tools.toml)
 
-```python
-# Example of using QdrantIntegration (from qdrant_tools.py)
-from src.tools.qdrant_tools import QdrantIntegration
-import uuid # To generate unique IDs for decisions
-
-# Assuming configuration is loaded as 'config'
-# model_sizes = config.get("embedding_model_sizes", {})
-# qdrant_config = {
-#     "local_path": ".qdrant_db", # or url and api_key
-#     "collection_name": "agentic_decisions",
-#     "embedding_model": "all-MiniLM-L6-v2",
-#     "model_sizes": model_sizes
-# }
-
-# qdrant_client = QdrantIntegration(**qdrant_config)
-
-# Example decision data (hypothetical from an 'approver' agent)
-# decision_data = {
-#     "decision": "APPROVED",
-#     "summary": "All code changes comply with design principles.",
-#     "positive_points": ["Clean architecture", "High test coverage"],
-#     "negative_points": [],
-#     "required_actions": [],
-#     "timestamp": "2023-10-27T10:00:00Z",
-#     "user_chat": "User asked for a final review."
-# }
-# decision_id = str(uuid.uuid4())
-# content_for_embedding = decision_data["summary"] + " ".join(decision_data["positive_points"])
-
-# if qdrant_client.store_approver_decision(decision_data, decision_id, content_for_embedding):
-#     print(f"Decision {decision_id} stored in Qdrant.")
-
-# To search for similar decisions:
-# query = "recent approved changes with high quality"
-# similar_decisions = qdrant_client.search_similar_decisions(query, limit=2)
-# print(f"Found similar decisions: {similar_decisions}")
-```
-
-## Configuration Details
-
-The core configuration for Agentic Tools resides in `agentic_tools.toml`.
+Ensure your `agentic_tools.toml` file (located in the project root) is configured for the `readme_writer` agent. An example snippet is shown below:
 
 ```toml
 # agentic_tools.toml
 [agentic-tools]
 project_name = "Agentic Tools"
 project_description = "Agentic toolchain for architecting, designing, validating, and approving code via chained tools."
-
-# Paths to design documentation (e.g., DESIGN_PRINCIPLES_GUIDE.md, CODING_FOR_LLMs.md)
 design_docs = ["docs/DESIGN_PRINCIPLES_GUIDE.md", "docs/PROVIDERS_SDK.md","docs/CODING_FOR_LLMs.md", "AGENTS.md"]
-
-# Source code directories to include (e.g., "src")
 source = ["src"]
-
-# Project root directory (usually ".")
 project_root = "."
-
-# Directories containing tests (e.g., "tests")
 tests_directory = ["tests"]
-
-# Other project directories to be processed (e.g., for README generation)
 project_directories = ["conf", "docs", "src"]
-
-# File extensions to include when processing files
-include_extensions = [".py", ".md", ".toml"]
-
-# Specific files to exclude from processing
+include_extensions = [".py",  ".md", ".toml"]
 exclude_files = ["__init__.py"]
-
-# Directories to exclude from recursive processing
-exclude_directories = [".qwen", ".gemini", ".git", ".github", ".gitlab", "node_modules", "venv", ".venv", "dist", "build", "target", "__pycache__"]
-
-# How many minutes ago a file must have been modified to be considered 'recent' (currently not actively used by readme_writer but available)
+exclude_directories = [".qwen", ".gemini",".git", ".github", ".gitlab", "node_modules", "venv", ".venv", "dist", "build", "target", "__pycache__"]
 recent_minutes = 10
+max_file_bytes = 262144
+max_total_bytes = 10485760
 
-# Maximum file size in bytes to include for processing (e.g., for LLM context)
-max_file_bytes = 262144 # 256 KB
-
-# Maximum total bytes across all concatenated files (currently not actively used but available)
-max_total_bytes = 10485760 # 10 MB
-
-# Qdrant embedding model to vector size mappings (used by QdrantIntegration)
-[agentic-tools.embedding_model_sizes]
-"all-MiniLM-L6-v2" = 384
-"all-MiniLM-L12-v2" = 384
 
 #####################################################################
 # README Writer Configuration
 #####################################################################
 [agentic-tools.readme_writer]
-# The specific prompt given to the LLM for README generation
 prompt = """
 * You are an expert technical writer.
 * Create excellent, concise,and practical README documentation based on the project's source code, configuration, and conventions.
@@ -247,50 +129,133 @@ alternative_model_provider = ["google"]
 skills = [
     "technical writing",
     "documentation",
-    "readme creation", 
+    "readme creation",
     "information synthesis",
     "content organization",
     "clarity and precision"
 ]
+qdrant_embedding="all-MiniLM-L6-v2"
+embedding_size = 384
+```
 
+### 2. Run an Agent
 
+To execute an agent, you'll typically use a main entry point script. Assuming you have a `run.py` (or similar) at the project root that orchestrates agent execution, you would run it like this:
 
-#####################################################################
-# Approver (final gate) Configuration
-#####################################################################
-[agentic-tools.approver]
-# Prompt for the Approver LLM agent
-prompt = """
-You are the final gatekeeper in a software development pipeline. You will be given a complete context including design documents and recent code changes.
+First, ensure your virtual environment is activated and API keys are set.
 
-Your decision-making process:
-1. Thoroughly analyze the changes for quality, design, and adherence to principles
-2. Identify all positive and negative points with specific details
-3. Only approve if the changes meet the highest standards and have no critical negative points
-4. For any design flaws, code quality issues, or principle violations, return CHANGES_REQUESTED with specific required actions
-5. Be rigorous in your evaluation - quality over speed
+```bash
+# Activate your virtual environment if not already active
+source .venv/bin/activate
 
-Return ONLY a single, valid JSON object with this exact structure:
-{
-  "decision": "APPROVED" | "CHANGES_REQUESTED",
-  "summary": "string",
-  "positive_points": ["string"],
-  "negative_points": ["string"],
-  "required_actions": ["string"]
-}
-"""
-model_name = "gemini-2.5-pro"
-temperature = 0.1
-description = "Final approval decision"
-model_provider = ["google"]
-alternative_model = "gemini-2.5-flash"
-alternative_model_provider = ["google"]
-skills = [
-    "code review",
-    "quality assurance",
-    "decision making",
-    "technical analysis", 
-    "standards compliance",
-    "risk assessment",
-    "context analysis"
-]
+# Ensure API keys are set (as described in Prerequisites/Installation)
+export GEMINI_API_KEY="..."
+
+# Example: Running the readme_writer agent
+# This assumes a simplified `run.py` might look like the Python snippet below
+python run.py readme_writer
+```
+
+**Example `run.py` (for demonstration of internal workings):**
+
+This hypothetical `run.py` demonstrates how you might programmatically invoke an agent:
+
+```python
+# run.py (Illustrative example, create this file if you want to run this)
+import os
+import sys
+from src.configurator import Configurator
+from src.agents.agent import Agent
+import logging
+
+# Configure basic logging for visibility
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python run.py <agent_name>")
+        sys.exit(1)
+
+    agent_to_run = sys.argv[1]
+    config_file_path = "agentic_tools.toml" # Path to your main configuration file
+
+    try:
+        # 1. Load configuration
+        configurator = Configurator(config_file_path)
+        project_config = configurator.get_config_dictionary()
+
+        # 2. Instantiate and run the specified agent
+        agent_instance = Agent(project_config)
+        print(f"Executing agent: {agent_to_run}...")
+        output = agent_instance.run_agent(agent_to_run)
+
+        print(f"
+--- Agent '{agent_to_run}' Output ---")
+        # For readme_writer, the output is the generated README content
+        # It also writes to README.md internally.
+        print(output[:1000] + "...") # Print first 1000 chars for brevity
+
+    except ValueError as e:
+        logging.error(f"Configuration or Agent Error: {e}")
+        sys.exit(1)
+    except FileNotFoundError as e:
+        logging.error(f"File Not Found Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logging.error(f"An unexpected error occurred: {e}", exc_info=True)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+```
+
+When you run `python run.py readme_writer`, the `readme_writer` agent will:
+
+1. Collect all relevant files from `project_directories` as specified in `agentic_tools.toml`.
+1. Gather Git information (username, repository URL).
+1. Send this context along with the `prompt` defined in the `readme_writer` configuration to the configured LLM (e.g., Google Gemini).
+1. Receive the generated `README.md` content from the LLM.
+1. Format the content using `mdformat`.
+1. Write the formatted content to the `README.md` file in the project root.
+1. Optionally, embed the content into Qdrant for future use.
+
+## Configuration Details
+
+All primary configuration for Agentic Tools is managed via the `agentic_tools.toml` file in the project root. This TOML file defines global project settings and specific configurations for each agent.
+
+### Global `[agentic-tools]` Section
+
+This section defines project-wide parameters:
+
+- `project_name` (string): The name of your project.
+- `project_description` (string): A brief description of the project.
+- `design_docs` (array of strings): Paths to core design documentation files (e.g., `docs/DESIGN_PRINCIPLES_GUIDE.md`). These are included as context for agents.
+- `source` (array of strings): Directories containing the main source code.
+- `project_root` (string): The root directory of the project (typically `.`).
+- `tests_directory` (array of strings): Directories containing project tests.
+- `project_directories` (array of strings): All directories to be traversed and included as context for agents (e.g., `conf`, `docs`, `src`).
+- `include_extensions` (array of strings): File extensions to include during file traversal (e.g., `".py"`, `".md"`, `".toml"`).
+- `exclude_files` (array of strings): Specific filenames to exclude from traversal (e.g., `"__init__.py"`).
+- `exclude_directories` (array of strings): Directories to exclude from traversal (e.g., `".git"`, `"venv"`, `"__pycache__"`).
+- `recent_minutes` (integer): (Currently unused but present in config) Defines a time window for recent file changes.
+- `max_file_bytes` (integer): Maximum size (in bytes) for an individual file to be included as context. Files exceeding this limit are skipped.
+- `max_total_bytes` (integer): (Currently unused but present in config) Maximum total bytes for all concatenated files.
+
+### Agent-Specific Configuration (e.g., `[agentic-tools.readme_writer]`)
+
+Each agent (e.g., `readme_writer`, `approver`) has its own subsection under `[agentic-tools.<agent_name>]`. These settings define the behavior of the specific agent:
+
+- `prompt` (string): The primary instruction prompt given to the LLM for this agent's task.
+- `model_name` (string): The specific LLM model to use (e.g., `"gemini-2.5-flash"`).
+- `temperature` (float): Controls the randomness of the LLM's output (0.0 for deterministic, higher for more creative).
+- `description` (string): A short description of the agent's purpose.
+- `model_provider` (array of strings): The LLM provider(s) to use (e.g., `["google"]`). The first provider in the list is used.
+- `alternative_model` (string): An alternative LLM model name, for fallback or testing.
+- `alternative_model_provider` (array of strings): An alternative LLM provider.
+- `skills` (array of strings): A list of skills attributed to the agent, providing context for its capabilities.
+- `qdrant_embedding` (string): The embedding model to use when storing content in Qdrant (e.g., `"all-MiniLM-L6-v2"`).
+- `embedding_size` (integer): The dimension of the embeddings generated by `qdrant_embedding`.
+
+______________________________________________________________________
+
+This README provides a solid foundation for understanding, installing, and utilizing Agentic Tools. For more in-depth information on design philosophy and coding standards, please refer to the `docs/DESIGN_PRINCIPLES_GUIDE.md` and `docs/CODING_FOR_LLMs.md` files respectively.
