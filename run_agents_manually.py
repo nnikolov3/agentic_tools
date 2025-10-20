@@ -1,4 +1,4 @@
-# File: main.py
+# File: run_agents_manually.py
 """
 THIS IS ONLY A CONVENIENCE SCRIPT TO RUN THE TOOLS
 """
@@ -6,13 +6,14 @@ THIS IS ONLY A CONVENIENCE SCRIPT TO RUN THE TOOLS
 from __future__ import annotations
 
 import asyncio
-
-from src.configurator import Configurator
-from src.agents.agent import Agent
-from fastmcp import FastMCP
 import os
-from typing import Any
 from pathlib import Path
+from typing import Any, Optional
+
+from fastmcp import FastMCP
+
+from src.agents.agent import Agent
+from src.configurator import Configurator
 
 cwd = os.getcwd()
 configuration_path = Path(f"{cwd}/conf/agentic_tools.toml")
@@ -22,20 +23,24 @@ mcp_name = "Agentic Tools"
 mcp = FastMCP(mcp_name)
 
 
-async def readme_writer_tool() -> Any:
+async def readme_writer_tool(chat: Optional[Any]) -> Any:
     print("readme_writer_tool")
     agent = Agent(configuration["agentic-tools"])
-    return await agent.run_agent("readme_writer")
+    return await agent.run_agent("readme_writer", chat=chat)
 
 
-async def approver_tool() -> Any:
+async def approver_tool(chat: Optional[Any]) -> Any:
     print("approver_tool")
     agent = Agent(configuration["agentic-tools"])
-    return await agent.run_agent("approver")
-
-    # print(readme_writer_tool())
+    return await agent.run_agent("approver", chat=chat)
 
 
-res = asyncio.run(readme_writer_tool())
-# res = asyncio.run(approver_tool())
+async def developer_tool(chat: Optional[Any]) -> Any:
+    print("developer_tool")
+    agent = Agent(configuration["agentic-tools"])
+    return await agent.run_agent("developer", chat=chat)
+
+
+res = asyncio.run(readme_writer_tool("Provide an updated README file"))
+
 print(res)

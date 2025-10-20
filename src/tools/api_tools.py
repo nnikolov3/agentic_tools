@@ -22,6 +22,7 @@ class ApiTools:
         self.config = config
         self.agent_config = self.config.get(agent, {})
         self.agent_prompt = self.agent_config.get("prompt")
+        self.agent_api_key = self.agent_config.get("api_key")
         self.agent_model_name = self.agent_config.get("model_name")
         self.agent_temperature = self.agent_config.get("temperature")
         self.agent_description = self.agent_config.get("description")
@@ -39,8 +40,20 @@ class ApiTools:
         self.recent_minutes = config.get("recent_minutes")
         self.payload: dict = {}
 
+        # Error Handling Excellence: Fail fast if the API key is not configured.
+        if not self.agent_api_key:
+            raise ValueError(
+                f"API key name ('api_key') is not configured for agent '{agent}'."
+            )
+
+        api_key_value = os.getenv(self.agent_api_key)
+        if not api_key_value:
+            raise ValueError(
+                f"Environment variable '{self.agent_api_key}' is not set, which is required for agent '{agent}'."
+            )
+
         self.google_client = Client(
-            api_key=os.getenv("GOOGLE_API_KEY"),
+            api_key=api_key_value,
         )
 
     async def run_api(self, payload):
@@ -49,7 +62,7 @@ class ApiTools:
         provider = self.agent_model_provider[0]
         print(f"Running {provider} api")
         method = getattr(self, provider)
-        return await method()  # call api method (.i.e. sambanova, groq, cerebras)
+        return await method()
 
     async def google(self):
         async with self.google_client.aio as a_client:

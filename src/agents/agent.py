@@ -5,7 +5,7 @@ Base Agent class that provides common functionality for all agents.
 from __future__ import annotations
 
 import logging
-from typing import Dict
+from typing import Dict, Any, Optional
 from src.tools.tool import Tool
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ class Agent:
         self.tool: Tool | None = None
         self.agent_name = ""
 
-    async def run_agent(self, agent: str):
+    async def run_agent(self, agent: str, chat: Optional[Any]):
         """Execute agent method dynamically from parent class"""
         self.agent_name = agent.lower()
         self.tool = Tool(self.agent_name, self.configuration)
@@ -32,18 +32,24 @@ class Agent:
         try:
             # Get and call the method directly on self
             method = getattr(self, self.agent_name)
-            return await method()
+            return await method(chat=chat)
         except AttributeError:
             raise ValueError(f"Agent '{self.agent_name}' not found.")
 
-    async def readme_writer(self):
+    async def readme_writer(self, chat: Optional[Any] = None):
         """Execute readme writer logic"""
         logger.info("ReadmeWriter executing")
 
-        return await self.tool.run_tool()
+        return await self.tool.run_tool(chat=chat)
 
-    async def approver(self):
+    async def approver(self, chat: Optional[Any] = None):
         """Executes the approver tool to audit code changes and provide a final decision."""
         logger.info("approver executing")
-        response = await self.tool.run_tool()
+        response = await self.tool.run_tool(chat=chat)
+        return response
+
+    async def developer(self, chat: Optional[Any] = None):
+        """Executes the developer tool to provide feedback on the code changes."""
+        logger.info("developer executing")
+        response = await self.tool.run_tool(chat=chat)
         return response
