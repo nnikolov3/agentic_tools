@@ -15,6 +15,28 @@ max_file_bytes = 262144
 # Configure the target branch for git diff (e.g., main, develop, origin/main)
 git_diff_command = ["git", "diff", "--patch-with-raw", "--minimal", "--patience"]
 
+[agentic-tools.planner]
+prompt = """"""
+model_name= "gemini-2.5-pro"
+api_key = "GEMINI_API_KEY_PLANNER"
+temperature = 0.3
+description = "Creates the artchitecture and planning."
+model_provider = ["google"]
+alternative_model = "gemini-2.5-flash"
+alternative_model_provider = ["google"]
+skills = [
+    "code writing",
+    "senior developer",
+    "detail oriented",
+    "coding standards",
+    "design principles",
+    "love and care"
+]
+
+qdrant_embedding="all-MiniLM-L6-v2"
+embedding_size = 384
+
+
 [agentic-tools.developer]
 prompt = """Follow the Coding and Design Principls
 Always aim for small and straightforward design.
@@ -118,7 +140,7 @@ Return ONLY a single, valid JSON object with this exact structure:
   "commit_message_if_approved": ["string"]
 }
 """
-model_name = "gemini-2.5-pro"
+model_name = "gemini-2.5-flash"
 api_key = "GEMINI_API_KEY_APPROVER"
 temperature = 0.1
 description = "Final approval decision"

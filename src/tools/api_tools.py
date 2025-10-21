@@ -75,8 +75,8 @@ class ApiTools:
                 thinking_config=types.ThinkingConfig(thinking_budget=-1),
             )
 
-            chat_message = self.payload.get('chat', '')
-            json_payload = {k: v for k, v in self.payload.items() if k != 'chat'}
+            chat_message = self.payload.get("chat", "")
+            json_payload = {k: v for k, v in self.payload.items() if k != "chat"}
             contents = f"{chat_message}\n{json.dumps(json_payload)}"
 
             response = await a_client.models.generate_content(

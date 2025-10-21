@@ -42,10 +42,13 @@ async def developer_tool(chat: Optional[Any]) -> Any:
 
 
 readme_result = asyncio.run(
-    readme_writer_tool(
-        "Provide an updated README file based on the recent changes."
-    )
+    readme_writer_tool("Provide an updated README file based on the recent changes.")
 )
-print(readme_result)
-approval_result = asyncio.run(approver_tool("Revaluate the changes and approve or reject"))
+
+"""
+# print(readme_result)
+approval_result = asyncio.run(
+    approver_tool("Revaluate the changes and approve or reject")
+)
 print(approval_result)
+"""

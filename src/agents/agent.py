@@ -30,26 +30,6 @@ class Agent:
         self.tool = Tool(self.agent_name, self.configuration)
 
         try:
-            # Get and call the method directly on self
-            method = getattr(self, self.agent_name)
-            return await method(chat=chat)
+            return await self.tool.run_tool(chat=chat)
         except AttributeError:
             raise ValueError(f"Agent '{self.agent_name}' not found.")
-
-    async def readme_writer(self, chat: Optional[Any] = None):
-        """Execute readme writer logic"""
-        logger.info("ReadmeWriter executing")
-
-        return await self.tool.run_tool(chat=chat)
-
-    async def approver(self, chat: Optional[Any] = None):
-        """Executes the approver tool to audit code changes and provide a final decision."""
-        logger.info("approver executing")
-        response = await self.tool.run_tool(chat=chat)
-        return response
-
-    async def developer(self, chat: Optional[Any] = None):
-        """Executes the developer tool to provide feedback on the code changes."""
-        logger.info("developer executing")
-        response = await self.tool.run_tool(chat=chat)
-        return response

@@ -21,7 +21,7 @@ class Tool:
         self.api_tools = ApiTools(agent, config)
         self.qdrant_collection_tools = QdrantCollectionTools(agent, config)
         self.payload: dict = {}
-        self.response: dict = {}
+        self.response: Any = None
         self.project_root_path = config.get("project_root")
         self.docs = config.get("docs")
         self.agent_skills = self.agent_config.get("skills")
@@ -45,7 +45,7 @@ class Tool:
         design_docs_content = ""
         design_docs_paths = self.config.get("design_docs", [])
         for doc_path in design_docs_paths:
-            full_path = Path(self.project_root_path) / doc_path
+            full_path = Path(f"{self.current_working_directory}/{doc_path}")
             if full_path.exists() and full_path.is_file():
                 design_docs_content += self.shell_tools.read_file_content_for_path(
                     full_path
@@ -56,7 +56,7 @@ class Tool:
         return design_docs_content
 
     async def approver(self, chat: Optional[Any] = None):
-        self.response = None
+
         patch = self.shell_tools.create_patch()
 
         git_info = self.shell_tools.get_git_info()
@@ -72,10 +72,9 @@ class Tool:
 
     async def readme_writer(self, chat: Optional[Any] = None):
         """Execute readme writer logic"""
-        self.response = None
+
         try:
             git_info = self.shell_tools.get_git_info()
-
 
             self.payload["skills"] = self.agent_skills
             self.payload["project_files"] = self.shell_tools.process_directory(
@@ -91,8 +90,10 @@ class Tool:
                 raise ValueError("API returned empty response.")
 
             self.response = self.shell_tools.cleanup_escapes(self.response)
-            self.response = mdformat.text(self.response, options={"wrap": "preserve"})
-            self.shell_tools.write_file("README.md", self.response)
+            self.response = mdformat.text(
+                str(self.response), options={"wrap": "preserve"}
+            )
+            self.shell_tools.write_file("README.md", str(self.response))
             await self.qdrant_collection_tools.run_qdrant(self.response)
 
             return self.response
@@ -102,13 +103,13 @@ class Tool:
 
     async def developer(self, chat: Optional[Any]):
         """Writes high quality source code"""
-        self.response = None
+
         source_code_contents = []
 
         if self.source and isinstance(self.source, list):
             for path_segment in self.source:
                 # Combine the current working directory with the relative path from config
-                absolute_path = Path(self.current_working_directory) / path_segment
+                absolute_path = Path(f"{self.current_working_directory}/{path_segment}")
                 content = self.shell_tools.process_directory(str(absolute_path))
                 if content:
                     source_code_contents.append(content)
@@ -128,3 +129,10 @@ class Tool:
             raise ValueError("API returned empty response.")
 
         return self.response
+
+    # TODO: abstract the payload generation
+    async def _create_payload(self):
+
+        pass
+
+    # TODO: Path creation
