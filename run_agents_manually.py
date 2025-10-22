@@ -51,9 +51,7 @@ print(approval_result)
 
 
 async def main():
-    response = await approver_tool(
-        "Audit recent changes and provide feedback on the changes."
-    )
+    response = await readme_writer_tool("Update README")
 
     print(response)
     return
