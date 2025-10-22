@@ -29,10 +29,10 @@ class Configurator:
             raise FileNotFoundError(
                 f"Configuration file not found: {self.config_path}"
             ) from e
-        except PermissionError:
+        except PermissionError as e:
             raise PermissionError(
                 f"Permission denied reading config file: {self.config_path}"
-            )
+            ) from e
         except tomllib.TOMLDecodeError as e:
             raise ValueError(f"Invalid TOML syntax in config file: {e}") from e
         except OSError as e:
