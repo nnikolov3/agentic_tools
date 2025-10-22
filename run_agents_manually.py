@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from fastmcp import FastMCP
 
@@ -19,31 +19,27 @@ cwd = os.getcwd()
 configuration_path = Path(f"{cwd}/conf/agentic_tools.toml")
 configurator = Configurator(configuration_path)
 configuration = configurator.get_config_dictionary()
-mcp_name = "Agentic Tools"
+mcp_name = "agentic-tools"
 mcp = FastMCP(mcp_name)
 
 
-async def readme_writer_tool(chat: Optional[Any]) -> Any:
+async def readme_writer_tool(chat: Any | None) -> Any:
     print("readme_writer_tool")
-    agent = Agent(configuration["agentic-tools"])
-    return await agent.run_agent("readme_writer", chat=chat)
+    agent = Agent(configuration, "readme_writer", mcp_name, chat)
+    return await agent.run_agent()
 
 
-async def approver_tool(chat: Optional[Any]) -> Any:
+async def approver_tool(chat: Any | None) -> Any:
     print("approver_tool")
-    agent = Agent(configuration["agentic-tools"])
-    return await agent.run_agent("approver", chat=chat)
+    agent = Agent(configuration, "approver", mcp_name, chat)
+    return await agent.run_agent()
 
 
-async def developer_tool(chat: Optional[Any]) -> Any:
+async def developer(chat: Any | None) -> Any:
     print("developer_tool")
-    agent = Agent(configuration["agentic-tools"])
-    return await agent.run_agent("developer", chat=chat)
+    agent = Agent(configuration, "developer", mcp_name, chat)
+    return await agent.run_agent()
 
-
-readme_result = asyncio.run(
-    readme_writer_tool("Provide an updated README file based on the recent changes.")
-)
 
 """
 # print(readme_result)
@@ -52,3 +48,16 @@ approval_result = asyncio.run(
 )
 print(approval_result)
 """
+
+
+async def main():
+    response = await approver_tool(
+        "Audit recent changes and provide feedback on the changes."
+    )
+
+    print(response)
+    return
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
