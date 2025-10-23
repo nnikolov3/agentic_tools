@@ -43,8 +43,8 @@ async def architect_tool(chat: Any | None) -> Any:
 
 async def main():
     # response = await architect_tool()
-    # await knowledge_bank.run_ingestion()
-    await approver_tool("Review changes")
+    await knowledge_bank.run_ingestion()
+
 
     return
 
