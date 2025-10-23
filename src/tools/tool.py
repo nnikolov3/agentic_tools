@@ -58,22 +58,38 @@ class Tool:
         to API for generation. Agent-specific post-processing is handled upstream in Agent.
 
         Args:
-            chat: The current chat input or message.
+            chat: The current chat input or message. For 'commentator', this is the file content.
             memory_context: Retrieved memory context string (optional).
 
         Returns:
             The raw response from the API provider.
         """
-        source_dir: str = str(Path(f"{self.current_working_directory}/src"))
-        # Explicit Payload Construction: Gather all context components.
-        self.payload["prompt"] = self.agent_prompt
-        self.payload["skills"] = self.agent_skills
-        self.payload["memory"] = memory_context
-        self.payload["git-diff-patch"] = self.shell_tools.create_patch()
-        self.payload["git-info"] = self.shell_tools.get_git_info()
-        self.payload["design_documents"] = self.shell_tools.get_design_docs_content()
-        self.payload["source_code"] = self.shell_tools.process_directory(source_dir)
-        self.payload["chat"] = chat
+        # Explicit Over Implicit: Handle the 'commentator' agent as a special case.
+        # Its design as a pure text transformer requires a minimal payload containing
+        # only the file content, not the full project context, to avoid confusing the LLM.
+        if self.agent == "commentator":
+            logger.info(f"Running '{self.agent}' with a simplified payload.")
+            self.payload["prompt"] = self.agent_prompt
+            self.payload["skills"] = self.agent_skills
+            # The 'chat' for the commentator is the full file content.
+            self.payload["chat"] = chat
+            # No memory or other context is needed.
+            self.payload["memory"] = None
+        else:
+            # Default behavior for all other agents that require full project context.
+            logger.info(f"Running '{self.agent}' with standard context payload.")
+            source_dir: str = str(Path(f"{self.current_working_directory}/src"))
+            # Explicit Payload Construction: Gather all context components.
+            self.payload["prompt"] = self.agent_prompt
+            self.payload["skills"] = self.agent_skills
+            self.payload["memory"] = memory_context
+            self.payload["git-diff-patch"] = self.shell_tools.create_patch()
+            self.payload["git-info"] = self.shell_tools.get_git_info()
+            self.payload["design_documents"] = (
+                self.shell_tools.get_design_docs_content()
+            )
+            self.payload["source_code"] = self.shell_tools.process_directory(source_dir)
+            self.payload["chat"] = chat
 
         # print(json.dumps(self.payload))
 

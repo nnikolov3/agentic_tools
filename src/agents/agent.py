@@ -56,11 +56,16 @@ class Agent:
         """
         try:
             # Memory initialization
-            if self.memory_config and self.memory_config.get("qdrant_url"):
-                self.memory = await QdrantMemory.create(self.memory_config)
-                self.memory_context = await self.memory.retrieve_context(str(self.chat))
+            if self.agent_name != "commentator":
+                if self.memory_config and self.memory_config.get("qdrant_url"):
+                    self.memory = await QdrantMemory.create(self.memory_config)
+                    self.memory_context = await self.memory.retrieve_context(
+                        str(self.chat)
+                    )
+                else:
+                    logger.info("No memory config; skipping retrieval.")
+                    self.memory_context = ""
             else:
-                logger.info("No memory config; skipping retrieval.")
                 self.memory_context = ""
 
             # Tool execution

@@ -45,7 +45,6 @@ async def main():
     # response = await architect_tool()
     await knowledge_bank.run_ingestion()
 
-
     return
 
 
