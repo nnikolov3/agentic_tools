@@ -1,6 +1,3 @@
-
-
-
 from __future__ import annotations
 
 import asyncio
@@ -17,7 +14,8 @@ configuration_path = Path(f"{cwd}/conf/agentic_tools.toml")
 configurator = Configurator(configuration_path)
 configuration = configurator.get_config_dictionary()
 mcp_name = "agentic-tools"
-knowledge_bank=KnowledgeBankIngestor(configuration[mcp_name])
+knowledge_bank = KnowledgeBankIngestor(configuration[mcp_name])
+
 
 async def readme_writer_tool(chat: Any | None) -> Any:
     print("readme_writer_tool")
@@ -36,6 +34,7 @@ async def developer_tool(chat: Any | None) -> Any:
     agent = Agent(configuration, "developer", mcp_name, chat)
     return await agent.run_agent()
 
+
 async def architect_tool(chat: Any | None) -> Any:
     print("architect_tool")
     agent = Agent(configuration, "architect", mcp_name, chat)
@@ -44,8 +43,8 @@ async def architect_tool(chat: Any | None) -> Any:
 
 async def main():
     # response = await architect_tool()
-    await knowledge_bank.run_ingestion()
-
+    # await knowledge_bank.run_ingestion()
+    await approver_tool("Review changes")
 
     return
 

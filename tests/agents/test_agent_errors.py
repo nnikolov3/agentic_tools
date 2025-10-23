@@ -4,6 +4,7 @@ Purpose:
 This module contains unit tests for handling errors within the Agent class,
 such as initialization with invalid configuration or running non-existent agents.
 """
+
 import pytest
 
 from src.agents.agent import Agent

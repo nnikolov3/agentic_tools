@@ -122,14 +122,16 @@ class ApiTools:
             return response_text
 
 
-
 _GEMINI_SEMAPHORE = asyncio.Semaphore(5)
+
 
 async def google_documents_api(model, api_key, prompt, file):
     async with _GEMINI_SEMAPHORE:
         api_key_value: str | None = os.getenv(api_key) if api_key else None
         if not api_key_value:
-            raise ValueError(f"API key environment variable '{api_key}' is not set or empty")
+            raise ValueError(
+                f"API key environment variable '{api_key}' is not set or empty"
+            )
 
         google_client = Client(api_key=api_key_value)
         file_path = pathlib.Path(file).resolve()
@@ -140,8 +142,7 @@ async def google_documents_api(model, api_key, prompt, file):
 
         response = await asyncio.to_thread(
             lambda: google_client.models.generate_content(
-                model=model,
-                contents=[file_upload, prompt]
+                model=model, contents=[file_upload, prompt]
             )
         )
 

@@ -64,7 +64,7 @@ class Tool:
         Returns:
             The raw response from the API provider.
         """
-        source_dir: str = Path(f"{self.current_working_directory}/src")
+        source_dir: str = str(Path(f"{self.current_working_directory}/src"))
         # Explicit Payload Construction: Gather all context components.
         self.payload["prompt"] = self.agent_prompt
         self.payload["skills"] = self.agent_skills
@@ -74,6 +74,8 @@ class Tool:
         self.payload["design_documents"] = self.shell_tools.get_design_docs_content()
         self.payload["source_code"] = self.shell_tools.process_directory(source_dir)
         self.payload["chat"] = chat
+
+        # print(json.dumps(self.payload))
 
         # Delegate to API for execution.
         self.response = await self.api_tools.run_api(self.payload)

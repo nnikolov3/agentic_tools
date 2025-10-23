@@ -262,9 +262,9 @@ class ShellTools:
         return any(filename.endswith(ext) for ext in self.include_extensions)
 
     def get_files_by_extensions(
-            self,
-            directory_path: Optional[str] = None,
-            extensions: Optional[List[str]] = None
+        self,
+        directory_path: Optional[str] = None,
+        extensions: Optional[List[str]] = None,
     ) -> List[Path]:
         """
         Retrieve a list of file paths in a directory that match specified extensions.
@@ -283,17 +283,24 @@ class ShellTools:
             List of Path objects for matching files.
 
         """
-        self.include_extensions = extensions
-        if extensions is None:
-            extensions = self.include_extensions
+        extensions_to_use: List[str]
+        if extensions is not None:
+            self.include_extensions = extensions
+            extensions_to_use = extensions
+        else:
+            extensions_to_use = self.include_extensions
 
-        if not extensions:
+        if not extensions_to_use:
             logger.warning("No extensions provided; returning empty list.")
             return []
 
-        search_dir = Path(directory_path) if directory_path else self.current_working_directory
+        search_dir = (
+            Path(directory_path) if directory_path else self.current_working_directory
+        )
         if not search_dir.is_dir():
-            logger.warning(f"Directory does not exist or is not a directory: {search_dir}")
+            logger.warning(
+                f"Directory does not exist or is not a directory: {search_dir}"
+            )
             return []
 
         matching_files: List[Path] = []
@@ -301,13 +308,11 @@ class ShellTools:
 
         try:
             for item in search_dir.rglob("*"):
-                if (
-                        item.is_file()
-                        and self._matches_extension(item.name)
-
-                ):
+                if item.is_file() and self._matches_extension(item.name):
                     # Skip files in excluded directories.
-                    if any(excluded in item.parts for excluded in self.exclude_directories):
+                    if any(
+                        excluded in item.parts for excluded in self.exclude_directories
+                    ):
                         continue
 
                     matching_files.append(item)

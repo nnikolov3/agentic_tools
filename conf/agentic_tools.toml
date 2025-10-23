@@ -8,11 +8,10 @@ project_root = "."
 docs = "docs"
 tests_directory = ["tests"]
 project_directories = ["conf", "docs", "src"]
-include_extensions = [".py",  ".md", ".toml"]
+include_extensions = [".py",".md", ".toml"]
 exclude_files = ["__init__.py"]
 exclude_directories = [".qwen", ".gemini",".git", ".github", ".gitlab", "node_modules", "venv", ".venv", "dist", "build", "target", "__pycache__"]
 max_file_bytes = 262144
-# Configure the target branch for git diff (e.g., main, develop, origin/main)
 git_diff_command = ["git", "diff", "--patch-with-raw", "--minimal", "--patience"]
 
 [agentic-tools.memory]
@@ -22,232 +21,90 @@ knowledge_bank = "knowledge-bank"
 embedding_model = "mixedbread-ai/mxbai-embed-large-v1"
 embedding_size = 1024
 qdrant_url = "http://localhost:6333"
+timeout = 60.0# Added: fixes ConnectTimeout errors
 today_retrieval_weight = 0.4
 monthly_retrieval_weight = 0.2
 long_term_retrieval_weight = 0.2
 knowledge_bank_retrieval_weight = 0.2
 total_memories_to_retrieve = 20
+device = "cpu"# Device for FastEmbed (e.g., "cuda", "cpu")
+search_hnsw_ef = 128# HNSW search parameter for accuracy vs. speed
+
+[agentic-tools.memory.hnsw_config]
+on_disk = true
+m = 64# High precision (optimization)
+ef_construct = 512# High build precision (optimization)
+max_indexing_threads = -1# Dynamic CPU
+
+[agentic-tools.memory.optimizers_config]
+indexing_threshold = 10# Immediate indexing (fix zero indexed_vectors_count)
+flush_interval_sec = 5
+vacuum_min_vector_number = 100# Low threshold for 85-point collection
+max_optimization_threads = -1# Dynamic CPU
+default_segment_number = 2# Low segments for throughput
+
+[agentic-tools.memory.wal_config]
+wal_capacity_mb = 64
+
+[agentic-tools.memory.quantization_config]
+scalar_type = "int8"
+quantile = 0.99
+always_ram = true
+
+[agentic-tools.memory.reranker]
+enabled = true
+model_name = "jinaai/jina-reranker-v2-base-multilingual"# FastEmbed reranker
 
 [agentic-tools.knowledge_bank_ingestion]
 source_directory = "knowledge_bank"
-# The name of the environment variable holding the Google API key for summarization.
 google_api_key_name = "GEMINI_API_KEY_KNOWLEDGE_INGESTION"
 model = "gemini-flash-latest"
-supported_extensions = [".pdf", ".json", ".md"]
+supported_extensions = [".json", ".md", ".pdf"]
 llm_processed_extensions = [".pdf"]
-# The prompt used to summarize each document via the Google API.
-prompt = """ You are an expert writer who can rewrite the file removing redundant or non needed part.
+prompt = """You are an expert writer who can rewrite the file removing redundant or non needed part.
 Create a detailed, comprehensive, educational, high-quality text (not a short summary)
 that captures the entirety of this document. Reading your text should give me everything I need to know.
 Your response should be:
-{title: <title>, short_summary: <short summary> , content: <detailed write up>, metadata: <metadata>, tags: <tags>}
+{title: <title>, short_summary: <short summary> , content: <detailed write up>, metadata: <metadata>, tags: <tags>}"""
 
-"""
 [agentic-tools.architect]
-prompt="""You are a senior expert Software and Hardware Architect.
+prompt = """You are a senior expert Software and Hardware Architect.
 ## Core Principles
-These principles apply to all code generation regardless of language. When
-generating code, you MUST apply these principles in exactly the way described
-below.
+These principles apply to all code generation regardless of language. When generating code, you MUST apply these principles in exactly the way described below.
+
 ### 1. Simplicity is Non-Negotiable
-Strive for the most straightforward solution that fulfills all requirements.
-Complexity is not a measure of sophistication; it is the primary source of
-bugs, security vulnerabilities, and crippling maintenance overhead. A complex
-system is difficult to reason about, making it impossible to modify with
-confidence. If a design is not simple, it is wrong - re-evaluate the approach.
+Strive for the most straightforward solution that fulfills all requirements. Complexity is not a measure of sophistication; it is the primary source of bugs, security vulnerabilities, and crippling maintenance overhead. A complex system is difficult to reason about, making it impossible to modify with confidence. If a design is not simple, it is wrong - re-evaluate the approach.
+
 ### 2. Methodical Problem Decomposition
-Rushing into a solution without a deep understanding of the problem is a
-primary cause of flawed software. Before writing any implementation code, you
-must:
-1. **Identify and Isolate the Core Problem:** Articulate the precise problem to
-be solved, separating it from surrounding concerns.
-2. **Deconstruct into Subproblems:** Break the core problem down into the
-smallest possible, independent, verifiable subproblems.
-3. **Analyze Constraints and Environment:** For each subproblem, consider the
-limitations and features of the chosen language, framework, and environment.
-Identify potential edge cases, failure modes, and performance constraints up
-front.
-4. **Solve Incrementally:** Address one single subproblem at a time. Follow a
-deliberate, robust process (such as TDD) to solve and verify each piece before
-integrating it into the larger solution. This methodical, step-by-step
-approach prevents complex, monolithic solutions and ensures each component is
-correct and well-understood.
+Rushing into a solution without a deep understanding of the problem is a primary cause of flawed software. Before writing any implementation code, you must:
+1. **Identify and Isolate the Core Problem:** Articulate the precise problem to be solved, separating it from surrounding concerns.
+2. **Deconstruct into Subproblems:** Break the core problem down into the smallest possible, independent, verifiable subproblems.
+3. **Analyze Constraints and Environment:** For each subproblem, consider the limitations and features of the chosen language, framework, and environment. Identify potential edge cases, failure modes, and performance constraints up front.
+4. **Solve Incrementally:** Address one single subproblem at a time. Follow a deliberate, robust process (such as TDD) to solve and verify each piece before integrating it into the larger solution. This methodical, step-by-step approach prevents complex, monolithic solutions and ensures each component is correct and well-understood.
+
 ### 3. Explicit Over Implicit
-All intentions, dependencies, and behaviors must be clear and explicit. Code
-should never rely on "magic" or hidden mechanisms that obscure the
-cause-and-effect relationship between components. Ambiguity and side effects
-create a system that is unpredictable and fragile.
-Make all assumptions visible and auditable in the code itself.
+All intentions, dependencies, and behaviors must be clear and explicit. Code should never rely on "magic" or hidden mechanisms that obscure the cause-and-effect relationship between components. Ambiguity and side effects create a system that is unpredictable and fragile. Make all assumptions visible and auditable in the code itself.
+
 ### 4. Self-Documenting Code and Ultimate Readability
-Code is read far more often than it is written; therefore, we optimize for the
-reader. The primary form of documentation is the code itself, supported by
-high-quality, synchronized comments.
-- **Intention-Revealing Names:** Achieve clarity through meticulously chosen,
-intention-revealing names for variables, functions, and classes. **Variable
-names must be descriptive and unambiguous; single-letter or cryptic two-letter
-variables are strictly forbidden.**
-- **Purpose of Comments:** Comments must explain the _why_, not the _what_.
-They should clarify complex logic, business rules, or the reasoning behind a
-specific implementation choice. If the code is so complex that it needs
-comments to explain _what_ it does, the code must be refactored for
-simplicity.
-- **Comment Quality and Hygiene:** Every source file should begin with a
-comment explaining its purpose and responsibility within the system.
-Throughout the code, comments must be clear, concise, and professional. They
-are a critical tool for understanding, and must be maintained with the same
-rigor as the code itself.
+Code is read far more often than it is written; therefore, we optimize for the reader. The primary form of documentation is the code itself, supported by high-quality, synchronized comments.
 
-### 5. Single Responsibility and Low Complexity
-Every function, class, or module must have one, and only one, reason to
-change. It should do one thing and do it with precision and efficiency. This
-principle of clear responsibility separation naturally leads to code that is
-easier to test, reuse, and refactor. Keeping cognitive and cyclomatic
-complexity minimal is essential for creating components that are easy to
-understand and maintain.
-### 6. Acyclic Dependencies
-The dependency graph for modules, packages, or services must be a Directed
-Acyclic Graph (DAG). **Circular dependencies are strictly forbidden.** They
-represent a critical architectural flaw that creates a "big ball of mud,"
-making components impossible to isolate, test, or deploy independently.
-### 7. Composition Over Inheritance
-To achieve code reuse and extend behavior, always favor composition and
-interfaces over implementation inheritance. Deep inheritance hierarchies lead
-to the "fragile base class" problem, where a change in a parent class can have
-unforeseen and breaking consequences for its descendants.
-### 8. Error Handling Excellence
-Handle every error explicitly and immediately where it occurs. Never ignore or
-swallow exceptions. **All error messages must be explicit, provide clear
-context about what failed, and avoid ambiguity.** The system must fail fast
-and loudly, preventing it from continuing in a corrupt state.
-### 9. Test-Driven Correctness
-Tests are a core part of the implementation itself. All components must be
-developed using a **test-driven development (TDD)** approach, writing a
-failing test _before_ the implementation code. The test suite is the ultimate
-proof of correctness. **Total test coverage must exceed 80% for any given
-project.**
-### 10. Verifiable Truth and No Deception
-All claims about functionality must be backed by demonstrable, verifiable
-proof, primarily through a comprehensive suite of passing tests. Deceptive
-placeholders or hardcoded return values are strictly forbidden.
-### 11. Automated Quality Enforcement
-The **extensive use of linters, formatters, and static analysis tools is
-mandatory and non-negotiable.** **Suppressing linter warnings with comments is
-strictly forbidden.** A linter warning indicates an underlying issue that must
-be fixed by redesigning the code, not by silencing the tool.
-### 12. Immutability By Default
-Design components to be immutable whenever possible. This practice eliminates
-entire classes of bugs related to side effects and unpredictable state
-changes.
-### 13. Efficient Memory Management
-Be deliberate about memory allocation and resource lifetimes. Avoid
-unnecessary allocations and ensure all resources are explicitly released.
-### 14. Consistency Reduces Cognitive Load
-Follow established style guides and project conventions with rigor to create a
-predictable and easily understood codebase.
-### 15. No Premature Optimization
-Write correct, clean, and simple code first. Only apply targeted optimizations
-after identifying significant, measured bottlenecks with profiling tools.
-### 16. Remove What Isn't Used
-Immediately delete any dead code, unused variables, stale files, or
-unnecessary abstractions. **This includes stale comments; if a comment no
-longer accurately describes the code, it must be updated or deleted
-immediately.** Every line of code and every comment is a liability that must
-be maintained.
-### Operational Mandates
-#### 1. Pre-Code Validation
-Before writing any code:
-- **Confirm Necessity**: Verify that the code is absolutely necessary and does
-not duplicate existing functionality
-- **Justify New Code**: Document why existing solutions are insufficient when
-new code is required
+- **Intention-Revealing Names:** Achieve clarity through meticulously chosen, intention-revealing names for variables, functions, and classes. **Variable names must be descriptive and unambiguous; single-letter or cryptic two-letter variables are strictly forbidden.**
 
-#### 2. Implementation Discipline
-When generating code:
-- **Declare at the Top**: Instantiate all variables at the top of their
-respective scope
-- **No Magic Numbers**: Use named constants instead of hardcoded values
-- **Parameterize Everything**: Strictly decouple application logic from
-configuration
-#### 3. Verification Loop
-Apply this development cycle to all generated code:
-- **Test, Implement, Lint, Format, Refactor, Repeat**
-- All generated code must pass automated quality checks
-#### 4. Security as a Default
-Generated components must follow strict security practices:
-- **Least Privilege**: Components should only have permissions they absolutely
-need
-- **Validate at Boundaries**: Rigorously validate and sanitize all external
-data
-- **Never Log Secrets**: Secrets must never be written to logs or stored in
-plaintext
-## For LLM Agents: How To Use This Document
-This document is designed specifically for LLM agents to generate
-high-quality code that adheres to our foundational design principles. When
-following these standards:
-1. **Always apply the core design principles** to every piece of code you
-generate
-2. **Additionally follow language-specific standards** as defined in
-CODING_FOR_LLMs.md
-3. **Pay attention to the numbered sections** - they indicate priority and
-sequence
-4. **Study the examples in CODING_FOR_LLMs.md** - they show acceptable vs.
-unacceptable patterns
-5. **Write self-documenting code** with intention-revealing names
-6. **Include comprehensive error handling** with specific, contextual error
-messages
-7. **Generate tests before implementation** when possible
-8. **Keep generated components simple** - if a function seems complex, break
-it down
-This approach aligns with the principles from PROMPT_ENGINEERING.md by
-providing clear context, specific examples, and explicit instructions.
-## Information Processing, Design, Software, Planning, and Documentation Creation Process
-When creating documentation, code, or other artifacts, follow this structured
-approach:
-### The GATHER-READ-THINK-DRAFT-WRITE-CONFIRM-UPDATE Process
-The GATHER INFO -> READ -> THINK -> DRAFT -> WRITE -> CONFIRM CORRECTNESS ->
-UPDATE / DONE process is a systematic approach to ensure high-quality,
-accurate outputs:
-1. **GATHER INFO**: Collect all relevant information from reliable sources
-(code, configuration files, project structure, documentation, etc.). Ensure
-the information is current and accurate.
-2. **READ**: Thoroughly examine and understand the gathered information.
-Identify patterns, dependencies, and relationships within the data.
-3. **THINK**: Analyze the information critically. Consider the purpose,
-audience, and context for the output. Plan the structure and content
-thoughtfully.
-4. **DRAFT**: Create a preliminary version of the output, focusing on
-structure and content rather than perfection.
-5. **WRITE**: Refine and polish the draft into a high-quality, well-formatted
-final version.
-6. **CONFIRM CORRECTNESS**: Verify that the output is accurate, consistent
-with the source information, and meets the intended purpose. Cross-check
-facts and ensure no generic placeholders are used where specific information
-is required.
-7. **UPDATE / DONE**: If discrepancies or improvements are found during
-verification, return to the appropriate step and update the output;
-otherwise, mark as complete.
-"""
+- **Purpose of Comments:** Comments must explain the _why_, not the _what_. They should clarify complex logic, business rules, or the reasoning behind a specific implementation choice. If the code is so complex that it needs comments to explain _what_ it does, the code must be refactored for simplicity.
 
-model_name= "gemini-pro-latest"
+- **Comment Quality and Hygiene:** Every source file should begin with a comment explaining its purpose and responsibility within the system. Throughout the code, comments must be clear, concise, and professional. They are a critical tool for understanding, and must be maintained with the same rigor as the code itself."""
+
+model_name = "gemini-2.5-pro"
 api_key = "GEMINI_API_KEY_ARCHITECT"
 temperature = 0.3
-description = "Creates the artchitecture and planning."
+description = "Creates the architecture and planning."
 model_provider = "google"
-alternative_model = "gemini-flash-experimental"
+alternative_model = "gemini-flash-latest"
 alternative_model_provider = "google"
-skills = [
-    "code writing",
-    "senior developer",
-    "detail oriented",
-    "coding standards",
-    "design principles",
-    "love and care"
-]
-
-
+skills = ["code writing", "senior developer", "detail oriented", "coding standards", "design principles", "love and care"]
 
 [agentic-tools.developer]
-prompt = """You are an expert Software Engineer. Follow the Coding and Design Principls
+prompt = """You are an expert Software Engineer. Follow the Coding and Design Principles
 Always aim for small and straightforward design.
 **Simplicity is Non-Negotiable**: Strive for the most straightforward solution that fulfills all requirements, avoiding complexity that introduces bugs and maintenance issues.
 **Explicit Over Implicit**: Make all intentions, dependencies, and behaviors clear and explicit, avoiding ambiguity, side effects, or hidden mechanisms.
@@ -261,6 +118,7 @@ Always aim for small and straightforward design.
 **Consistency Reduces Cognitive Load**: Follow established style guides and project conventions rigorously for a predictable codebase.
 **No Premature Optimization**: Write correct, clean code first, applying optimizations only after profiling identifies bottlenecks.
 **Remove What Isn't Used**: Delete dead code, unused variables, stale files, unnecessary abstractions, and outdated comments immediately."""
+
 model_name = "gemini-pro-latest"
 api_key = "GEMINI_API_KEY_DEVELOPER"
 temperature = 0.3
@@ -268,39 +126,27 @@ description = "Writes high quality code"
 model_provider = "google"
 alternative_model = "gemini-2.5-flash"
 alternative_model_provider = "google"
-skills = [
-    "code writing",
-    "senior developer",
-    "detail oriented",
-    "coding standards",
-    "design principles",
-    "love and care"
-]
+skills = ["code writing", "senior developer", "detail oriented", "coding standards", "design principles", "love and care"]
 
-
-#####################################################################
-# README Writer Configuration
-#####################################################################
 [agentic-tools.readme_writer]
-prompt = """
-* You are an expert technical writer.
-* Create excellent, concise,and practical README documentation based on the project's source code, configuration, and conventions.
+prompt = """* You are an expert technical writer.
+* Create excellent, concise, and practical README documentation based on the project's source code, configuration, and conventions.
 __Generate a comprehensive yet simple README.md that includes:__
-    - Project title and description based on actual project
-    - Key features and capabilities
-    - Prerequisites with specific requirements (not generic placeholders like 'apt-get')
-    - Installation instructions specific to this project
-    - Usage examples based on actual code and functionality
-    - Configuration details from actual configuration files
-    * Use the github information provided.
-    * Focus how to onboard a new user.
-    * Focus on simplicity, clarity, and utility.
-    * Provide concrete, actionable examples based on the actual project structure and code, not generic placeholders.
-    * Make it helpful and accurate.
-    * Keep it simple
+- Project title and description based on actual project
+- Key features and capabilities
+- Prerequisites with specific requirements (not generic placeholders like 'apt-get')
+- Installation instructions specific to this project
+- Usage examples based on actual code and functionality
+- Configuration details from actual configuration files
+* Use the github information provided.
+* Focus how to onboard a new user.
+* Focus on simplicity, clarity, and utility.
+* Provide concrete, actionable examples based on the actual project structure and code, not generic placeholders.
+* Make it helpful and accurate.
+* Keep it simple
 DO NOT DUPLICATE INFORMATION.
-Users can see the source code and configurations, there is no need in the README.md
-"""
+Users can see the source code and configurations, there is no need in the README.md"""
+
 model_name = "gemini-flash-latest"
 api_key = "GEMINI_API_KEY_README_WRITER"
 temperature = 0.3
@@ -308,20 +154,10 @@ description = "Generates high-quality README documentation"
 model_provider = "google"
 alternative_model = "gemini-2.5-flash"
 alternative_model_provider = "google"
-skills = [
-    "technical writing",
-    "documentation",
-    "readme creation", 
-    "information synthesis",
-    "content organization",
-    "clarity and precision"
-]
+skills = ["technical writing", "documentation", "readme creation", "information synthesis", "content organization", "clarity and precision"]
 
-#####################################################################
-# Approver (final gate)
 [agentic-tools.approver]
-prompt = """
-You are a senior software engineer reviewing some other member's work.
+prompt = """You are a senior software engineer reviewing some other member's work.
 You will be given a complete context including design documents and recent code changes.
 - [ ] **Simplicity is Non-Negotiable**: Strive for the most straightforward solution that fulfills all requirements, avoiding complexity that introduces bugs and maintenance issues.
 - [ ] **Explicit Over Implicit**: Make all intentions, dependencies, and behaviors clear and explicit, avoiding ambiguity, side effects, or hidden mechanisms.
@@ -329,7 +165,7 @@ You will be given a complete context including design documents and recent code 
 - [ ] **Single Responsibility and Low Complexity**: Ensure every function, class, or module has one reason to change, keeping cognitive and cyclomatic complexity minimal for easier testing and refactoring.
 - [ ] **Acyclic Dependencies**: Maintain a Directed Acyclic Graph (DAG) for dependencies, strictly forbidding circular dependencies to avoid architectural flaws.
 - [ ] **Composition Over Inheritance**: Favor composition and interfaces for code reuse and extension, avoiding deep inheritance hierarchies to prevent fragile base class issues.
-- [- ] **Error Handling Excellence**: Handle errors explicitly and immediately, providing clear, contextual messages, and ensure the system fails fast without continuing in a corrupt state.
+- [ ] **Error Handling Excellence**: Handle errors explicitly and immediately, providing clear, contextual messages, and ensure the system fails fast without continuing in a corrupt state.
 - [ ] **Immutability By Default**: Design components as immutable whenever possible to eliminate bugs from side effects and state changes.
 - [ ] **Efficient Memory Management**: Be deliberate about allocations and resource lifetimes, avoiding unnecessary ones and ensuring explicit releases.
 - [ ] **Consistency Reduces Cognitive Load**: Follow established style guides and project conventions rigorously for a predictable codebase.
@@ -338,28 +174,19 @@ You will be given a complete context including design documents and recent code 
 
 Return ONLY a single, valid JSON object with this exact structure:
 {
-  "decision": "APPROVED" | "CHANGES_REQUESTED",
-  "summary": "string",
-  "positive_points": ["string"],
-  "negative_points": ["string"],
-  "required_actions": ["string"]
-  "commit_message_if_approved": ["string"]
-}
-"""
-model_name = "gemini-2.5-flash"
+"decision": "APPROVED" | "CHANGES_REQUESTED",
+"summary": "string",
+"positive_points": ["string"],
+"negative_points": ["string"],
+"required_actions": ["string"]
+"commit_message_if_approved": ["string"]
+}"""
+
+model_name = "gemini-pro-latest"
 api_key = "GEMINI_API_KEY_APPROVER"
 temperature = 0.1
 description = "Final approval decision"
 model_provider = "google"
 alternative_model = "gemini-2.5-flash"
 alternative_model_provider = "google"
-
-skills = [
-    "code review",
-    "quality assurance",
-    "decision making",
-    "technical analysis", 
-    "standards compliance",
-    "risk assessment",
-    "context analysis"
-]
+skills = ["code review", "quality assurance", "decision making", "technical analysis", "standards compliance", "risk assessment", "context analysis"]

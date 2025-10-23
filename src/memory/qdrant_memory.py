@@ -1,11 +1,8 @@
 # src/memory/qdrant_memory.py
+
 """
 Purpose:
-This module provides a self-contained memory management system using Qdrant as the vector database.
-It handles storing memories, embedding them via FastEmbed, and retrieving contextually relevant
-memories based on a weighted, four-part strategy (today, monthly, long-term, and knowledge bank).
-The design follows foundational principles: simplicity through focused responsibilities, explicit
-configuration handling, and robust error management to ensure reliable agent context retrieval.
+Complete Qdrant memory management with FastEmbed reranker integration and optimizations.
 """
 
 import asyncio
@@ -13,43 +10,45 @@ import logging
 import math
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Coroutine, Dict, List, Optional
+from typing import Any, Coroutine, Dict, List, Optional, cast
 
-from qdrant_client import AsyncQdrantClient, models
+from fastembed.rerank.cross_encoder import TextCrossEncoder
+from qdrant_client import models
+from src.memory.qdrant_client_manager import QdrantClientManager
+from fastembed import TextEmbedding
 
-# Self-Documenting Code: A dedicated logger for this module improves traceability.
 logger: logging.Logger = logging.getLogger(__name__)
 
 
 class QdrantMemory:
     """
-    Manages agent memories using Qdrant, supporting a weighted, multi-source retrieval strategy.
+    Memory management with FastEmbed reranker for relevance boost.
     """
 
-    def __init__(self, config: Dict[str, Any]) -> None:
+    def __init__(
+        self, config: Dict[str, Any], qdrant_manager: QdrantClientManager
+    ) -> None:
         """
-        Initializes the QdrantMemory instance with explicit configuration values.
-        Reads from [agentic-tools.memory] section of the configuration.
+        Initialize with configuration from TOML.
         """
-        # Qdrant connection settings
-        self.qdrant_url: str = config.get("qdrant_url", "http://localhost:6333")
         self.collection_name: str = config.get("collection_name", "agent_memory")
         self.knowledge_bank_collection_name: str = config.get(
-            "knowledge_bank", "knowledge_bank"
+            "knowledge_bank", "knowledge-bank"
         )
-
-        # Embedding settings
         self.embedding_model: str = config.get(
             "embedding_model", "mixedbread-ai/mxbai-embed-large-v1"
         )
-        self.embedding_size: Optional[int] = config.get("embedding_size")
-
-        # Retrieval settings
-        self.total_memories_to_retrieve: int = config.get(
-            "total_memories_to_retrieve", 10
+        self.device: str = config.get("device", "cpu")
+        self.embedder = TextEmbedding(
+            model_name=self.embedding_model, device=self.device
         )
+        self.embedding_size: int = self.embedder.embedding_size  # 1024
+        self.total_memories_to_retrieve: int = config.get(
+            "total_memories_to_retrieve", 20
+        )
+        self.search_hnsw_ef: int = config.get("search_hnsw_ef", 128)
 
-        # Weighted retrieval parameters
+        # Weights from TOML
         self.today_retrieval_weight: float = config.get("today_retrieval_weight", 0.4)
         self.monthly_retrieval_weight: float = config.get(
             "monthly_retrieval_weight", 0.2
@@ -61,103 +60,56 @@ class QdrantMemory:
             "knowledge_bank_retrieval_weight", 0.2
         )
 
-        # Validate that weights sum to approximately 1.0
-        total_weight = (
-                self.today_retrieval_weight
-                + self.monthly_retrieval_weight
-                + self.long_term_retrieval_weight
-                + self.knowledge_bank_retrieval_weight
-        )
-        if not math.isclose(total_weight, 1.0, rel_tol=1e-5):
-            logger.warning(
-                f"Memory retrieval weights sum to {total_weight}, not 1.0. This may lead to unexpected retrieval counts."
-            )
+        self.qdrant_manager = qdrant_manager
+        self.client = self.qdrant_manager.get_client()
 
-        # Efficient Memory Management: Initialize the client once.
-        self.client: AsyncQdrantClient = AsyncQdrantClient(url=self.qdrant_url)
+        # FastEmbed reranker
+        self.reranker: Optional[TextCrossEncoder] = None
+        reranker_config = config.get("reranker", {})
+        if reranker_config.get("enabled", True):
+            model_name = reranker_config.get(
+                "model_name", "jinaai/jina-reranker-v2-base-multilingual"
+            )
+            self.reranker = TextCrossEncoder(model_name=model_name, device=self.device)
 
     @classmethod
     async def create(cls, config: Dict[str, Any]) -> "QdrantMemory":
-        """
-        Asynchronously creates and initializes a QdrantMemory instance.
-        Ensures both agent_memory and knowledge_bank collections exist.
-        """
-        instance: QdrantMemory = cls(config)
-        # Ensure both required collections exist before proceeding.
-        await instance._ensure_collection_exists(instance.collection_name)
-        await instance._ensure_collection_exists(instance.knowledge_bank_collection_name)
+        """Create memory instance with collections."""
+        qdrant_manager = QdrantClientManager(config)
+        instance = cls(config, qdrant_manager)
+        await qdrant_manager.ensure_collection_exists(
+            collection_name=instance.collection_name,
+            embedding_size=instance.embedding_size,
+        )
+        await qdrant_manager.ensure_collection_exists(
+            collection_name=instance.knowledge_bank_collection_name,
+            embedding_size=instance.embedding_size,
+        )
         return instance
 
-    async def _ensure_collection_exists(self, collection_name: str) -> None:
-        """
-        Ensures the specified Qdrant collection exists, creating it if necessary.
-        """
-        try:
-            collection_exists: bool = await self.client.collection_exists(
-                collection_name=collection_name
-            )
-            if not collection_exists:
-                # Determine embedding size dynamically if not specified
-                if self.embedding_size is None:
-                    from sentence_transformers import SentenceTransformer
-                    embedder = SentenceTransformer(self.embedding_model)
-                    embedding_size = embedder.get_sentence_embedding_dimension()
-                else:
-                    embedding_size = self.embedding_size
-
-                logger.info(
-                    f"Collection '{collection_name}' not found. Creating it with size {embedding_size}."
-                )
-                await self.client.create_collection(
-                    collection_name=collection_name,
-                    vectors_config=models.VectorParams(
-                        size=embedding_size, distance=models.Distance.COSINE
-                    ),
-                )
-                logger.info(f"Successfully created collection '{collection_name}'.")
-        except Exception as setup_error:
-            error_message = f"Failed to ensure Qdrant collection '{collection_name}' exists: {setup_error}"
-            logger.error(error_message, exc_info=True)
-            raise RuntimeError(error_message) from setup_error
-
     async def add_memory(self, text_content: str) -> None:
-        """
-        Embeds and stores a new memory in the `agent_memory` collection.
-        """
+        """Add memory to collection."""
         try:
-            memory_payload: Dict[str, Any] = {
+            payload = {
                 "text_content": text_content,
                 "timestamp": datetime.now(timezone.utc).timestamp(),
             }
-            document = models.Document(text=text_content, model=self.embedding_model)
+            vector = list(self.embedder.embed(documents=[text_content]))[0].tolist()
             point_id = str(uuid.uuid4())
             await self.client.upsert(
                 collection_name=self.collection_name,
                 points=[
-                    models.PointStruct(
-                        id=point_id, vector=document, payload=memory_payload
-                    )
+                    models.PointStruct(id=point_id, vector=vector, payload=payload)
                 ],
+                wait=True,
             )
-            logger.info(
-                f"Successfully added memory to collection '{self.collection_name}' with ID '{point_id}'."
-            )
-        except Exception as storage_error:
-            error_message = f"Failed to add memory to Qdrant: {storage_error}"
-            logger.error(error_message, exc_info=True)
-            raise RuntimeError(error_message) from storage_error
+            logger.info(f"Added memory ID '{point_id}' to '{self.collection_name}'.")
+        except Exception as e:
+            logger.error(f"Failed to add memory: {e}")
+            raise RuntimeError(f"Memory addition failed: {e}") from e
 
     async def retrieve_context(self, query_text: str) -> str:
-        """
-        Retrieves context using a four-part weighted strategy:
-        1. Today's memories (time-filtered from agent_memory)
-        2. Monthly memories (time-filtered from agent_memory)
-        3. Long-term memories (time-filtered from agent_memory)
-        4. Knowledge bank entries (from knowledge_bank collection)
-
-        Returns a formatted string with all relevant retrieved content.
-        """
-        # Step 1: Calculate Retrieval Limits based on weights
+        """Retrieve with vector search and reranking."""
         num_today = math.ceil(
             self.total_memories_to_retrieve * self.today_retrieval_weight
         )
@@ -171,121 +123,118 @@ class QdrantMemory:
             self.total_memories_to_retrieve * self.knowledge_bank_retrieval_weight
         )
 
-        # Step 2: Define Time-Based Filters for agent_memory
         current_time = datetime.now(timezone.utc)
         today_ts = (current_time - timedelta(days=1)).timestamp()
         month_ts = (current_time - timedelta(days=30)).timestamp()
 
+        query_vector = list(self.embedder.embed(documents=[query_text]))[0].tolist()
+        search_params = models.SearchParams(hnsw_ef=self.search_hnsw_ef, exact=False)
+
+        # Time-based filters
         today_filter = models.Filter(
-            must=[models.FieldCondition(key="timestamp", range=models.Range(gte=today_ts))]
+            must=[
+                models.FieldCondition(key="timestamp", range=models.Range(gte=today_ts))
+            ]
         )
         monthly_filter = models.Filter(
             must=[
                 models.FieldCondition(key="timestamp", range=models.Range(lt=today_ts)),
-                models.FieldCondition(key="timestamp", range=models.Range(gte=month_ts)),
+                models.FieldCondition(
+                    key="timestamp", range=models.Range(gte=month_ts)
+                ),
             ]
         )
         long_term_filter = models.Filter(
-            must=[models.FieldCondition(key="timestamp", range=models.Range(lt=month_ts))]
+            must=[
+                models.FieldCondition(key="timestamp", range=models.Range(lt=month_ts))
+            ]
         )
 
-        # Step 3: Prepare Concurrent Queries
-        query_document = models.Document(text=query_text, model=self.embedding_model)
-        search_coroutines: List[Coroutine[Any, Any, Any]] = []
-
-        # Query agent_memory with time filters
+        # Concurrent searches
+        search_coroutines: List[Coroutine[Any, Any, List[models.ScoredPoint]]] = []
         if num_today > 0:
             search_coroutines.append(
-                self.client.query_points(
+                self.client.search(
                     collection_name=self.collection_name,
-                    query=query_document,
+                    query_vector=query_vector,
                     query_filter=today_filter,
                     limit=num_today,
-                    with_payload=True,
+                    search_params=search_params,
                 )
             )
         if num_monthly > 0:
             search_coroutines.append(
-                self.client.query_points(
+                self.client.search(
                     collection_name=self.collection_name,
-                    query=query_document,
+                    query_vector=query_vector,
                     query_filter=monthly_filter,
                     limit=num_monthly,
-                    with_payload=True,
+                    search_params=search_params,
                 )
             )
         if num_long_term > 0:
             search_coroutines.append(
-                self.client.query_points(
+                self.client.search(
                     collection_name=self.collection_name,
-                    query=query_document,
+                    query_vector=query_vector,
                     query_filter=long_term_filter,
                     limit=num_long_term,
-                    with_payload=True,
+                    search_params=search_params,
                 )
             )
-
-        # Query knowledge_bank collection (no time filter)
         if num_kb > 0:
             search_coroutines.append(
-                self.client.query_points(
+                self.client.search(
                     collection_name=self.knowledge_bank_collection_name,
-                    query=query_document,
+                    query_vector=query_vector,
                     limit=num_kb,
-                    with_payload=True,
+                    search_params=search_params,
                 )
             )
 
         if not search_coroutines:
             return ""
 
-        # Step 4: Execute and Process Results
         try:
             search_results = await asyncio.gather(
                 *search_coroutines, return_exceptions=True
             )
-        except Exception as retrieval_error:
-            logger.error(f"Failed to retrieve memories from Qdrant: {retrieval_error}")
+        except Exception as e:
+            logger.error(f"Retrieval failed: {e}")
             return ""
 
-        all_points: List[Any] = []
-        retrieved_counts = []
-        for i, result in enumerate(search_results):
+        all_points: List[models.ScoredPoint] = []
+        for result in search_results:
             if isinstance(result, Exception):
-                logger.warning(f"A memory search query failed: {result}")
-                retrieved_counts.append(0)
+                logger.warning(f"Search failed: {result}")
                 continue
-            points = getattr(result, "points", [])
-            all_points.extend(points)
-            retrieved_counts.append(len(points))
+            all_points.extend(cast(List[models.ScoredPoint], result))
 
-        # Log retrieval statistics
-        logger.info(
-            f"Retrieved memories - Today: {retrieved_counts[0] if num_today > 0 else 0}, "
-            f"Monthly: {retrieved_counts[1] if num_monthly > 0 and len(retrieved_counts) > 1 else 0}, "
-            f"Long-Term: {retrieved_counts[2] if num_long_term > 0 and len(retrieved_counts) > 2 else 0}, "
-            f"Knowledge Bank: {retrieved_counts[-1] if num_kb > 0 and len(retrieved_counts) > 0 else 0}"
-        )
-
-        if not all_points:
-            return ""
-
-        # Step 5: Deduplicate and Extract Text
-        seen_point_ids: set = set()
-        unique_memory_texts: List[str] = []
+        # Deduplicate
+        seen_ids = set()
+        unique_memory_texts = []
         for point in all_points:
-            if point.id not in seen_point_ids:
-                seen_point_ids.add(point.id)
-                payload = getattr(point, "payload", {})
-                # Check for different payload field names (agent_memory vs knowledge_bank)
-                text_content = payload.get("text_content") or payload.get("summary_text")
+            if point.id not in seen_ids:
+                seen_ids.add(point.id)
+                text_content = ""
+                if point.payload is not None:
+                    text_content = point.payload.get("text_content", "")
                 if text_content:
                     unique_memory_texts.append(text_content)
 
         if not unique_memory_texts:
             return ""
 
-        # Step 6: Format and Return Context
-        context_header = "--- Relevant Memories Retrieved ---\n"
+        # FastEmbed reranker
+        if self.reranker:
+            rerank_scores = list(self.reranker.rerank(query_text, unique_memory_texts))
+            ranked = sorted(
+                zip(unique_memory_texts, rerank_scores),
+                key=lambda x: x[1],
+                reverse=True,
+            )
+            unique_memory_texts = [text for text, score in ranked]
+
+        header = "--- FastEmbed Reranked Memories Retrieved ---\n"
         context_body = "\n".join(unique_memory_texts)
-        return f"{context_header}{context_body}"
+        return f"{header}{context_body}"

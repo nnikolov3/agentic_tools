@@ -20,7 +20,6 @@ class Configurator:
 
             # Open and parse TOML file
             with open(self.config_path, "rb") as f:
-
                 configuration = tomllib.load(f)
 
                 return configuration
