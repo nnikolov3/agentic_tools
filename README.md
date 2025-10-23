@@ -1,138 +1,121 @@
-# Agentic Tools
+# Agentic Code Maintenance System
 
-This project is a robust, modular multi-agent system designed to automate complex software development and documentation tasks. It leverages specialized agents powered by Google's Gemini models, coupled with a highly optimized, persistent Retrieval-Augmented Generation (RAG) system built on the Qdrant vector database.
+This project is a robust Python framework for building and orchestrating specialized AI agents that perform targeted tasks on a codebase. It uses a high-performance Retrieval-Augmented Generation (RAG) architecture, leveraging Qdrant and FastEmbed, to provide agents with precise, context-aware information.
 
-## Key Features and Capabilities
+A core feature is the **`commentator` agent**, designed to enforce code quality standards by meticulously reviewing and updating documentation, comments, and import organization without ever modifying functional code logic.
 
-- **High-Performance RAG Architecture:** Utilizes **FastEmbed** (`mixedbread-ai/mxbai-embed-large-v1`) for rapid, efficient vector generation and a **cross-encoder reranker** (`jinaai/jina-reranker-v2-base-multilingual`) to significantly boost the relevance and quality of retrieved context.
-- **Optimized Qdrant Memory:** Features a centralized client manager that configures Qdrant collections with advanced performance settings, including HNSW tuning, scalar quantization (for memory efficiency), and explicit thread management.
-- **Robust Knowledge Ingestion Pipeline:** An automated, idempotent script processes external documents (`.md`, `.json`, `.pdf`) into the knowledge bank using text chunking, batch upserts, and `tenacity`-based retry logic for network stability.
-- **Specialized Agents:** Includes dedicated agents for high-level planning (`architect`), implementation (`developer`), and documentation (`readme_writer`).
-- **GPU Readiness:** Embedding and reranking models are explicitly configured to utilize available GPU resources (`cuda`) if specified in the configuration.
+## Key Features
+
+- **Commentator Agent:** A specialized, non-functional agent that focuses exclusively on code hygiene:
+  - Reviews and perfects docstrings (file, class, function level).
+  - Refines inline comments (explaining the *why*, not the *what*).
+  - Organizes and cleans imports (removes unused, groups by standard/third-party/local).
+- **High-Performance RAG:** Utilizes FastEmbed for rapid vector generation and a cross-encoder reranker to ensure maximum relevance of retrieved context from the knowledge bank.
+- **Modular Architecture:** Clear separation between Agents, Tools (Shell/API), and Memory components.
+- **Robust Tooling:** Integrated shell tools for safe, atomic file I/O and Git context gathering.
 
 ## Prerequisites
 
-To run this project, you need the following installed and configured:
+To run this project, you need the following installed:
 
 1. **Python 3.10+**
-1. **Qdrant Vector Database:** A running instance of Qdrant. The system defaults to connecting to `http://localhost:6333`.
-1. **Google Gemini API Keys:** You must set the following environment variables, as they are required by the agents and the ingestion pipeline:
+1. **Git**
+1. **Qdrant Vector Database:** A running instance of Qdrant (default configuration assumes `http://localhost:6333`).
+1. **Environment Variables:** You must set the required API keys in your environment.
 
-| Environment Variable | Agent/Purpose |
-| :--- | :--- |
-| `GEMINI_API_KEY_ARCHITECT` | Used by the Architect agent. |
-| `GEMINI_API_KEY_DEVELOPER` | Used by the Developer agent. |
-| `GEMINI_API_KEY_README_WRITER` | Used by the Readme Writer agent. |
-| `GEMINI_API_KEY_KNOWLEDGE_INGESTION` | Used for summarizing documents during ingestion. |
-| `GEMINI_API_KEY_APPROVER` | Used by the final review agent. |
+### Environment Setup
+
+The `commentator` agent uses the Google Gemini API. Set the following environment variable:
+
+| Agent | Configuration Key | Required Environment Variable |
+| :--- | :--- | :--- |
+| `commentator` | `api_key` | `GEMINI_API_KEY_COMMENTATOR` |
+
+```bash
+# Example: Set the required API key
+export GEMINI_API_KEY_COMMENTATOR="YOUR_GEMINI_API_KEY"
+```
 
 ## Installation
 
-1. **Clone the repository:**
+1. **Clone the Repository:**
 
    ```bash
    git clone https://github.com/nnikolov3/multi-agent-mcp.git
    cd multi-agent-mcp
    ```
 
-1. **Set up Qdrant:**
-   Start Qdrant, typically using Docker:
-
-   ```bash
-   docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant
-   ```
-
 1. **Install Dependencies:**
-   Install all required Python packages:
+   (Assuming a `requirements.txt` file exists for the project dependencies.)
 
    ```bash
    pip install -r requirements.txt
    ```
 
-1. **Set Environment Variables:**
-   Export your Gemini API keys in your shell session (replace placeholders):
+## Configuration
 
-   ```bash
-   export GEMINI_API_KEY_ARCHITECT="YOUR_KEY_HERE"
-   # ... set the other four keys similarly
-   ```
+All agent and memory configurations are managed in the `conf/agentic_tools.toml` file.
 
-## Configuration Details
+### Agent Configuration (`[agentic-tools.commentator]`)
 
-All core settings, including performance tuning for the vector database, are managed in the `conf/agentic_tools.toml` file.
+This section defines the persona and constraints for the documentation agent.
 
-### Memory and Vector Database (`[agentic-tools.memory]`)
-
-This section controls the RAG components, including the embedding model, reranker, and Qdrant connection settings.
-
-| Setting | Default Value | Description |
+| Parameter | Value | Description |
 | :--- | :--- | :--- |
-| `qdrant_url` | `http://localhost:6333` | Qdrant connection endpoint. |
-| `embedding_model` | `mixedbread-ai/mxbai-embed-large-v1` | High-performance model used for vector generation (FastEmbed). |
-| `device` | `"cpu"` | Device for FastEmbed and Reranker. Change to `"cuda"` to enable GPU acceleration. |
-| `timeout` | `60.0` | Connection timeout for Qdrant operations. |
-| `search_hnsw_ef` | `128` | Search-time HNSW parameter (`ef` - size of the dynamic list for the nearest neighbors search). Higher values increase accuracy but reduce speed. |
-| `reranker.enabled` | `true` | Enables the cross-encoder reranker for improved search quality. |
+| `model_name` | `gemini-2.5-flash-lite` | The specific LLM used for the task. |
+| `temperature` | `0.1` | Low temperature ensures deterministic, focused output (minimal creativity). |
+| `api_key` | `GEMINI_API_KEY_COMMENTATOR` | The environment variable name to load the key from. |
+| `skills` | `[...]` | Defines the agent's persona (e.g., "expert technical writer," "strict adherence to coding standards"). |
 
-### Qdrant Performance Tuning
+### Memory Configuration (`[agentic-tools.memory]`)
 
-The `QdrantClientManager` uses the following nested configurations to create highly optimized collections:
+The memory system uses Qdrant for vector storage. Ensure your Qdrant instance is accessible via the configured URL.
 
-| Section | Parameter | Description |
+| Parameter | Default Value | Description |
 | :--- | :--- | :--- |
-| `[hnsw_config]` | `m`, `ef_construct` | HNSW indexing parameters for vector index quality. |
-| | `max_indexing_threads` | Set to `-1` to use all available CPU cores for indexing. |
-| `[optimizers_config]` | `max_optimization_threads` | Set to `-1` to use all available CPU cores for background optimization. |
-| `[quantization_config]` | `scalar_type`, `quantile` | Enables scalar quantization (e.g., `int8`) to reduce memory usage with minimal impact on precision. |
+| `qdrant_url` | `http://localhost:6333` | Address of the Qdrant service. |
+| `device` | `cpu` | Specifies the device for FastEmbed (can be set to `cuda` if a GPU is available). |
+| `embedding_model` | `mixedbread-ai/mxbai-embed-large-v1` | The model used by FastEmbed for vector generation. |
 
-## Usage
+## Usage: Running the Commentator Agent
 
-### 1. Ingesting Knowledge Documents
+The `commentator` agent is designed to be run on a single file, modifying it in place to improve documentation and style.
 
-The ingestion pipeline processes documents in the `knowledge_bank` directory, chunks them, embeds them using FastEmbed, and upserts them into the Qdrant `knowledge-bank` collection. The process is idempotent, skipping files that have not changed based on content hashing.
+The primary entry point for execution is the `main.py` script, which contains the `commentator_tool` function.
 
-1. **Prepare Documents:** Place your documents (`.md`, `.json`, `.pdf`) into the `knowledge_bank` directory.
+### 1. Run the Demonstration
 
-1. **Run Ingestion:** The `run_agents_manually.py` script is configured to execute the ingestion pipeline by default:
+The `main.py` script includes a demonstration that runs the `commentator` on a project file (`src/tools/shell_tools.py`).
 
-   ```bash
-   python run_agents_manually.py
-   ```
+```bash
+# Execute the main script from the project root
+python main.py
+```
 
-   The script will automatically:
+**Expected Output:**
 
-   - Ensure the Qdrant collection exists with optimized parameters.
-   - Use the Gemini API to summarize complex files (like PDFs) before chunking.
-   - Batch upsert the resulting chunks and vectors.
+The script will log its progress, read the target file, send the content to the agent, and write the updated content back to the file.
 
-### 2. Running Agents
+```
+INFO - Running 'commentator' agent on: src/tools/shell_tools.py
+INFO - Running 'commentator' with a simplified payload.
+INFO - Tool execution completed for agent 'commentator'.
+INFO - Successfully updated comments in: src/tools/shell_tools.py
+```
 
-Agents are executed via the main entry point, which orchestrates memory retrieval, tool execution, and response storage.
+### 2. Adapt for a Custom File
 
-**Example: Running the Readme Writer Agent Manually**
+To use the `commentator` on any file in your project, modify the `main.py` script to target your desired file path:
 
-To test the `readme_writer` agent with a specific prompt:
+```python
+# In main.py, modify the main function:
 
-1. Modify `run_agents_manually.py` to call the desired agent function.
-   *(Note: Ensure the `knowledge_bank.run_ingestion()` line is commented out if you only want to run the agent.)*
+async def main() -> None:
+    """Main function to demonstrate running the commentator tool."""
+    # Change this line to your target file
+    target_file = "path/to/your/new_module.py" 
+    logger.info(f"Demonstration: Running commentator on '{target_file}'")
+    await commentator_tool(target_file)
+```
 
-   ```python
-   # run_agents_manually.py (Example modification)
-   async def main():
-       # await knowledge_bank.run_ingestion()
-       await readme_writer_tool("Generate a new README.md based on the latest code changes, focusing on the Qdrant memory optimizations.")
-   ```
-
-1. Execute the script:
-
-   ```bash
-   python run_agents_manually.py
-   ```
-
-The agent will perform the following steps:
-
-1. Retrieve context from Qdrant (Today, Monthly, Long-Term, Knowledge Bank) using the configured weights.
-1. Rerank the retrieved documents using the cross-encoder model for maximum relevance.
-1. Pass the highly relevant context (prefixed with `--- FastEmbed Reranked Memories Retrieved ---`) to the Gemini model.
-1. Write the final, formatted output to `README.md` using an atomic file write operation.
-1. Store its own response in Qdrant for future context retrieval.
+Then, run `python main.py`. The agent will read the file, apply documentation and import cleanup, and overwrite the original file content.
