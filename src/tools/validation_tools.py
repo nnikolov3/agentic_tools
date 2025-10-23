@@ -5,10 +5,10 @@ on in-memory code content using temporary files. This isolates the complexity of
 interacting with command-line tools and provides a structured result.
 """
 
+import logging
+import os
 import subprocess
 import tempfile
-import os
-import logging
 from dataclasses import dataclass
 from typing import List, Tuple
 
@@ -29,88 +29,114 @@ class ValidationService:
     """
 
     def __init__(self) -> None:
-        # Define the commands to run. Black is run first to format, then ruff and mypy check.
+        """Initializes the validation service with the commands to be run."""
+        # The commands are structured with a name and the command-line arguments.
+        # `black --check` is used to see if formatting is needed without changing the file.
         self.commands: List[Tuple[str, List[str]]] = [
-            ("black", ["black", "--check", "--diff"]),
+            ("black", ["black", "--check"]),
             ("ruff", ["ruff", "check"]),
             ("mypy", ["mypy", "--ignore-missing-imports"]),
         ]
 
     def _run_command(
-        self, command: str, args: List[str], file_path: str
+        self,
+        command_name: str,
+        command_args: List[str],
+        file_path: str,
     ) -> Tuple[bool, str]:
         """
-        Executes a single validation command on the temporary file.
+        Executes a single validation command against the temporary file.
+
+        Args:
+            command_name: The friendly name of the tool (e.g., 'black').
+            command_args: The list of command arguments (e.g., ['black', '--check']).
+            file_path: The path to the temporary file to validate.
+
+        Returns:
+            A tuple containing a boolean for success and a string with any errors.
         """
-        full_command = args + [file_path]
+        full_command = command_args + [file_path]
         try:
-            # Use run_shell_command logic internally to execute the command
             result = subprocess.run(
                 full_command,
                 capture_output=True,
                 text=True,
-                check=False,  # Do not raise exception on non-zero exit code
-                timeout=10,
+                check=False,  # We handle the non-zero exit code manually.
+                timeout=30,  # A generous timeout for static analysis.
             )
 
-            # Black and ruff return non-zero exit codes on failure. Mypy also returns non-zero.
+            # A non-zero return code indicates that the check failed.
             if result.returncode != 0:
-                # For black, we only care if --check fails, which means it needs reformatting.
-                # For ruff and mypy, non-zero means errors.
                 error_output = result.stdout + result.stderr
-                return False, f"--- {command} Errors ---\n{error_output}"
+                return False, f"--- {command_name} Errors ---\n{error_output.strip()}"
 
             return True, ""
 
         except FileNotFoundError:
-            return (
-                False,
-                f"Error: Validation tool '{command}' not found. Please ensure it is installed and in your PATH.",
-            )
+            error_msg = f"Error: Validation tool '{command_name}' not found. Please ensure it is installed and in your PATH."
+            logger.error(error_msg)
+            return False, error_msg
         except subprocess.TimeoutExpired:
-            return (
-                False,
-                f"Error: Validation tool '{command}' timed out after 10 seconds.",
+            error_msg = (
+                f"Error: Validation tool '{command_name}' timed out after 30 seconds."
             )
+            logger.error(error_msg)
+            return False, error_msg
         except Exception as e:
-            return False, f"Error running validation tool '{command}': {e}"
+            error_msg = (
+                f"An unexpected error occurred while running '{command_name}': {e}"
+            )
+            logger.error(error_msg, exc_info=True)
+            return False, error_msg
 
     def validate(self, file_content: str) -> ValidationResult:
         """
-        Runs mypy, ruff, and black on the given content and returns the result.
+        Runs all configured validation tools on the given code content.
+
+        This method writes the content to a temporary file, runs each validation
+        command against it, collects any errors, and cleans up the file.
+
+        Args:
+            file_content: A string containing the Python code to validate.
+
+        Returns:
+            A ValidationResult object indicating success or failure and containing
+            consolidated error messages.
         """
-        is_valid = True
-        all_errors = []
+        is_globally_valid = True
+        all_errors: List[str] = []
         temp_file_path = ""
 
         try:
-            # 1. Write content to a temporary file
+            # Create a temporary file to hold the content for the validation tools.
+            # delete=False is necessary so we can pass its name to subprocesses.
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".py", delete=False, encoding="utf-8"
             ) as temp_file:
                 temp_file.write(file_content)
                 temp_file_path = temp_file.name
 
-            # 2. Run all validation commands
+            # Run each validation command sequentially.
             for command_name, command_args in self.commands:
-                success, error_msg = self._run_command(
+                is_valid, error_message = self._run_command(
                     command_name, command_args, temp_file_path
                 )
-
-                if not success:
-                    is_valid = False
-                    all_errors.append(error_msg)
+                if not is_valid:
+                    is_globally_valid = False
+                    all_errors.append(error_message)
 
         except Exception as e:
             logger.error(
                 f"ValidationService failed during file operation: {e}", exc_info=True
             )
             return ValidationResult(
-                is_valid=False, errors=f"Internal Validation Error: {e}"
+                is_valid=False, errors=f"Internal Validation Service Error: {e}"
             )
         finally:
-            # 3. Clean up the temporary file
+            # Explicitly clean up the temporary file. This is critical.
             if temp_file_path and os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
 
-        return ValidationResult(is_valid=is_valid, errors="\n".join(all_errors))
+        return ValidationResult(
+            is_valid=is_globally_valid, errors="\n\n".join(all_errors)
+        )

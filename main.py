@@ -1,9 +1,9 @@
-# File: main.py
 """
-MCP entrypoint registering the Approver and ReadmeWriter tools.
+Purpose:
+Main entry point for executing agentic tools.
+This file provides functions to invoke specialized agents and workflows,
+such as the 'Code Quality Enforcer', for targeted tasks on the codebase.
 """
-
-from __future__ import annotations
 
 import logging
 import os
@@ -14,8 +14,12 @@ from fastmcp import FastMCP
 
 from src.agents.agent import Agent
 from src.configurator import Configurator
-from src.tools.shell_tools import ShellTools
+from src.workflows.code_quality_enforcer import CodeQualityEnforcer
 
+# Configure basic logging for clear, explicit output.
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger: logging.Logger = logging.getLogger(__name__)
 
 cwd = os.getcwd()
@@ -68,67 +72,43 @@ async def architect_tool(chat: Any | None) -> Any:
 
 @mcp.tool(
     description=(
-        "Reviews a single source file, updates comments, docstrings, and organizes imports."
+        "Runs a multi-step code quality enforcement workflow on a file or directory, updating comments, docstrings, and organizing imports. It uses a developer agent to fix any linting errors introduced by the commentator."
     )
 )
 async def commentator_tool(chat: Any | None) -> Any:
     """
-    Applies the 'commentator' agent to a single file to improve its documentation.
+    Runs the full code quality enforcement workflow on the specified file or directory.
 
     Args:
-        chat: The file path (as a string) to the file to be processed.
+        chat: The file or directory path (as a string) to be processed.
     """
-    file_path = str(chat)
-    logger.info(f"Running 'commentator' agent on: {file_path}")
+    path_str = str(chat)
+    path_obj = Path(path_str)
+
+    if not path_obj.exists():
+        logger.error(f"Path does not exist: {path_str}")
+        return f"Error: Path does not exist: {path_str}"
 
     try:
-        # Use ShellTools for all file I/O as per constraints.
-        shell_tools = ShellTools("commentator", configuration["agentic-tools"])
-
-        # 1. Read the source file content.
-        path_obj = Path(file_path)
-        if not path_obj.exists():
-            logger.error(f"File not found: {file_path}")
-            return f"Error: File not found at {file_path}"
-
-        file_content: str = shell_tools.read_file_content_for_path(path_obj)
-        if not file_content:
-            logger.error(f"Could not read file or file is empty: {file_path}")
-            return f"Error: Could not read file or file is empty at {file_path}"
-
-        # 2. Instantiate and run the agent. The file content is passed as 'chat'.
-        commentator_agent = Agent(
-            configuration,
-            "commentator",
-            mcp_name,
-            file_content,
-        )
-        updated_content: str | None = await commentator_agent.run_agent()
-
-        # 3. Write the updated content back to the original file.
-        if updated_content and isinstance(updated_content, str):
-            # The agent is instructed to return only the file content, but this
-            # handles the common case of an LLM wrapping its response in a code block.
-            if updated_content.strip().startswith(
-                "```"
-            ) and updated_content.strip().endswith("```"):
-                lines = updated_content.strip().split("\n")
-                updated_content = "\n".join(lines[1:-1])
-
-            shell_tools.write_file(file_path, updated_content)
-            logger.info(f"Successfully updated comments in: {file_path}")
-            return f"Successfully updated comments and docstrings in: {file_path}"
+        enforcer = CodeQualityEnforcer(configuration, mcp_name)
+        
+        if path_obj.is_file():
+            logger.info(f"Input is a file. Running Code Quality Enforcer on: {path_str}")
+            await enforcer.run_on_file(path_str)
+            return f"Code quality enforcement finished for file: {path_str}. Check logs for details."
+        
+        elif path_obj.is_dir():
+            logger.info(f"Input is a directory. Running Code Quality Enforcer on: {path_str}")
+            await enforcer.run_on_directory(path_str)
+            return f"Code quality enforcement finished for directory: {path_str}. Check logs for details."
+        
         else:
-            logger.warning(
-                f"Commentator agent returned no content for {file_path}. File not modified."
-            )
-            return f"Warning: Commentator agent returned no content for {file_path}. File not modified."
+            logger.error(f"Invalid path provided: {path_str}")
+            return f"Error: Invalid path provided: {path_str}. Must be a file or directory."
 
     except Exception as e:
-        logger.error(
-            f"An error occurred while running the commentator tool: {e}", exc_info=True
-        )
-        return f"Error: An unexpected error occurred: {e}"
+        logger.error(f"The code quality enforcer failed: {e}", exc_info=True)
+        return f"Error: The code quality enforcer failed: {e}"
 
 
 if __name__ == "__main__":
