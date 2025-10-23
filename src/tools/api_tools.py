@@ -6,10 +6,11 @@ API key validation and configuration handling for robust operation across agents
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import pathlib
 from typing import Any, Dict
-
 from google.genai import Client, types
 
 
@@ -119,3 +120,29 @@ class ApiTools:
             # Explicit type handling: Ensure text is str and non-None.
             response_text: str = response.text if response.text else ""
             return response_text
+
+
+
+_GEMINI_SEMAPHORE = asyncio.Semaphore(5)
+
+async def google_documents_api(model, api_key, prompt, file):
+    async with _GEMINI_SEMAPHORE:
+        api_key_value: str | None = os.getenv(api_key) if api_key else None
+        if not api_key_value:
+            raise ValueError(f"API key environment variable '{api_key}' is not set or empty")
+
+        google_client = Client(api_key=api_key_value)
+        file_path = pathlib.Path(file).resolve()
+
+        file_upload = await asyncio.to_thread(
+            lambda: google_client.files.upload(file=file_path)
+        )
+
+        response = await asyncio.to_thread(
+            lambda: google_client.models.generate_content(
+                model=model,
+                contents=[file_upload, prompt]
+            )
+        )
+
+        return response.text

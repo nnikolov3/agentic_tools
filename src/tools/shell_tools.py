@@ -261,6 +261,65 @@ class ShellTools:
 
         return any(filename.endswith(ext) for ext in self.include_extensions)
 
+    def get_files_by_extensions(
+            self,
+            directory_path: Optional[str] = None,
+            extensions: Optional[List[str]] = None
+    ) -> List[Path]:
+        """
+        Retrieve a list of file paths in a directory that match specified extensions.
+
+        Traverses the given directory recursively, collecting paths of files with matching
+        extensions while excluding specified directories and files. Useful for targeted
+        file operations without reading content.
+
+        Args:
+            directory_path: The directory to search (absolute or relative). Defaults to
+                            current working directory.
+            extensions: List of file extensions to filter by (e.g., ['.py', '.txt']).
+                        Defaults to self.include_extensions if None.
+
+        Returns:
+            List of Path objects for matching files.
+
+        """
+        self.include_extensions = extensions
+        if extensions is None:
+            extensions = self.include_extensions
+
+        if not extensions:
+            logger.warning("No extensions provided; returning empty list.")
+            return []
+
+        search_dir = Path(directory_path) if directory_path else self.current_working_directory
+        if not search_dir.is_dir():
+            logger.warning(f"Directory does not exist or is not a directory: {search_dir}")
+            return []
+
+        matching_files: List[Path] = []
+        file_count: int = 0
+
+        try:
+            for item in search_dir.rglob("*"):
+                if (
+                        item.is_file()
+                        and self._matches_extension(item.name)
+
+                ):
+                    # Skip files in excluded directories.
+                    if any(excluded in item.parts for excluded in self.exclude_directories):
+                        continue
+
+                    matching_files.append(item)
+                    file_count += 1
+
+            logger.info(f"Found {file_count} matching files in {search_dir}")
+            return matching_files
+
+        except Exception as e:
+            logger.error(f"Error searching directory {search_dir}: {e}")
+            return []
+
     def _read_file_content_helper(self, file_path: Path) -> str:
         """
         Helper method to read file content, respecting max_file_bytes limit.

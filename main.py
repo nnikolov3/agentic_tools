@@ -50,6 +50,16 @@ async def developer(chat: Any | None) -> Any:
     agent = Agent(configuration, "developer", mcp_name, chat)
     return await agent.run_agent()
 
+@mcp.tool(
+    description=(
+        "Creates a high quality architecture based on the design guidelines and coding standards"
+    )
+)
+async def architect_tool(chat: Any | None) -> Any:
+    print("architect_tool")
+    agent = Agent(configuration, "architect", mcp_name, chat)
+    return await agent.run_agent()
+
 
 if __name__ == "__main__":
     mcp.run()

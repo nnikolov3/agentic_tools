@@ -1,166 +1,144 @@
 # multi-agent-mcp
 
-This project implements a multi-agent system using the Model Context Protocol (MCP) framework. It features specialized agents for tasks such as generating READMEs, reviewing code changes, and developing new code, all enhanced with Qdrant for persistent memory and contextual retrieval. The architecture emphasizes modularity, explicit configuration, and adherence to foundational design principles for robust and maintainable AI-driven workflows.
+This project implements a multi-agent system using the Model Context Protocol (MCP) framework. It features specialized agents enhanced with a robust, multi-source memory system powered by Qdrant. This system includes dynamic agent memory (short/long-term) and a static, LLM-processed **Knowledge Bank** for deep contextual retrieval, ensuring agents operate with comprehensive, context-aware information.
 
 ## Key Features
 
-- **Multi-Agent Architecture**: Orchestrates specialized agents (e.g., `readme_writer`, `approver`, `developer`) for distinct tasks.
-- **Qdrant Memory Integration**: Agents use Qdrant as a vector database for both short-term (recent) and long-term (historical) memory, enabling context-aware decision-making.
-- **Modular Tooling**: Utilizes `ShellTools` for file system and Git operations (e.g., generating diffs, reading project files) and `ApiTools` for interfacing with Large Language Models (LLMs).
-- **Automated README Generation**: The `readme_writer` agent can analyze project context and generate or update the `README.md` file.
-- **Configurable Agents**: Agent behavior, LLM models, API keys, and memory settings are externalized in a TOML configuration file.
+- **Four-Part Contextual Memory**: Agents retrieve context using a weighted search across four distinct sources: Today's memories, Monthly memories, Long-Term memories (all from `agent_memory`), and the dedicated `knowledge-bank` collection.
+- **Knowledge Bank Ingestion Pipeline**: A dedicated, idempotent script (`scripts/ingest_knowledge_bank.py`) processes external documents (e.g., PDFs, Markdown, JSON) and stores them in Qdrant.
+- **Differentiated Ingestion**: Supports two paths:
+  - **LLM Processing**: Complex files (e.g., `.pdf`) are sent to the Gemini API for high-quality summarization/rewriting before embedding.
+  - **Direct Ingestion**: Text-based files (e.g., `.md`, `.json`) are read directly using robust file handling.
+- **Idempotent Data Management**: The ingestion process uses content hashing to prevent duplicate entries, ensuring data integrity even if the script is run multiple times.
+- **Modular Agent Orchestration**: Agent-specific logic (like post-processing the final `README.md` and writing it to disk) is correctly centralized within the `Agent` orchestrator class, keeping core `Tool` functionality generic.
 
 ## Prerequisites
 
-Before you begin, ensure you have the following installed:
+Before installation, ensure the following are set up:
 
 - **Python**: Version `3.13` or higher.
 - **uv**: A fast Python package installer and resolver.
   ```bash
   pip install uv
   ```
-- **Git**: Required for cloning the repository and for agents to interact with version control.
-  ```bash
-  # Example for Debian/Ubuntu
-  sudo apt-get install git
-  # Example for macOS with Homebrew
-  brew install git
-  ```
-- **Qdrant Server**: The project uses Qdrant for vector memory. You can run it locally via Docker:
+- **Git**: Required for cloning and for agents to generate project context (diffs, info).
+- **Qdrant Server**: The project requires a running Qdrant instance for vector memory.
   ```bash
   docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant
   ```
-- **Environment Variables**: API keys for the LLM providers must be set as environment variables.
+- **Environment Variables**: API keys for the LLM providers must be set.
   - `GEMINI_API_KEY_PLANNER`
   - `GEMINI_API_KEY_DEVELOPER`
   - `GEMINI_API_KEY_README_WRITER`
   - `GEMINI_API_KEY_APPROVER`
+  - `GEMINI_API_KEY_KNOWLEDGE_INGESTION` (Required for the ingestion script)
 
 ## Installation
 
-Follow these steps to set up the project locally:
-
 1. **Clone the repository**:
+
    ```bash
    git clone https://github.com/nnikolov3/multi-agent-mcp.git
    cd multi-agent-mcp
    ```
-1. **Install dependencies**:
+
+1. **Install dependencies** (using `uv`):
+
    ```bash
    uv sync
    ```
 
 ## Configuration
 
-The project's behavior is controlled by the `conf/agentic_tools.toml` file. This file defines global settings and specific configurations for each agent.
+The project's memory and ingestion settings are defined in `conf/agentic_tools.toml`.
 
-Key sections include:
+### Memory Configuration (`[agentic-tools.memory]`)
 
-- **`[agentic-tools]`**: Global settings like `exclude_directories`, `max_file_bytes`, and `git_diff_command`.
-- **`[agentic-tools.memory]`**: Configures the Qdrant memory system.
-  - `enabled`: `true` to enable memory.
-  - `collection_name`: The name of the Qdrant collection (e.g., `"agent_memory"`).
-  - `embedding_model`: The model used for generating embeddings.
-  - `embedding_size`: The dimension of the embeddings.
-  - `qdrant_url`: The URL of your Qdrant instance (e.g., `"http://localhost:6333"`).
-  - `short_term_weight`, `long_term_weight`, `total_memories_to_retrieve`: Parameters for balancing memory retrieval.
-- **`[agentic-tools.planner]`, `[agentic-tools.developer]`, `[agentic-tools.readme_writer]`, `[agentic-tools.approver]`**: Each agent has its own section to define:
-  - `prompt`: The system prompt for the LLM.
-  - `model_name`: The specific LLM model to use.
-  - `api_key`: The *name* of the environment variable holding the API key.
-  - `temperature`: LLM generation temperature.
-  - `description`: A brief description of the agent's role.
-  - `model_provider`: The LLM provider (e.g., `"google"`).
-  - `skills`: A list of skills associated with the agent.
+This section defines the Qdrant connection and the weighted retrieval strategy.
 
-**Example snippet from `conf/agentic_tools.toml`:**
+| Key | Default Value | Description |
+| :--- | :--- | :--- |
+| `qdrant_url` | `"http://localhost:6333"` | Address of the Qdrant server. |
+| `collection_name` | `"agent_memory"` | Collection for dynamic, time-based agent memories. |
+| `knowledge_bank` | `"knowledge-bank"` | Collection for static, ingested documents. |
+| `embedding_model` | `"mixedbread-ai/mxbai-embed-large-v1"` | Model used for vector generation. |
+| `total_memories_to_retrieve` | `20` | Maximum number of memory points to retrieve across all four sources. |
+| `today_retrieval_weight` | `0.4` | Weight for recent (last 24 hours) memories. |
+| `monthly_retrieval_weight` | `0.2` | Weight for memories from the last 30 days. |
+| `long_term_retrieval_weight` | `0.2` | Weight for older memories. |
+| `knowledge_bank_retrieval_weight` | `0.2` | Weight for context retrieved from the Knowledge Bank. |
 
-```toml
-[agentic-tools.memory]
-enabled = true
-collection_name = "agent_memory"
-embedding_model = "mixedbread-ai/mxbai-embed-large-v1"
-embedding_size = 1024
-qdrant_url = "http://localhost:6333"
-short_term_weight = 0.7
-long_term_weight = 0.3
-total_memories_to_retrieve = 10
+### Knowledge Bank Ingestion Configuration (`[agentic-tools.knowledge_bank_ingestion]`)
 
-[agentic-tools.readme_writer]
-prompt = """
-* You are an expert technical writer.
-* Create excellent, concise,and practical README documentation based on the project's source code, configuration, and conventions.
-...
-"""
-model_name = "gemini-2.5-flash"
-api_key = "GEMINI_API_KEY_README_WRITER"
-temperature = 0.3
-description = "Generates high-quality README documentation"
-model_provider = "google"
-skills = [
-    "technical writing",
-    "documentation",
-    "readme creation",
-    "information synthesis",
-    "content organization",
-    "clarity and precision"
-]
-```
+This section controls how documents are processed and ingested.
+
+| Key | Default Value | Description |
+| :--- | :--- | :--- |
+| `source_directory` | `"knowledge_bank"` | The local directory where source documents are placed for ingestion. |
+| `google_api_key_name` | `"GEMINI_API_KEY_KNOWLEDGE_INGESTION"` | The environment variable name holding the API key for LLM processing. |
+| `model` | `"gemini-flash-latest"` | The LLM model used for summarization/rewriting. |
+| `supported_extensions` | `[".pdf", ".json", ".md"]` | File types the script will attempt to process. |
+| `llm_processed_extensions` | `[".pdf"]` | Extensions that *must* be sent to the LLM for processing (e.g., complex files). All others are read directly. |
+| `prompt` | (Detailed prompt) | The system prompt used by the LLM to summarize/rewrite documents. |
 
 ## Usage
 
-You can run the agents either through the `main.py` entry point (which registers them as MCP tools) or manually via `run_agents_manually.py` for direct testing. For initial onboarding, `run_agents_manually.py` is recommended.
+### 1. Ingesting Documents into the Knowledge Bank
 
-### Running Agents Manually
+To populate the Knowledge Bank for long-term context, use the dedicated ingestion script.
 
-The `run_agents_manually.py` script allows you to invoke individual agents with a specific chat message.
+1. **Create Source Directory**: Create the directory specified in the configuration (default: `knowledge_bank`).
 
-1. **Ensure Qdrant is running** (see Prerequisites).
+   ```bash
+   mkdir knowledge_bank
+   ```
 
-1. **Set your API key environment variables** (see Prerequisites).
+1. **Add Documents**: Place your `.pdf`, `.md`, or `.json` files inside the `knowledge_bank` directory.
 
-1. **Execute the script**:
+1. **Run Ingestion**: Execute the `run_agents_manually.py` script, which is configured to run the ingestion pipeline by default.
 
    ```bash
    python run_agents_manually.py
    ```
 
-   By default, `run_agents_manually.py` will execute the `readme_writer` agent with an "Update README" prompt. You can modify the `main` async function in `run_agents_manually.py` to test other agents or different prompts:
+   The script will:
 
-   ```python
-   # run_agents_manually.py
-   import asyncio
-   from main import readme_writer_tool, approver_tool, developer_tool # Import the tools
+   - Ensure the `knowledge-bank` Qdrant collection exists.
+   - Iterate through files, calculate content hashes, and skip already processed files (idempotency).
+   - Send `.pdf` files to the Gemini API for summarization/rewriting.
+   - Embed the resulting text and store it in Qdrant.
 
-   async def main():
-       # Example: Run the readme_writer agent
-       print("Running readme_writer_tool...")
-       await readme_writer_tool("Provide an updated README file based on the recent changes, focusing on Qdrant memory integration.")
+### 2. Running Agents Manually
 
-       # Example: Run the approver agent (uncomment to use)
-       # print("
-   ```
+You can test the agents and observe how they utilize the newly ingested memory.
 
-Running approver_tool...")
-\# approval_result = await approver_tool("Review the recent code changes and provide an approval decision.")
-\# print(f"Approval Result: {approval_result}")
+The `run_agents_manually.py` script can be modified to run any agent with a specific prompt.
 
-```
-    # Example: Run the developer agent (uncomment to use)
-    # print("
-```
+```python
+# run_agents_manually.py (Example modification)
+import asyncio
+from main import readme_writer_tool, approver_tool, developer_tool, knowledge_bank
 
-Running developer_tool...")
-\# dev_result = await developer_tool("Implement a new feature to log agent interactions to a file.")
-\# print(f"Developer Result: {dev_result}")
+async def main():
+    # 1. Run Ingestion (Default action)
+    await knowledge_bank.run_ingestion()
 
-````
+    # 2. Example: Run the readme_writer agent
+    print("\nRunning readme_writer_tool...")
+    # This agent will now retrieve context from both agent_memory and knowledge-bank
+    await readme_writer_tool("Update the README to clearly explain the new four-part memory retrieval strategy and the knowledge bank ingestion process.")
+
+    # 3. Example: Run the developer agent (uncomment to use)
+    # print("\nRunning developer_tool...")
+    # dev_result = await developer_tool("Implement a new utility function in src/utils.py to calculate the SHA256 hash of a file's binary content.")
+    # print(f"Developer Result: {dev_result}")
+
 if __name__ == "__main__":
     asyncio.run(main())
 ```
-````
 
-### Output
+**Output:**
 
-- The `readme_writer` agent, when executed, will directly update the `README.md` file in the project root with its generated content.
-- Other agents like `approver` and `developer` will return their responses directly, which can be printed to the console or further processed.
+The `readme_writer` agent will analyze the project context, retrieve relevant memories (including any ingested knowledge), and write its final, formatted output directly to the project's `README.md` file.
+
+```

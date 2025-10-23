@@ -7,6 +7,7 @@ ensuring separation of concerns without agent-specific logic in the core executi
 
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 
@@ -63,6 +64,7 @@ class Tool:
         Returns:
             The raw response from the API provider.
         """
+        source_dir: str = Path(f"{self.current_working_directory}/src")
         # Explicit Payload Construction: Gather all context components.
         self.payload["prompt"] = self.agent_prompt
         self.payload["skills"] = self.agent_skills
@@ -70,13 +72,7 @@ class Tool:
         self.payload["git-diff-patch"] = self.shell_tools.create_patch()
         self.payload["git-info"] = self.shell_tools.get_git_info()
         self.payload["design_documents"] = self.shell_tools.get_design_docs_content()
-
-        if self.source and self.source[0]:
-            source_dir: str = f"{self.current_working_directory}/{self.source[0]}"
-            self.payload["source_code"] = self.shell_tools.process_directory(source_dir)
-        else:
-            self.payload["source_code"] = ""
-
+        self.payload["source_code"] = self.shell_tools.process_directory(source_dir)
         self.payload["chat"] = chat
 
         # Delegate to API for execution.

@@ -131,7 +131,7 @@ This document is designed specifically for LLM agents to generate high-quality c
 
 This approach aligns with the principles from PROMPT_ENGINEERING.md by providing clear context, specific examples, and explicit instructions.
 
-## Information Processing and Documentation Creation Process
+## Information Processing, Design, Software, Planning, and Documentation Creation Process
 
 When creating documentation, code, or other artifacts, follow this structured approach:
 
