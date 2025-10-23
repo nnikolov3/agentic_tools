@@ -45,11 +45,13 @@ class Agent:
 
     async def run_agent(self) -> Any:
         """
-        Executes the full agent lifecycle:
-        1. Initializes Qdrant memory and retrieves relevant context based on the chat input.
+        Executes the full agent lifecycle, orchestrating the agent's interaction with memory and tools.
+
+        The steps are:
+        1. Conditionally initializes Qdrant memory and retrieves relevant context (RAG) based on the chat input.
         2. Executes the primary tool (`self.tool.run_tool`) with the retrieved context.
         3. Performs agent-specific post-processing (e.g., for readme_writer).
-        4. Stores the final response in memory for future context retrieval.
+        4. Conditionally stores the final response in memory for future context retrieval.
 
         Returns:
             The raw response from the executed tool.
@@ -83,7 +85,7 @@ class Agent:
                 logger.info("Wrote README.md for readme_writer agent.")
 
             # Store response in memory
-            if self.memory and self.response:
+            if self.agent_name != "commentator" and self.memory and self.response:
                 logger.info("Storing response in memory.")
                 await self.memory.add_memory(text_content=str(self.response))
 

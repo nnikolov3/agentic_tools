@@ -14,11 +14,14 @@ from typing import List, Tuple
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class ValidationResult:
     """Structured result containing validation status and consolidated errors."""
+
     is_valid: bool
     errors: str  # Consolidated output from all failing tools
+
 
 class ValidationService:
     """
@@ -33,7 +36,9 @@ class ValidationService:
             ("mypy", ["mypy", "--ignore-missing-imports"]),
         ]
 
-    def _run_command(self, command: str, args: List[str], file_path: str) -> Tuple[bool, str]:
+    def _run_command(
+        self, command: str, args: List[str], file_path: str
+    ) -> Tuple[bool, str]:
         """
         Executes a single validation command on the temporary file.
         """
@@ -44,23 +49,29 @@ class ValidationService:
                 full_command,
                 capture_output=True,
                 text=True,
-                check=False, # Do not raise exception on non-zero exit code
-                timeout=10
+                check=False,  # Do not raise exception on non-zero exit code
+                timeout=10,
             )
-            
+
             # Black and ruff return non-zero exit codes on failure. Mypy also returns non-zero.
             if result.returncode != 0:
                 # For black, we only care if --check fails, which means it needs reformatting.
                 # For ruff and mypy, non-zero means errors.
                 error_output = result.stdout + result.stderr
                 return False, f"--- {command} Errors ---\n{error_output}"
-            
+
             return True, ""
-        
+
         except FileNotFoundError:
-            return False, f"Error: Validation tool '{command}' not found. Please ensure it is installed and in your PATH."
+            return (
+                False,
+                f"Error: Validation tool '{command}' not found. Please ensure it is installed and in your PATH.",
+            )
         except subprocess.TimeoutExpired:
-            return False, f"Error: Validation tool '{command}' timed out after 10 seconds."
+            return (
+                False,
+                f"Error: Validation tool '{command}' timed out after 10 seconds.",
+            )
         except Exception as e:
             return False, f"Error running validation tool '{command}': {e}"
 
@@ -82,15 +93,21 @@ class ValidationService:
 
             # 2. Run all validation commands
             for command_name, command_args in self.commands:
-                success, error_msg = self._run_command(command_name, command_args, temp_file_path)
-                
+                success, error_msg = self._run_command(
+                    command_name, command_args, temp_file_path
+                )
+
                 if not success:
                     is_valid = False
                     all_errors.append(error_msg)
 
         except Exception as e:
-            logger.error(f"ValidationService failed during file operation: {e}", exc_info=True)
-            return ValidationResult(is_valid=False, errors=f"Internal Validation Error: {e}")
+            logger.error(
+                f"ValidationService failed during file operation: {e}", exc_info=True
+            )
+            return ValidationResult(
+                is_valid=False, errors=f"Internal Validation Error: {e}"
+            )
         finally:
             # 3. Clean up the temporary file
             if temp_file_path and os.path.exists(temp_file_path):
