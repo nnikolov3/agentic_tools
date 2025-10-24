@@ -160,7 +160,6 @@ class CodeQualityEnforcer:
             return
 
         current_content: str = original_content
-        content_changed: bool = False
 
         # === STAGE 1: Pre-Validation (Mandatory Fix) ===
         if self.run_pre_validation:
@@ -179,7 +178,6 @@ class CodeQualityEnforcer:
             if current_content != original_content:
                 self.shell_tools.write_file(file_path_str, current_content)
                 logger.info(f"Pre-fixed content saved to disk: {file_path_str}")
-                content_changed = True
                 # Update original_content for final comparison
                 original_content = current_content
 

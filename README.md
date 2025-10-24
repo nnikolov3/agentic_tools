@@ -1,4 +1,4 @@
-# Multi-Agent Control Plane (MCP) Framework
+# Multi-Agent Orchestration Framework
 
 A robust, multi-stage agentic framework designed to orchestrate complex software engineering workflows. This system provides a foundation for building and managing specialized agents, memory systems, and tools, with a focus on high code quality and maintainability.
 
