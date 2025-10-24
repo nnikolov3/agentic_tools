@@ -1,6 +1,6 @@
-# Multi-Agent Code Quality Enforcer
+# Multi-Agent Control Plane (MCP) Framework
 
-A robust, multi-stage agentic workflow designed to automatically enforce high code quality standards, including linting, formatting, docstring generation, and import organization. This system uses a fault-tolerant validation and fixing pipeline to ensure all generated code adheres to strict project standards.
+A robust, multi-stage agentic framework designed to orchestrate complex software engineering workflows. This system provides a foundation for building and managing specialized agents, memory systems, and tools, with a focus on high code quality and maintainability.
 
 ## Key Features
 
