@@ -1,121 +1,85 @@
-# Agentic Code Maintenance System
+# Multi-Agent Code Quality Enforcer
 
-This project is a robust Python framework for building and orchestrating specialized AI agents that perform targeted tasks on a codebase. It uses a high-performance Retrieval-Augmented Generation (RAG) architecture, leveraging Qdrant and FastEmbed, to provide agents with precise, context-aware information.
-
-A core feature is the **`commentator` agent**, designed to enforce code quality standards by meticulously reviewing and updating documentation, comments, and import organization without ever modifying functional code logic.
+A robust, multi-stage agentic workflow designed to automatically enforce high code quality standards, including linting, formatting, docstring generation, and import organization. This system uses a fault-tolerant validation and fixing pipeline to ensure all generated code adheres to strict project standards.
 
 ## Key Features
 
-- **Commentator Agent:** A specialized, non-functional agent that focuses exclusively on code hygiene:
-  - Reviews and perfects docstrings (file, class, function level).
-  - Refines inline comments (explaining the *why*, not the *what*).
-  - Organizes and cleans imports (removes unused, groups by standard/third-party/local).
-- **High-Performance RAG:** Utilizes FastEmbed for rapid vector generation and a cross-encoder reranker to ensure maximum relevance of retrieved context from the knowledge bank.
-- **Modular Architecture:** Clear separation between Agents, Tools (Shell/API), and Memory components.
-- **Robust Tooling:** Integrated shell tools for safe, atomic file I/O and Git context gathering.
+The core functionality is provided by the **Code Quality Enforcer Workflow**, a three-stage, multi-agent pipeline that guarantees code correctness and quality.
+
+| Feature | Description | Agents Involved |
+| :--- | :--- | :--- |
+| **Pre-Fixing Loop** | Automatically fixes existing linting, formatting (`black`, `ruff`), and typing (`mypy`) errors before the main transformation. This ensures the Commentator agent receives clean, valid code. | `developer` |
+| **Code Enhancement** | The primary stage where the `commentator` agent enhances docstrings, organizes imports, and applies structural improvements based on project standards. | `commentator` |
+| **Post-Fixing Loop** | A critical, fault-tolerant loop that validates the Commentator's output and uses the `developer` agent to fix any validation errors (e.g., syntax or new linting issues) introduced by the LLM. | `developer` |
+| **Dependency Consistency** | Pre-fixed files are immediately written to disk, resolving recursive fixing issues and ensuring subsequent files processed in a directory run against the latest clean dependencies. | N/A |
+| **Validation Service** | Utilizes a dedicated `ValidationService` to run external tools (`black --check`, `ruff check`, `mypy`) on in-memory code efficiently. | N/A |
+
+______________________________________________________________________
 
 ## Prerequisites
 
-To run this project, you need the following installed:
+To run the agents and the quality enforcement workflow, you need the following:
 
-1. **Python 3.10+**
-1. **Git**
-1. **Qdrant Vector Database:** A running instance of Qdrant (default configuration assumes `http://localhost:6333`).
-1. **Environment Variables:** You must set the required API keys in your environment.
-
-### Environment Setup
-
-The `commentator` agent uses the Google Gemini API. Set the following environment variable:
-
-| Agent | Configuration Key | Required Environment Variable |
-| :--- | :--- | :--- |
-| `commentator` | `api_key` | `GEMINI_API_KEY_COMMENTATOR` |
-
-```bash
-# Example: Set the required API key
-export GEMINI_API_KEY_COMMENTATOR="YOUR_GEMINI_API_KEY"
-```
+1. **Python Environment:** Python 3.10 or higher.
+1. **LLM Access:** A configured API key for the Google Gemini API.
+   - The agent configuration expects the key to be set as an environment variable (e.g., `GEMINI_API_KEY`).
+1. **Code Quality Tools:** The external tools used by the `ValidationService` must be installed and accessible in your environment:
+   - `black` (Code Formatter)
+   - `ruff` (Linter)
+   - `mypy` (Static Type Checker)
 
 ## Installation
 
-1. **Clone the Repository:**
+Assuming you have cloned the repository and set up a virtual environment:
 
-   ```bash
-   git clone https://github.com/nnikolov3/multi-agent-mcp.git
-   cd multi-agent-mcp
-   ```
+```bash
+# 1. Install project dependencies
+pip install -r requirements.txt
 
-1. **Install Dependencies:**
-   (Assuming a `requirements.txt` file exists for the project dependencies.)
+# 2. Set your API Key (replace GEMINI_API_KEY with the actual name used in your config)
+export GEMINI_API_KEY="YOUR_API_KEY_HERE"
+```
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+## Usage
+
+The Code Quality Enforcer is exposed via the `commentator_tool`. It can be run on a single file or an entire directory.
+
+### 1. Run on a Single File
+
+To enforce quality standards on a specific Python file:
+
+```bash
+# Example: Running the workflow on a file named 'my_module.py'
+python main.py commentator_tool --path src/my_module.py
+```
+
+### 2. Run on a Directory
+
+To process all Python files recursively within a directory, ensuring dependency consistency between files:
+
+```bash
+# Example: Running the workflow on the entire 'src' directory
+python main.py commentator_tool --path src/
+```
 
 ## Configuration
 
-All agent and memory configurations are managed in the `conf/agentic_tools.toml` file.
+The workflow is configured primarily in the project's TOML configuration file (e.g., `agentic_tools.toml`).
 
-### Agent Configuration (`[agentic-tools.commentator]`)
+### Workflow Settings (`[code_quality_enforcer]`)
 
-This section defines the persona and constraints for the documentation agent.
+This section controls the behavior of the multi-stage pipeline:
 
-| Parameter | Value | Description |
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `max_fix_attempts` | `int` | `3` | Maximum number of times the `developer` agent will attempt to fix validation errors in a loop before giving up on a file. |
+| `run_pre_validation` | `bool` | `true` | If `true`, the Pre-Fixing Loop runs to clean the code before the `commentator` agent is invoked. Highly recommended. |
+
+### Agent Configuration
+
+The workflow relies on two specialized agents:
+
+| Agent | Purpose | Key Configuration |
 | :--- | :--- | :--- |
-| `model_name` | `gemini-2.5-flash-lite` | The specific LLM used for the task. |
-| `temperature` | `0.1` | Low temperature ensures deterministic, focused output (minimal creativity). |
-| `api_key` | `GEMINI_API_KEY_COMMENTATOR` | The environment variable name to load the key from. |
-| `skills` | `[...]` | Defines the agent's persona (e.g., "expert technical writer," "strict adherence to coding standards"). |
-
-### Memory Configuration (`[agentic-tools.memory]`)
-
-The memory system uses Qdrant for vector storage. Ensure your Qdrant instance is accessible via the configured URL.
-
-| Parameter | Default Value | Description |
-| :--- | :--- | :--- |
-| `qdrant_url` | `http://localhost:6333` | Address of the Qdrant service. |
-| `device` | `cpu` | Specifies the device for FastEmbed (can be set to `cuda` if a GPU is available). |
-| `embedding_model` | `mixedbread-ai/mxbai-embed-large-v1` | The model used by FastEmbed for vector generation. |
-
-## Usage: Running the Commentator Agent
-
-The `commentator` agent is designed to be run on a single file, modifying it in place to improve documentation and style.
-
-The primary entry point for execution is the `main.py` script, which contains the `commentator_tool` function.
-
-### 1. Run the Demonstration
-
-The `main.py` script includes a demonstration that runs the `commentator` on a project file (`src/tools/shell_tools.py`).
-
-```bash
-# Execute the main script from the project root
-python main.py
-```
-
-**Expected Output:**
-
-The script will log its progress, read the target file, send the content to the agent, and write the updated content back to the file.
-
-```
-INFO - Running 'commentator' agent on: src/tools/shell_tools.py
-INFO - Running 'commentator' with a simplified payload.
-INFO - Tool execution completed for agent 'commentator'.
-INFO - Successfully updated comments in: src/tools/shell_tools.py
-```
-
-### 2. Adapt for a Custom File
-
-To use the `commentator` on any file in your project, modify the `main.py` script to target your desired file path:
-
-```python
-# In main.py, modify the main function:
-
-async def main() -> None:
-    """Main function to demonstrate running the commentator tool."""
-    # Change this line to your target file
-    target_file = "path/to/your/new_module.py" 
-    logger.info(f"Demonstration: Running commentator on '{target_file}'")
-    await commentator_tool(target_file)
-```
-
-Then, run `python main.py`. The agent will read the file, apply documentation and import cleanup, and overwrite the original file content.
+| `developer` | Used exclusively for the deterministic fixing loops (pre- and post-commenting). It is configured with a constrained prompt and low temperature (`temperature=0.0`) to ensure reliable, non-creative fixes based purely on validation errors. | `[developer]` section |
+| `commentator` | The primary agent responsible for enhancing docstrings, organizing imports, and applying high-level code quality improvements. | `[commentator]` section |
