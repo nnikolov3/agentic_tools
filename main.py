@@ -15,19 +15,21 @@ from fastmcp import FastMCP
 from src.agents.agent import Agent
 from src.configurator import Configurator
 from src.workflows.code_quality_enforcer import CodeQualityEnforcer
-
-# Configure basic logging for clear, explicit output.
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger: logging.Logger = logging.getLogger(__name__)
-
 cwd = os.getcwd()
 configuration_path = Path(f"{cwd}/conf/agentic_tools.toml")
 configurator = Configurator(configuration_path)
 configuration = configurator.get_config_dictionary()
 mcp_name = "agentic-tools"
 mcp = FastMCP(mcp_name)
+
+# Configure basic logging for clear, explicit output.
+
+logging.basicConfig(
+    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger: logging.Logger = logging.getLogger(__name__)
+enforcer = CodeQualityEnforcer(configuration, mcp_name)
+
 
 
 @mcp.tool(
@@ -89,26 +91,22 @@ async def commentator_tool(chat: Any | None) -> Any:
         logger.error(f"Path does not exist: {path_str}")
         return f"Error: Path does not exist: {path_str}"
 
-    try:
-        enforcer = CodeQualityEnforcer(configuration, mcp_name)
-        
-        if path_obj.is_file():
-            logger.info(f"Input is a file. Running Code Quality Enforcer on: {path_str}")
-            await enforcer.run_on_file(path_str)
-            return f"Code quality enforcement finished for file: {path_str}. Check logs for details."
-        
-        elif path_obj.is_dir():
-            logger.info(f"Input is a directory. Running Code Quality Enforcer on: {path_str}")
-            await enforcer.run_on_directory(path_str)
-            return f"Code quality enforcement finished for directory: {path_str}. Check logs for details."
-        
-        else:
-            logger.error(f"Invalid path provided: {path_str}")
-            return f"Error: Invalid path provided: {path_str}. Must be a file or directory."
 
-    except Exception as e:
-        logger.error(f"The code quality enforcer failed: {e}", exc_info=True)
-        return f"Error: The code quality enforcer failed: {e}"
+
+    if path_obj.is_file():
+        logger.info(f"Input is a file. Running Code Quality Enforcer on: {path_str}")
+        await enforcer.run_on_file(path_str)
+        return f"Code quality enforcement finished for file: {path_str}. Check logs for details."
+
+    elif path_obj.is_dir():
+        logger.info(f"Input is a directory. Running Code Quality Enforcer on: {path_str}")
+        await enforcer.run_on_directory(path_str)
+        return f"Code quality enforcement finished for directory: {path_str}. Check logs for details."
+
+    else:
+        logger.error(f"Invalid path provided: {path_str}")
+        return f"Error: Invalid path provided: {path_str}. Must be a file or directory."
+
 
 
 if __name__ == "__main__":

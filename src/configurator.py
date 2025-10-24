@@ -1,12 +1,16 @@
-import tomllib
 from pathlib import Path
+import tomllib
 
 
 class Configurator:
+    """Manages the loading and parsing of TOML configuration files."""
+
     def __init__(self, config_path):
+        """Initializes the Configurator with the path to the configuration file."""
         self.config_path = config_path  # This is a string path like "config.toml"
 
     def get_config_dictionary(self):
+        """Loads, validates, and parses the TOML configuration file."""
         try:
             # Validate path exists
             if not Path(self.config_path).exists():

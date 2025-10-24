@@ -11,7 +11,7 @@ project_directories = ["conf", "docs", "src"]
 include_extensions = [".py",".md", ".toml"]
 exclude_files = ["__init__.py"]
 exclude_directories = [".qwen", ".gemini",".git", ".github", ".gitlab", "node_modules", "venv", ".venv", "dist", "build", "target", "__pycache__"]
-max_file_bytes = 262144
+max_file_bytes = 2621440
 git_diff_command = ["git", "diff", "--patch-with-raw", "--minimal", "--patience"]
 
 [agentic-tools.memory]
@@ -27,7 +27,7 @@ monthly_retrieval_weight = 0.2
 long_term_retrieval_weight = 0.2
 knowledge_bank_retrieval_weight = 0.2
 total_memories_to_retrieve = 20
-device = "cpu"# Device for FastEmbed (e.g., "cuda", "cpu")
+device = "cuda"# Device for FastEmbed (e.g., "cuda", "cpu")
 search_hnsw_ef = 128# HNSW search parameter for accuracy vs. speed
 
 [agentic-tools.memory.hnsw_config]
@@ -114,11 +114,9 @@ You are the 'developer', an expert software engineer. Your task is to fix code t
 4.  DO NOT add new features, comments, or docstrings.
 5.  Your only goal is to make the code pass the validation checks defined by the errors.
 6.  Return ONLY the complete, corrected source code. Do not add any explanations, apologies, or markdown formatting like ```python ... ``` around the code.
-
-## FAILED CODE AND ERRORS
 """
 
-model_name = "gemini-pro-latest"
+model_name = "gemini-2.5-flash"
 api_key = "GEMINI_API_KEY_DEVELOPER"
 temperature = 0.0
 description = "Writes high quality code"

@@ -1,8 +1,10 @@
 # src/memory/qdrant_client_manager.py
 
-"""
+"""Centralized Qdrant client manager.
+
 Purpose:
-Centralized Qdrant client manager with timeout handling, gRPC support, and all optimizations from agentic_tools.toml.
+Centralized Qdrant client manager with timeout handling, gRPC support, and all
+optimizations from agentic_tools.toml.
 """
 
 import logging
@@ -15,14 +17,10 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 
 class QdrantClientManager:
-    """
-    Manages Qdrant client with robust timeout and all performance optimizations.
-    """
+    """Manages Qdrant client with robust timeout and all performance optimizations."""
 
     def __init__(self, config: Dict[str, Any]) -> None:
-        """
-        Initialize with timeout and optimization config from TOML.
-        """
+        """Initialize with timeout and optimization config from TOML."""
         self.qdrant_url: str = config.get("qdrant_url", "http://localhost:6333")
         self.timeout: float = config.get("timeout", 60.0)
         hnsw_config = config.get("hnsw_config", {})
@@ -54,16 +52,15 @@ class QdrantClientManager:
         embedding_size: int,
         payload_indexes: Optional[List[Tuple[str, str]]] = None,
     ) -> None:
-        """
-        Ensure collection exists with optimized parameters.
-        """
+        """Ensure collection exists with optimized parameters."""
         try:
             if await self.client.collection_exists(collection_name=collection_name):
                 logger.debug(f"Collection '{collection_name}' already exists.")
                 return
 
             logger.info(
-                f"Creating optimized collection '{collection_name}' with embedding size {embedding_size}."
+                f"Creating optimized collection '{collection_name}' "
+                f"with embedding size {embedding_size}."
             )
             await self.client.create_collection(
                 collection_name=collection_name,
@@ -80,7 +77,7 @@ class QdrantClientManager:
                         type=self.quantization_config.get("scalar_type", "int8"),
                         quantile=self.quantization_config.get("quantile", 0.99),
                         always_ram=self.quantization_config.get("always_ram", True),
-                    )
+                    ),
                 ),
             )
             logger.info(f"Created optimized collection '{collection_name}'.")

@@ -37,9 +37,8 @@ class ValidationService:
             ("ruff", ["ruff", "check"]),
             ("mypy", ["mypy", "--ignore-missing-imports"]),
         ]
-
+    @staticmethod
     def _run_command(
-        self,
         command_name: str,
         command_args: List[str],
         file_path: str,
@@ -62,7 +61,7 @@ class ValidationService:
                 capture_output=True,
                 text=True,
                 check=False,  # We handle the non-zero exit code manually.
-                timeout=30,  # A generous timeout for static analysis.
+                timeout=60,  # A generous timeout for static analysis.
             )
 
             # A non-zero return code indicates that the check failed.
