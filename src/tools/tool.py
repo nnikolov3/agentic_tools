@@ -156,12 +156,12 @@ class Tool:
         """
         # This list explicitly defines which files constitute the common project context.
         # Adding or removing a file requires changing only this single location.
-        project_files_to_read = self.config.get("common_project_files", {})
+        project_files_to_read = self.config.get("common_project_files", [])
 
         common_context = {}
-        for key, filename in project_files_to_read.items():
+        for filename in project_files_to_read:
             file_path = self.current_working_directory / filename
-            common_context[key] = self.shell_tools.read_file_content(file_path)
+            common_context[filename] = self.shell_tools.read_file_content(file_path)
         return common_context
 
     def _create_commentator_payload(
@@ -216,9 +216,9 @@ class Tool:
             "USER_PROMPT": chat,
             "GIT_INFO": self.shell_tools.get_git_info(),
             "SRC_CODE": self.shell_tools.process_directory(self.source_directory),
+            "PROJECT_TOP_FILES": self._get_common_project_files_context()
         }
-        # Combine the base payload with the common project file context.
-        payload.update(self._get_common_project_files_context())
+
         return payload
 
     def _create_approver_payload(self, chat: Optional[Any]) -> dict[str, Any]:

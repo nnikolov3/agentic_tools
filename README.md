@@ -5,10 +5,10 @@ The Agentic Tools Framework is a sophisticated system designed to automate compl
 ## Key Features
 
 - **Specialized Agents:** Includes dedicated agents for development (`developer`), documentation (`readme_writer`), code review (`approver`), architectural planning (`architect`), and code commenting (`commentator`).
-- **Time-Aware RAG System:** Utilizes Qdrant and FastEmbed for high-performance vector storage, retrieval, and cross-encoder reranking. Memory retrieval is time-bucketed (hourly, daily, monthly) to ensure agents receive contextually relevant project history.
-- **Knowledge Bank Ingestion Pipeline:** A dedicated script for processing, chunking, embedding, and deduplicating documents (PDF, JSON, Markdown) into the vector database, including LLM-enhanced summarization for PDFs.
-- **Code Quality Enforcement:** Code-modifying agents (`developer`, `commentator`) automatically validate generated code against static analysis tools (`black`, `ruff`, `mypy`) before writing to disk, ensuring file integrity.
-- **Comprehensive Project Context:** Agents are automatically provided with project source code, Git diffs, repository metadata, and design documents during execution.
+- **Time-Aware RAG System:** Utilizes Qdrant and FastEmbed for high-performance vector storage, retrieval, and cross-encoder reranking (`jinaai/jina-reranker-v2-base-multilingual`). Memory retrieval is time-bucketed (hourly, daily, weekly, etc.) to ensure agents receive contextually relevant project history.
+- **Knowledge Bank Ingestion Pipeline:** A dedicated script for processing, chunking, embedding, and deduplicating documents (PDF, JSON, Markdown) into the vector database, including LLM-enhanced summarization for PDFs via the Google Gemini API.
+- **Code Quality Enforcement:** Code-modifying agents (`developer`, `commentator`) automatically validate generated Python code against static analysis tools (`black`, `ruff`, `mypy`) before writing to disk, ensuring file integrity.
+- **Comprehensive Context:** Agents are automatically provided with project source code, Git diffs, repository metadata, design documents, and memory context during execution.
 - **Atomic File Operations:** Ensures data integrity when writing or modifying files using safe, atomic write operations.
 
 ## Prerequisites
@@ -19,6 +19,7 @@ To run this project, you need the following installed:
 - **Git** (must be accessible in your system's PATH)
 - **Qdrant Service:** A running instance of the Qdrant vector database (default URL: `http://localhost:6333`).
 - **LLM API Key:** An API key for the configured model provider (e.g., Google Gemini).
+- **Static Analysis Tools:** The validation service requires `black`, `ruff`, and `mypy` to be installed globally or in the environment.
 
 ## Installation
 
@@ -75,7 +76,7 @@ python main.py readme_writer_tool --chat "Generate a concise and practical READM
 **Example: Modifying a Source File**
 
 ```bash
-python main.py developer_tool     --filepath src/tools/api_tools.py     --chat "Refactor the google method to use a more explicit try-except block for API key validation."
+python main.py developer_tool --filepath src/tools/api_tools.py --chat "Refactor the google method to use a more explicit try-except block for API key validation."
 ```
 
 ### 2. Ingesting Knowledge Bank Documents
@@ -96,22 +97,22 @@ The project is configured using the TOML file located at `conf/agentic_tools.tom
 
 ### Environment Variables
 
-You must set the API key environment variable specified in your agent configuration. For the default Google provider, this is typically:
+You must set the API key environment variables specified in your agent configuration.
 
 ```bash
-export GEMINI_API_KEY="YOUR_API_KEY_HERE"
-# If using the knowledge ingestion script, you may need a separate key:
+# Example keys referenced in conf/agentic_tools.toml:
+export GEMINI_API_KEY_DEVELOPER="YOUR_API_KEY_HERE"
+export GEMINI_API_KEY_README_WRITER="YOUR_API_KEY_HERE"
 export GEMINI_API_KEY_KNOWLEDGE_INGESTION="YOUR_API_KEY_HERE"
 ```
 
 ### `conf/agentic_tools.toml` Overview
 
-The configuration file defines global settings for file filtering, memory connection, and specific parameters (model, prompt, API key reference) for each agent.
-
 | Section | Key Parameters | Description |
 | :--- | :--- | :--- |
-| `[agentic-tools]` | `source`, `design_docs` | Defines directories to scan for source code context and paths to design documents. |
-| `[memory]` | `qdrant_url`, `embedding_model` | Connection details for Qdrant and the model used for vector generation. |
-| | `*retrieval_weight` | Weights defining the proportion of memories retrieved from different time buckets (hourly, daily, monthly, etc.). |
-| `[knowledge_bank_ingestion]` | `source_directory`, `chunk_size` | Settings for the ingestion script, including where to find documents and how to chunk them. |
-| `[<agent_name>]` | `model_provider`, `model_name`, `prompt`, `api_key` | Agent-specific settings defining the LLM provider (e.g., `google`), model, system instruction, and the environment variable name holding the API key. |
+| `[agentic-tools]` | `source`, `design_docs`, `include_extensions` | Defines directories to scan for source code context and paths to design documents, along with file filtering rules. |
+| `[agentic-tools.memory]` | `qdrant_url`, `embedding_model`, `device` | Connection details for Qdrant and the embedding model (`mixedbread-ai/mxbai-embed-large-v1`). |
+| | `*retrieval_weight` | Weights defining the proportion of memories retrieved from different time buckets (e.g., `hourly_retrieval_weight`). |
+| `[agentic-tools.memory.reranker]` | `enabled`, `model_name` | Configuration for the cross-encoder reranker (`jinaai/jina-reranker-v2-base-multilingual`). |
+| `[knowledge_bank_ingestion]` | `source_directory`, `chunk_size`, `qdrant_batch_size` | Settings for the ingestion script, including document source, chunking parameters (default: 1024/200), and concurrency limits. |
+| `[<agent_name>]` | `model_provider`, `model_name`, `prompt`, `api_key` | Agent-specific settings defining the LLM provider (`google`), model (e.g., `gemini-2.5-pro`), system instruction, and the environment variable name holding the API key. |

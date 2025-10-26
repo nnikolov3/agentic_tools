@@ -22,6 +22,7 @@ common_project_files = [
     "main.py",
     "pyproject.toml",
     "run_agents_manually.py",
+    "conf/agentic_tools.toml"
 ]
 
 # File processing rules.
@@ -143,7 +144,6 @@ chunk_overlap = 200
 qdrant_batch_size = 128
 # The maximum number of files to process concurrently.
 concurrency_limit = 5
-
 
 # =============================================================================
 # AGENT CONFIGURATIONS
