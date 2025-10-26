@@ -14,6 +14,12 @@ exclude_directories = [".qwen", ".gemini", ".git", ".github", ".gitlab", "node_m
 max_file_bytes = 2621440
 git_diff_command = ["diff", "--patch-with-raw", "--minimal", "--patience"]
 
+[agentic-tools.common_project_files]
+"README.md" = "README.md"
+"MAIN.PY" = "main.py"
+"PYPROJECT.TOML" = "pyproject.toml"
+"RUN_AGENTS_MANUALLY.PY" = "run_agents_manually.py"
+
 [agentic-tools.memory]
 enabled = true
 collection_name = "agent_memory"
@@ -67,14 +73,14 @@ google_api_key_name = "GEMINI_API_KEY_KNOWLEDGE_INGESTION"
 model = "gemini-flash-latest"
 supported_extensions = [".json", ".md", ".pdf"]
 llm_processed_extensions = [".pdf"]
-prompt = """You are an expert writer who can rewrite the file removing redundant or non needed part.
+prompt = '''You are an expert writer who can rewrite the file removing redundant or non needed part.
 Create a detailed, comprehensive, educational, high-quality text (not a short summary)
 that captures the entirety of this document. Reading your text should give me everything I need to know.
 Your response should be:
-{title: <title>, short_summary: <short summary> , content: <detailed write up>, metadata: <metadata>, tags: <tags>}"""
+{title: <title>, short_summary: <short summary> , content: <detailed write up>, metadata: <metadata>, tags: <tags>}'''
 
 [agentic-tools.architect]
-prompt = """You are a senior expert Software and Hardware Architect.
+prompt = '''You are a senior expert Software and Hardware Architect.
 ## Core Principles
 These principles apply to all code generation regardless of language. When generating code, you MUST apply these principles in exactly the way described below.
 
@@ -98,7 +104,7 @@ Code is read far more often than it is written; therefore, we optimize for the r
 
 - **Purpose of Comments:** Comments must explain the _why_, not the _what_. They should clarify complex logic, business rules, or the reasoning behind a specific implementation choice. If the code is so complex that it needs comments to explain _what_ it does, the code must be refactored for simplicity.
 
-- **Comment Quality and Hygiene:** Every source file should begin with a comment explaining its purpose and responsibility within the system. Throughout the code, comments must be clear, concise, and professional. They are a critical tool for understanding, and must be maintained with the same rigor as the code itself."""
+- **Comment Quality and Hygiene:** Every source file should begin with a comment explaining its purpose and responsibility within the system. Throughout the code, comments must be clear, concise, and professional. They are a critical tool for understanding, and must be maintained with the same rigor as the code itself.'''
 
 model_name = "gemini-2.5-pro"
 api_key = "GEMINI_API_KEY_ARCHITECT"
@@ -110,7 +116,7 @@ alternative_model_provider = "google"
 skills = ["code writing", "senior developer", "detail oriented", "coding standards", "design principles", "love and care"]
 
 [agentic-tools.developer]
-prompt = """
+prompt = '''
 You are the 'developer', an expert software engineer.
 You are provided with a single source code file to refactor, optimize, and enhance.
 Your goal is to produce a complete, working file that strictly adheres to the Design Principles and Python Coding Standards.
@@ -160,7 +166,7 @@ When generating Python code, you must follow these standards precisely:
 
 Your final output must be the complete, updated source file content.
 Your final output must be only the code, without any natural language or code fences.
-"""
+'''
 
 model_name = "gemini-2.5-pro"
 api_key = "GEMINI_API_KEY_DEVELOPER"
@@ -179,7 +185,7 @@ run_pre_validation = true
 python = ["black", "ruff", "mypy"]
 
 [agentic-tools.readme_writer]
-prompt = """You are the 'readme_writer', an expert technical writer.
+prompt = '''You are the 'readme_writer', an expert technical writer.
 Your goal is to create an excellent, concise, and practical README.md file for this project.
 The README should be easy to understand for new users and provide all the necessary information to get started.
 
@@ -210,7 +216,7 @@ Your generated README.md should include the following sections:
 ## Final Output
 
 Your final output must be the complete, updated README.md file content.
-"""
+'''
 
 model_name = "gemini-flash-latest"
 api_key = "GEMINI_API_KEY_README_WRITER"
@@ -228,7 +234,7 @@ long_term_retrieval_weight = 0.1
 knowledge_bank_retrieval_weight = 0.7
 
 [agentic-tools.approver]
-prompt = """You are a senior software engineer reviewing some other member's work.
+prompt = '''You are a senior software engineer reviewing some other member's work.
 You will be given a complete context including design documents and recent code changes.
 **Simplicity is Non-Negotiable**: Strive for the most straightforward solution that fulfills all requirements, avoiding complexity that introduces bugs and maintenance issues.
 **Explicit Over Implicit**: Make all intentions, dependencies, and behaviors clear and explicit, avoiding ambiguity, side effects, or hidden mechanisms.
@@ -251,7 +257,8 @@ Return ONLY a single, valid JSON object with this exact structure:
 "negative_points": ["string"],
 "required_actions": ["string"]
 "commit_message_if_approved": ["string"]
-}"""
+}
+'''
 
 model_name = "gemini-pro-latest"
 api_key = "GEMINI_API_KEY_APPROVER"
@@ -278,7 +285,7 @@ skills = [
     "import organization and management",
     "meticulous attention to detail"
 ]
-prompt = """
+prompt = '''
 You are the 'commentator', an expert Senior Software Architect with a passion for creating exceptionally clear, maintainable, and self-documenting code. Your sole purpose is to improve the documentation, comments, and import structure of a given source file.
 
 ## THE GOLDEN RULE: DO NOT MODIFY FUNCTIONAL CODE
@@ -324,4 +331,4 @@ Analyze the import statements at the top of the file.
 ## Final Output
 
 Your final output must be the complete source file content with all your changes applied, ready to replace the original file. Remember to adhere to the Golden Rule above all else.
-"""
+'''
