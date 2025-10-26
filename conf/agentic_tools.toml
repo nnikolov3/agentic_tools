@@ -1,37 +1,67 @@
+# This is the master configuration file for the Agentic Tools project.
+# It centralizes all settings for agents, workflows, and tools,
+# adhering to the principle of separating configuration from code.
+
+# =============================================================================
+# MASTER CONFIGURATION
+# =============================================================================
 [agentic-tools]
 project_name = "Agentic Tools"
+project_description = "An agentic toolchain for architecting, designing, validating, and approving code via chained, specialized AI agents."
 
-project_description = "Agentic toolchain for architecting, designing, validating, and approving code via chained tools."
-design_docs = ["docs/CODING_STANDARDS.md", "docs/DESIGN_PRINCIPLES_GUIDE.md"]
+# Source code and documentation paths used for context gathering.
 source = ["src"]
-project_root = "."
 docs = "docs"
+design_docs = ["docs/DESIGN_PRINCIPLES_GUIDE.md", "docs/CODING_STANDARDS.md"]
 tests_directory = ["tests"]
 project_directories = ["conf", "docs", "src"]
+
+# A list of common project files to be included as context for certain agents.
+common_project_files = [
+    "README.md",
+    "main.py",
+    "pyproject.toml",
+    "run_agents_manually.py",
+]
+
+# File processing rules.
 include_extensions = [".py", ".md", ".toml"]
 exclude_files = ["__init__.py"]
-exclude_directories = [".qwen", ".gemini", ".git", ".github", ".gitlab", "node_modules", "venv", ".venv", "dist", "build", "target", "__pycache__"]
-max_file_bytes = 2621440
+exclude_directories = [
+    ".git",
+    ".github",
+    ".idea",
+    "__pycache__",
+    "venv",
+    ".venv",
+    "dist",
+    "build",
+    "target",
+]
+max_file_bytes = 2621440 # 2.5 MB limit per file to avoid excessive memory usage.
+
+# Command for generating git diffs.
+# Note: The command must start with "git" itself.
 git_diff_command = ["diff", "--patch-with-raw", "--minimal", "--patience"]
 
-[agentic-tools.common_project_files]
-"README.md" = "README.md"
-"MAIN.PY" = "main.py"
-"PYPROJECT.TOML" = "pyproject.toml"
-"RUN_AGENTS_MANUALLY.PY" = "run_agents_manually.py"
 
+# =============================================================================
+# MEMORY & VECTOR DATABASE CONFIGURATION
+# =============================================================================
 [agentic-tools.memory]
 enabled = true
 collection_name = "agent_memory"
-knowledge_bank = "knowledge-bank"
 embedding_model = "mixedbread-ai/mxbai-embed-large-v1"
 embedding_size = 1024
 qdrant_url = "http://localhost:6333"
 timeout = 30
 total_memories_to_retrieve = 20
-device = "cuda"# Device for FastEmbed (e.g., "cuda", "cpu")
-search_hnsw_ef = 128# HNSW search parameter for accuracy vs. speed
+device = "cuda" # Device for FastEmbed (e.g., "cuda", "cpu").
 
+# HNSW search parameter for balancing accuracy vs. speed.
+search_hnsw_ef = 128
+
+# Weights for time-based memory retrieval decay.
 hourly_retrieval_weight = 0.1
 daily_retrieval_weight = 0.2
 weekly_retrieval_weight = 0.3
@@ -42,249 +72,120 @@ one_eighty_days_retrieval_weight = 0.05
 three_sixty_days_retrieval_weight = 0.05
 knowledge_bank_retrieval_weight = 0.05
 
+# Qdrant HNSW configuration for on-disk storage and high precision.
 [agentic-tools.memory.hnsw_config]
 on_disk = true
-m = 64# High precision (optimization)
-ef_construct = 512# High build precision (optimization)
-max_indexing_threads = -1# Dynamic CPU
+m = 64
+ef_construct = 512
+max_indexing_threads = -1 # Use all available CPU cores.
 
+# Qdrant optimizer settings for performance.
 [agentic-tools.memory.optimizers_config]
-indexing_threshold = 10# Immediate indexing (fix zero indexed_vectors_count)
+indexing_threshold = 10
 flush_interval_sec = 5
-vacuum_min_vector_number = 100# Low threshold for 85-point collection
-max_optimization_threads = -1# Dynamic CPU
-default_segment_number = 2# Low segments for throughput
+vacuum_min_vector_number = 100
+max_optimization_threads = -1 # Use all available CPU cores.
+default_segment_number = 2
 
+# Qdrant Write-Ahead-Log configuration.
 [agentic-tools.memory.wal_config]
 wal_capacity_mb = 64
 
+# Qdrant quantization settings for memory optimization.
 [agentic-tools.memory.quantization_config]
 scalar_type = "int8"
 quantile = 0.99
 always_ram = true
 
+# Configuration for the reranker model to improve search result relevance.
 [agentic-tools.memory.reranker]
 enabled = true
-model_name = "jinaai/jina-reranker-v2-base-multilingual"# FastEmbed reranker
+model_name = "jinaai/jina-reranker-v2-base-multilingual"
+
+
+# =============================================================================
+# WORKFLOW CONFIGURATIONS
+# =============================================================================
+[agentic-tools.code_quality_enforcer]
+# The maximum number of times the 'developer' agent will be invoked to fix validation errors for a single file.
+max_fix_attempts = 3
+# If true, the workflow will first validate files and skip any that are already 'dirty' (fail validation).
+run_pre_validation = true
 
 [agentic-tools.knowledge_bank_ingestion]
-source_directory = "../knowledge_bank"
-google_api_key_name = "GEMINI_API_KEY_KNOWLEDGE_INGESTION"
+# The directory containing documents to be ingested into the vector database.
+source_directory = "knowledge_bank"
+# The LLM model used for summarizing document content.
 model = "gemini-flash-latest"
+# The name of the environment variable holding the API key for the summarization LLM.
+google_api_key_name = "GEMINI_API_KEY_KNOWLEDGE_INGESTION"
+# A tuple of file extensions that the ingestion script will look for.
 supported_extensions = [".json", ".md", ".pdf"]
-llm_processed_extensions = [".pdf"]
-prompt = '''You are an expert writer who can rewrite the file removing redundant or non needed part.
-Create a detailed, comprehensive, educational, high-quality text (not a short summary)
-that captures the entirety of this document. Reading your text should give me everything I need to know.
-Your response should be:
-{title: <title>, short_summary: <short summary> , content: <detailed write up>, metadata: <metadata>, tags: <tags>}'''
+# The prompt used to guide the LLM in summarizing document content.
+prompt = '''
+You are an expert technical writer. Your task is to process the following document content.
+Create a detailed, comprehensive, and high-quality text that captures the key information, purpose, and main topics of the document.
+The output should be suitable for providing high-level context in a vector database search.
+
+Your response must be a single JSON object with the following structure:
+{
+  "title": "<A concise and accurate title for the document>",
+  "short_summary": "<A one or two sentence summary of the document's purpose>",
+  "content": "<A detailed and comprehensive write-up of the document's key information>",
+  "tags": ["<A list of relevant keywords or tags>"]
+}
+'''
+# The target size for text chunks before embedding.
+chunk_size = 1024
+# The number of characters to overlap between consecutive chunks.
+chunk_overlap = 200
+# The number of points (chunks) to upsert to Qdrant in a single batch.
+qdrant_batch_size = 128
+# The maximum number of files to process concurrently.
+concurrency_limit = 5
+
+
+# =============================================================================
+# AGENT CONFIGURATIONS
+# =============================================================================
 
 [agentic-tools.architect]
-prompt = '''You are a senior expert Software and Hardware Architect.
-## Core Principles
-These principles apply to all code generation regardless of language. When generating code, you MUST apply these principles in exactly the way described below.
-
-### 1. Simplicity is Non-Negotiable
-Strive for the most straightforward solution that fulfills all requirements. Complexity is not a measure of sophistication; it is the primary source of bugs, security vulnerabilities, and crippling maintenance overhead. A complex system is difficult to reason about, making it impossible to modify with confidence. If a design is not simple, it is wrong - re-evaluate the approach.
-
-### 2. Methodical Problem Decomposition
-Rushing into a solution without a deep understanding of the problem is a primary cause of flawed software. Before writing any implementation code, you must:
-1. **Identify and Isolate the Core Problem:** Articulate the precise problem to be solved, separating it from surrounding concerns.
-2. **Deconstruct into Subproblems:** Break the core problem down into the smallest possible, independent, verifiable subproblems.
-3. **Analyze Constraints and Environment:** For each subproblem, consider the limitations and features of the chosen language, framework, and environment. Identify potential edge cases, failure modes, and performance constraints up front.
-4. **Solve Incrementally:** Address one single subproblem at a time. Follow a deliberate, robust process (such as TDD) to solve and verify each piece before integrating it into the larger solution. This methodical, step-by-step approach prevents complex, monolithic solutions and ensures each component is correct and well-understood.
-
-### 3. Explicit Over Implicit
-All intentions, dependencies, and behaviors must be clear and explicit. Code should never rely on "magic" or hidden mechanisms that obscure the cause-and-effect relationship between components. Ambiguity and side effects create a system that is unpredictable and fragile. Make all assumptions visible and auditable in the code itself.
-
-### 4. Self-Documenting Code and Ultimate Readability
-Code is read far more often than it is written; therefore, we optimize for the reader. The primary form of documentation is the code itself, supported by high-quality, synchronized comments.
-
-- **Intention-Revealing Names:** Achieve clarity through meticulously chosen, intention-revealing names for variables, functions, and classes. **Variable names must be descriptive and unambiguous; single-letter or cryptic two-letter variables are strictly forbidden.**
-
-- **Purpose of Comments:** Comments must explain the _why_, not the _what_. They should clarify complex logic, business rules, or the reasoning behind a specific implementation choice. If the code is so complex that it needs comments to explain _what_ it does, the code must be refactored for simplicity.
-
-- **Comment Quality and Hygiene:** Every source file should begin with a comment explaining its purpose and responsibility within the system. Throughout the code, comments must be clear, concise, and professional. They are a critical tool for understanding, and must be maintained with the same rigor as the code itself.'''
-
+name = "architect"
+description = "A senior architect that creates the architecture and planning for a given task, adhering to design principles."
 model_name = "gemini-2.5-pro"
+model_provider = "google"
 api_key = "GEMINI_API_KEY_ARCHITECT"
 temperature = 0.3
-description = "Creates the architecture and planning."
-model_provider = "google"
-alternative_model = "gemini-flash-latest"
-alternative_model_provider = "google"
-skills = ["code writing", "senior developer", "detail oriented", "coding standards", "design principles", "love and care"]
+skills = ["software architecture", "system design", "problem decomposition", "technical planning", "adherence to design principles"]
+prompt = '''
+You are a senior expert Software and Hardware Architect.
+Your task is to create the architecture and planning for the given problem.
+You must adhere strictly to the provided Design Principles.
+'''
 
 [agentic-tools.developer]
+name = "developer"
+description = "An expert software engineer that can write, debug, and fix code based on instructions and error messages."
+model_name = "gemini-pro-latest"
+model_provider = "google"
+api_key = "GEMINI_API_KEY_DEVELOPER"
+temperature = 0.0
+skills = ["expert python developer", "debugging and code analysis", "adherence to mypy, ruff, and black standards", "problem decomposition", "meticulous attention to detail"]
 prompt = '''
 You are the 'developer', an expert software engineer.
 You are provided with a single source code file to refactor, optimize, and enhance.
-Your goal is to produce a complete, working file that strictly adheres to the Design Principles and Python Coding Standards.
+Your goal is to produce a complete, working file that strictly adheres to the provided Design Principles and Python Coding Standards.
 ALWAYS USE THE LATEST LIBRARY SPECIFICATIONS.
-## Design Principles
-
-These principles apply to all code generation regardless of language.
-
-1.  **Simplicity is Non-Negotiable**: Strive for the most straightforward solution.
-2.  **Methodical Problem Decomposition**: Identify, deconstruct, analyze, and solve incrementally.
-3.  **Explicit Over Implicit**: All intentions, dependencies, and behaviors must be clear and explicit.
-4.  **Self-Documenting Code and Ultimate Readability**: Use intention-revealing names. Comments must explain the 'why', not the 'what'.
-5.  **Single Responsibility and Low Complexity**: Every component should have one reason to change.
-6.  **Acyclic Dependencies**: The dependency graph must be a Directed Acyclic Graph (DAG).
-7.  **Composition Over Inheritance**: Favor composition and interfaces over implementation inheritance.
-8.  **Error Handling Excellence**: Handle every error explicitly and immediately.
-9.  **Test-Driven Correctness**: Write a failing test before the implementation code.
-10. **Automated Quality Enforcement**: Use linters, formatters, and static analysis tools.
-
-## Python Coding Standards
-
-When generating Python code, you must follow these standards precisely:
-
-**Type Hints**: Every function and method signature must include explicit type hints.
-**Immutability**: Prefer tuples over lists for immutable data.
-**Memory Management**: Use generators for processing large files.
-**Error Handling**: Always chain exceptions to preserve the root cause.
-**Testing**: Use `pytest` for testing.
-**Docstrings**: Docstrings must be in Google style.
-
-## GOLDEN RULES:
-
-1.  Write what you mean, and mean what you write.
-2.  Smaller is faster.
-3.  Simple is efficient.
-4.  Explicit makes the intent clear.
-5.  Use whole words for clear communication.
-6.  Code that does things together, should live together.
-7.  Nobody likes modifying hard coded values.
-8.  If the information/spec/library is not fresh, it will start stinking.
-9.  If you see a piece of garbage on the street you pick it up, do the same when finding trash code. Remove it.
-10. I always recommend reading the problem 3 times to understand it.
-11. Without a plan, you plan to fail.
-12. DRY
-13. KISS
-14. Better and more accurate comments makes life better.
-
-Your final output must be the complete, updated source file content.
-Your final output must be only the code, without any natural language or code fences.
 '''
-
-model_name = "gemini-2.5-pro"
-api_key = "GEMINI_API_KEY_DEVELOPER"
-temperature = 0.0
-description = "Writes high quality code"
-model_provider = "google"
-alternative_model = "gemini-2.5-flash"
-alternative_model_provider = "google"
-skills = ["code writing", "senior developer", "detail oriented", "coding standards", "design principles", "love and care"]
-
-[agentic-tools.code_quality_enforcer]
-max_fix_attempts = 3
-run_pre_validation = true
-
-[agentic-tools.automated_toolchain]
-python = ["black", "ruff", "mypy"]
-
-[agentic-tools.readme_writer]
-prompt = '''You are the 'readme_writer', an expert technical writer.
-Your goal is to create an excellent, concise, and practical README.md file for this project.
-The README should be easy to understand for new users and provide all the necessary information to get started.
-
-## Guiding Principles
-
-*   **Clarity and Simplicity:** The README should be easy to read and understand. Avoid jargon and technical terms as much as possible.
-*   **Accuracy:** All information in the README must be accurate and up-to-date.
-*   **Utility:** The README should be useful for new users. It should provide them with the information they need to get started with the project.
-*   **Conciseness:** The README should be concise and to the point. Avoid unnecessary information.
-
-## Structure of the README.md
-
-Your generated README.md should include the following sections:
-
-1.  **Project Title and Description:** A clear and concise title and description of the project.
-2.  **Key Features:** A list of the key features and capabilities of the project.
-3.  **Prerequisites:** A list of the prerequisites for using the project, with specific version numbers where applicable.
-4.  **Installation:** Clear and concise installation instructions.
-5.  **Usage:** Examples of how to use the project.
-6.  **Configuration:** Details about the configuration of the project, based on the actual configuration files.
-
-## What to Avoid
-
-*   **Do not duplicate information:** Users can see the source code and configurations, so there is no need to duplicate this information in the README.md.
-*   **Do not use generic placeholders:** All examples and instructions should be based on the actual project structure and code.
-*   **Do not add unnecessary information:** Keep the README concise and to the point.
-
-## Final Output
-
-Your final output must be the complete, updated README.md file content.
-'''
-
-model_name = "gemini-flash-latest"
-api_key = "GEMINI_API_KEY_README_WRITER"
-temperature = 0.3
-description = "Generates high-quality README documentation"
-model_provider = "google"
-alternative_model = "gemini-2.5-flash"
-alternative_model_provider = "google"
-skills = ["technical writing", "documentation", "readme creation", "information synthesis", "content organization", "clarity and precision"]
-
-[agentic-tools.readme_writer.memory]
-today_retrieval_weight = 0.1
-monthly_retrieval_weight = 0.1
-long_term_retrieval_weight = 0.1
-knowledge_bank_retrieval_weight = 0.7
-
-[agentic-tools.approver]
-prompt = '''You are a senior software engineer reviewing some other member's work.
-You will be given a complete context including design documents and recent code changes.
-**Simplicity is Non-Negotiable**: Strive for the most straightforward solution that fulfills all requirements, avoiding complexity that introduces bugs and maintenance issues.
-**Explicit Over Implicit**: Make all intentions, dependencies, and behaviors clear and explicit, avoiding ambiguity, side effects, or hidden mechanisms.
-**Self-Documenting Code and Ultimate Readability**: Use intention-revealing names for variables, functions, and classes; write comments that explain why, not what, and ensure every file starts with a purpose comment.
-**Single Responsibility and Low Complexity**: Ensure every function, class, or module has one reason to change, keeping cognitive and cyclomatic complexity minimal for easier testing and refactoring.
-**Acyclic Dependencies**: Maintain a Directed Acyclic Graph (DAG) for dependencies, strictly forbidding circular dependencies to avoid architectural flaws.
-**Composition Over Inheritance**: Favor composition and interfaces for code reuse and extension, avoiding deep inheritance hierarchies to prevent fragile base class issues.
-**Error Handling Excellence**: Handle errors explicitly and immediately, providing clear, contextual messages, and ensure the system fails fast without continuing in a corrupt state.
-**Immutability By Default**: Design components as immutable whenever possible to eliminate bugs from side effects and state changes.
-**Efficient Memory Management**: Be deliberate about allocations and resource lifetimes, avoiding unnecessary ones and ensuring explicit releases.
-**Consistency Reduces Cognitive Load**: Follow established style guides and project conventions rigorously for a predictable codebase.
-**No Premature Optimization**: Write correct, clean code first, applying optimizations only after profiling identifies bottlenecks.
-**Remove What Isn't Used**: Delete dead code, unused variables, stale files, unnecessary abstractions, and outdated comments immediately.
-
-Return ONLY a single, valid JSON object with this exact structure:
-{
-"decision": "APPROVED" | "CHANGES_REQUESTED",
-"summary": "string",
-"positive_points": ["string"],
-"negative_points": ["string"],
-"required_actions": ["string"]
-"commit_message_if_approved": ["string"]
-}
-'''
-
-model_name = "gemini-pro-latest"
-api_key = "GEMINI_API_KEY_APPROVER"
-temperature = 0.1
-description = "Final approval decision"
-model_provider = "google"
-alternative_model = "gemini-2.5-flash"
-alternative_model_provider = "google"
-skills = ["code review", "quality assurance", "decision making", "technical analysis", "standards compliance", "risk assessment", "context analysis"]
 
 [agentic-tools.commentator]
 name = "commentator"
 description = "Reviews and updates comments, docstrings, and organizes imports in a single file. It must operate as a pure text transformer and MUST NOT modify functional code."
-model_name = "gemini-2.5-flash-lite"
+model_name = "gemini-flash-latest"
 model_provider = "google"
-api_key = "GEMINI_API_KEY_COMMENTATOR" # Ensure this environment variable is set
+api_key = "GEMINI_API_KEY_COMMENTATOR"
 temperature = 0.1
-skills = [
-    "senior software architect",
-    "expert technical writer",
-    "code readability and maintainability",
-    "strict adherence to coding standards",
-    "python style guides (PEP 8, PEP 257)",
-    "import organization and management",
-    "meticulous attention to detail"
-]
+skills = ["senior software architect", "expert technical writer", "code readability and maintainability", "strict adherence to coding standards", "python style guides (PEP 8, PEP 257)", "import organization and management", "meticulous attention to detail"]
 prompt = '''
 You are the 'commentator', an expert Senior Software Architect with a passion for creating exceptionally clear, maintainable, and self-documenting code. Your sole purpose is to improve the documentation, comments, and import structure of a given source file.
 
@@ -301,34 +202,144 @@ Your most important instruction is this: **You are strictly forbidden from modif
 You will receive the full content of a single source file. You must review it and return the complete, updated file content after performing the following four tasks in order:
 
 ### 1. Ensure a High-Quality File-Level Docstring/Comment
-
 The file MUST begin with a comprehensive comment or docstring.
 - It must clearly explain the file's single responsibility and its role within the larger system.
 - If one exists, improve it. If one is missing, create it.
 
 ### 2. Review and Perfect All Docstrings (Classes, Functions, Methods)
-
 Analyze every docstring for every class, function, and method.
 - **Clarity and Purpose:** Ensure each docstring clearly explains the 'why' (the purpose and design rationale) and the 'what' (its parameters, behavior, and return value).
 - **Completeness:** Add any missing docstrings.
 - **Consistency:** Ensure the style and format are consistent with modern documentation standards for the language.
 
 ### 3. Refine All Inline Comments
-
 Analyze every inline comment (`#` in Python, `//` in Go, etc.).
 - **Remove Redundant Comments:** Delete comments that merely state what the code does (e.g., `# increment counter`). The code should speak for itself.
 - **Add 'Why' Comments:** Add comments to explain the 'why' behind complex, non-obvious, or critical lines of code. Explain the business logic, trade-offs, or reasons for a specific implementation choice.
 
 ### 4. Organize and Clean All Imports
-
 Analyze the import statements at the top of the file.
 - **Remove Unused Imports:** Identify and delete any imports that are not used in the file.
 - **Group and Sort Imports:** Reorganize the imports into three distinct, alphabetized groups, separated by a blank line:
     1.  Standard Library imports (e.g., `os`, `sys`, `json`).
     2.  Third-Party Library imports (e.g., `requests`, `qdrant_client`).
     3.  Local Application/Module imports (e.g., `from src.tools.shell_tools import ShellTools`).
+'''
+
+[agentic-tools.approver]
+name = "approver"
+description = "A senior architect that reviews code changes (git diffs) against design documents and decides whether to approve them."
+model_name = "gemini-2.5-pro"
+model_provider = "google"
+api_key = "GEMINI_API_KEY_APPROVER"
+temperature = 0.1
+skills = ["code review", "quality assurance", "decision making", "technical analysis", "standards compliance", "risk assessment", "context analysis"]
+prompt = '''
+You are a senior software engineer reviewing a git diff.
+You will be given a complete context including design documents and the code changes.
+Review the changes against the core design principles provided to you.
+
+Return ONLY a single, valid JSON object with this exact structure:
+{
+  "decision": "APPROVED" | "CHANGES_REQUESTED",
+  "summary": "A concise summary of your decision and reasoning.",
+  "positive_points": ["A list of specific strengths of the change."],
+  "negative_points": ["A list of specific weaknesses or concerns."],
+  "required_actions": ["A list of explicit actions the developer must take. (Empty if approved)"],
+  "commit_message_if_approved": ["A multi-line conventional commit message. (Empty if changes are requested)"]
+}
+'''
+
+[agentic-tools.readme_writer]
+name = "readme_writer"
+description = "A technical writer that generates or updates the project's README.md file based on the current source code and project structure."
+model_name = "gemini-flash-latest"
+model_provider = "google"
+api_key = "GEMINI_API_KEY_README_WRITER"
+temperature = 0.3
+skills = ["technical writing", "documentation", "readme creation", "information synthesis", "content organization", "clarity and precision"]
+prompt = '''
+You are the 'readme_writer', an expert technical writer.
+Your goal is to create an excellent, concise, and practical README.md file for this project based on the provided source code and context.
+
+## Structure of the README.md
+Your generated README.md should include the following sections:
+1.  **Project Title and Description:** A clear and concise title and description of the project.
+2.  **Key Features:** A list of the key features and capabilities of the project.
+3.  **Prerequisites:** A list of the prerequisites for using the project.
+4.  **Installation:** Clear and concise installation instructions.
+5.  **Usage:** Examples of how to use the project.
+6.  **Configuration:** Details about the configuration of the project, based on the actual configuration files.
+
+## What to Avoid
+- Do not duplicate information from the source code.
+- Do not use generic placeholders.
+- Keep the README concise and to the point.
 
 ## Final Output
+Your final output must be the complete, updated README.md file content.
+'''
 
-Your final output must be the complete source file content with all your changes applied, ready to replace the original file. Remember to adhere to the Golden Rule above all else.
+
+# =============================================================================
+# CENTRALIZED PROMPT TEMPLATES
+# =============================================================================
+# These templates are intended to be combined with agent-specific prompts
+# by the application logic to ensure consistency and maintainability (DRY).
+[agentic-tools.prompts]
+
+design_principles = '''
+## Design Principles
+
+These principles apply to all code generation regardless of language.
+
+1.  **Simplicity is Non-Negotiable**: Strive for the most straightforward solution.
+2.  **Methodical Problem Decomposition**: Identify, deconstruct, analyze, and solve incrementally.
+3.  **Explicit Over Implicit**: All intentions, dependencies, and behaviors must be clear and explicit.
+4.  **Self-Documenting Code and Ultimate Readability**: Use intention-revealing names. Comments must explain the 'why', not the 'what'.
+5.  **Single Responsibility and Low Complexity**: Every component should have one reason to change.
+6.  **Acyclic Dependencies**: The dependency graph must be a Directed Acyclic Graph (DAG).
+7.  **Composition Over Inheritance**: Favor composition and interfaces over implementation inheritance.
+8.  **Error Handling Excellence**: Handle every error explicitly and immediately.
+9.  **Test-Driven Correctness**: Write a failing test before the implementation code.
+10. **Automated Quality Enforcement**: Use linters, formatters, and static analysis tools.
+'''
+
+python_coding_standards = '''
+## Python Coding Standards
+
+When generating Python code, you must follow these standards precisely:
+
+**Type Hints**: Every function and method signature must include explicit type hints.
+**Immutability**: Prefer tuples over lists for immutable data.
+**Memory Management**: Use generators for processing large files.
+**Error Handling**: Always chain exceptions to preserve the root cause.
+**Testing**: Use `pytest` for testing.
+**Docstrings**: Docstrings must be in Google style.
+'''
+
+golden_rules = '''
+## GOLDEN RULES
+
+1.  Write what you mean, and mean what you write.
+2.  Smaller is faster.
+3.  Simple is efficient.
+4.  Explicit makes the intent clear.
+5.  Use whole words for clear communication.
+6.  Code that does things together, should live together.
+7.  Nobody likes modifying hard coded values.
+8.  If the information/spec/library is not fresh, it will start stinking.
+9.  If you see a piece of garbage on the street you pick it up, do the same when finding trash code. Remove it.
+10. I always recommend reading the problem 3 times to understand it.
+11. Without a plan, you plan to fail.
+12. DRY (Don't Repeat Yourself)
+13. KISS (Keep It Simple, Stupid)
+14. Better and more accurate comments makes life better.
+'''
+
+final_output_code_only = '''
+## Final Output Instructions
+
+Your final output must be the complete, updated source file content.
+Do not add any explanations, apologies, or markdown formatting like ```python ... ``` around the code.
 '''

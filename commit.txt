@@ -1,0 +1,10 @@
+"refactor(config): reorganize and centralize agentic_tools.toml",
+"",
+"This commit refactors the primary configuration file to improve its structure, readability, and maintainability in alignment with core design principles.",
+"",
+"Key changes include:",
+"- Grouping all settings into logical, commented sections (Master, Memory, Workflows, Agents, Prompts) for better organization.",
+"- Creating a new `[prompts]` table to centralize common prompt templates (e.g., design principles, coding standards), eliminating duplication and simplifying updates.",
+"- Standardizing the configuration structure for all agents to ensure consistency.",
+"- Enhancing prompts to be more specific and, where applicable, to request structured JSON output for more reliable parsing.",
+"- Adding inline comments to clarify the purpose of complex or important settings."
