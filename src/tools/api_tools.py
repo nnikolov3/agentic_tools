@@ -115,9 +115,7 @@ class ApiTools:
         )
         if not api_key or api_key.strip() == "":
             raise ValueError(
-                f"Missing or empty environment variable '{self.agent_api_key}' "
-                f"for agent '{self.agent_config.get('name', 'unknown')}'. "
-                f"Please set it in your environment."
+                f"Missing or empty environment variable '{self.agent_api_key}' for agent '{self.agent_config.get('name', 'unknown')}'. Please set it in your environment."
             )
 
         self.google_client = Client(api_key=api_key)
