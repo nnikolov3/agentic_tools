@@ -1,15 +1,15 @@
 # Agentic Tools Framework
 
-The Agentic Tools Framework is a sophisticated system designed to automate complex software development and documentation tasks using specialized AI agents. It leverages the `fastmcp` framework for command-line orchestration and integrates a robust Retrieval-Augmented Generation (RAG) system for contextual memory and knowledge retrieval.
+The Agentic Tools Framework is a sophisticated system designed to automate complex software development tasks using specialized, context-aware AI agents. It leverages the `fastmcp` framework for command-line orchestration and integrates a robust Retrieval-Augmented Generation (RAG) system for contextual memory and knowledge retrieval.
 
 ## Key Features
 
 - **Specialized Agents:** Includes dedicated agents for development (`developer`), documentation (`readme_writer`), code review (`approver`), architectural planning (`architect`), and code commenting (`commentator`).
-- **Contextual RAG System:** Utilizes Qdrant and FastEmbed for high-performance vector storage, retrieval, and cross-encoder reranking, ensuring agents receive highly relevant project history and knowledge context.
-- **Knowledge Bank Ingestion:** A dedicated pipeline for processing, chunking, embedding, and deduplicating documents (PDF, JSON, Markdown) into the vector database.
+- **Time-Aware RAG System:** Utilizes Qdrant and FastEmbed for high-performance vector storage, retrieval, and cross-encoder reranking. Memory retrieval is time-bucketed (hourly, daily, monthly) to ensure agents receive contextually relevant project history.
+- **Knowledge Bank Ingestion Pipeline:** A dedicated script for processing, chunking, embedding, and deduplicating documents (PDF, JSON, Markdown) into the vector database, including LLM-enhanced summarization for PDFs.
+- **Code Quality Enforcement:** Code-modifying agents (`developer`, `commentator`) automatically validate generated code against static analysis tools (`black`, `ruff`, `mypy`) before writing to disk, ensuring file integrity.
 - **Comprehensive Project Context:** Agents are automatically provided with project source code, Git diffs, repository metadata, and design documents during execution.
 - **Atomic File Operations:** Ensures data integrity when writing or modifying files using safe, atomic write operations.
-- **Configurable LLM Backend:** Integrated with Google Generative AI (Gemini) via a flexible API abstraction layer.
 
 ## Prerequisites
 
@@ -25,8 +25,8 @@ To run this project, you need the following installed:
 1. **Clone the Repository:**
 
    ```bash
-   git clone https://github.com/nnikolov3/multi-agent-mcp.git
-   cd multi-agent-mcp
+   git clone https://github.com/nnikolov3/agentic_tools.git
+   cd agentic_tools
    ```
 
 1. **Set up a Virtual Environment:**
@@ -38,10 +38,8 @@ To run this project, you need the following installed:
 
 1. **Install Dependencies:**
 
-   Install the core libraries:
-
    ```bash
-   pip install fastmcp qdrant-client fastembed google-genai mdformat tenacity
+   pip install fastmcp qdrant-client fastembed google-genai mdformat tenacity pdfminer.six
    ```
 
 1. **Start Qdrant Service:**
@@ -54,9 +52,9 @@ To run this project, you need the following installed:
 
 ## Usage
 
-The project is executed using the `fastmcp` runner via `python main.py`. The available agents are exposed as command-line tools.
+The project can be executed using the `fastmcp` runner (`main.py`) for standard tools, or the manual script (`run_agents_manually.py`) for direct agent invocation and knowledge ingestion.
 
-### 1. Running Agents
+### 1. Running Agents (via FastMCP CLI)
 
 All agents accept a `--chat` (the main prompt/query) and an optional `--filepath` (the file to be modified or analyzed).
 
@@ -68,15 +66,13 @@ All agents accept a `--chat` (the main prompt/query) and an optional `--filepath
 | `approver_tool` | `DefaultAgent` | `--chat` | Audits recent Git changes against design documents and provides feedback. |
 | `architect_tool` | `DefaultAgent` | `--chat` | Assists in architectural design and planning. |
 
-**Example 1: Generating/Updating the README**
+**Example: Generating/Updating the README**
 
 ```bash
 python main.py readme_writer_tool --chat "Generate a concise and practical README.md for the project, focusing on the Qdrant RAG system and agent orchestration."
 ```
 
-**Example 2: Modifying a Source File**
-
-The `developer_tool` requires a `--filepath` to specify which file to modify.
+**Example: Modifying a Source File**
 
 ```bash
 python main.py developer_tool     --filepath src/tools/api_tools.py     --chat "Refactor the google method to use a more explicit try-except block for API key validation."
@@ -84,14 +80,14 @@ python main.py developer_tool     --filepath src/tools/api_tools.py     --chat "
 
 ### 2. Ingesting Knowledge Bank Documents
 
-To populate the RAG system with project documentation and external knowledge:
+The ingestion pipeline is run via the manual execution script.
 
 1. Place your documents (e.g., `.pdf`, `.md`, `.json`) into the configured source directory (default: `knowledge_bank/`).
 
-1. Run the ingestion script:
+1. Run the ingestion task:
 
    ```bash
-   python scripts/ingest_knowledge_bank.py
+   python run_agents_manually.py ingest_knowledge_bank
    ```
 
 ## Configuration
@@ -104,6 +100,8 @@ You must set the API key environment variable specified in your agent configurat
 
 ```bash
 export GEMINI_API_KEY="YOUR_API_KEY_HERE"
+# If using the knowledge ingestion script, you may need a separate key:
+export GEMINI_API_KEY_KNOWLEDGE_INGESTION="YOUR_API_KEY_HERE"
 ```
 
 ### `conf/agentic_tools.toml` Overview
@@ -112,7 +110,7 @@ The configuration file defines global settings for file filtering, memory connec
 
 | Section | Key Parameters | Description |
 | :--- | :--- | :--- |
-| `[agentic-tools]` | `source`, `design_docs` | Defines directories to scan for context and paths to design documents. |
+| `[agentic-tools]` | `source`, `design_docs` | Defines directories to scan for source code context and paths to design documents. |
 | `[memory]` | `qdrant_url`, `embedding_model` | Connection details for Qdrant and the model used for vector generation. |
 | | `*retrieval_weight` | Weights defining the proportion of memories retrieved from different time buckets (hourly, daily, monthly, etc.). |
 | `[knowledge_bank_ingestion]` | `source_directory`, `chunk_size` | Settings for the ingestion script, including where to find documents and how to chunk them. |
