@@ -252,6 +252,7 @@ class Tool:
             "GIT_INFO": self.shell_tools.get_git_info(),
             "SRC_CODE": self.shell_tools.process_directory(self.source_directory),
             "MEMORY_CONTEXT": memory_context,
+            "PROJECT_TOP_FILES": self._get_common_project_files_context(),
         }
         # Combine the base payload with the common project file context.
         payload.update(self._get_common_project_files_context())

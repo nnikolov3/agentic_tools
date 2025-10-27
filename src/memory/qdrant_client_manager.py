@@ -17,44 +17,46 @@ class QdrantClientManager:
     PayloadSchema = Union[str, Dict[str, Any]]
 
     def __init__(self, config: Dict[str, Any]) -> None:
+        memory_config: Dict[str, Any] = config.get("memory", config)
+
         # Connection and transport
-        self.qdrant_url: str = config.get("qdrant_url", "http://localhost:6333")
-        self.timeout: int = int(config.get("timeout", 60))
-        self.prefer_grpc: bool = bool(config.get("prefer_grpc", True))
-        self.api_key: Optional[str] = config.get("api_key")
-        self.grpc_options: Optional[Dict[str, Any]] = config.get("grpc_options")
+        self.qdrant_url: str = memory_config.get("qdrant_url", "http://localhost:6333")
+        self.timeout: int = int(memory_config.get("timeout", 60))
+        self.prefer_grpc: bool = bool(memory_config.get("prefer_grpc", True))
+        self.api_key: Optional[str] = memory_config.get("api_key")
+        self.grpc_options: Optional[Dict[str, Any]] = memory_config.get("grpc_options")
 
         # Collection tuning
-        self.replication_factor: Optional[int] = config.get("replication_factor")
-        self.write_consistency_factor: Optional[int] = config.get(
+        self.replication_factor: Optional[int] = memory_config.get("replication_factor")
+        self.write_consistency_factor: Optional[int] = memory_config.get(
             "write_consistency_factor"
         )
-        self.on_disk_payload: Optional[bool] = config.get("on_disk_payload")
+        self.on_disk_payload: Optional[bool] = memory_config.get("on_disk_payload")
 
         # Named vector configuration (dense + sparse)
         # These names MUST match what QdrantMemory uses for upsert/query.
-        self.dense_vector_name: str = config.get("dense_vector_name", "text-dense")
-        self.sparse_vector_name: str = config.get("sparse_vector_name", "text-sparse")
+        self.dense_vector_name: str = memory_config.get("dense_vector_name", "text-dense")
+        self.sparse_vector_name: str = memory_config.get("sparse_vector_name", "text-sparse")
 
         # For backward-compatibility: vector_name is the primary dense vector used by "using="
-        self.vector_name: Optional[str] = config.get(
+        self.vector_name: Optional[str] = memory_config.get(
             "vector_name", self.dense_vector_name
         )
 
         # If caller provided full vectors_config, keep it; else build a sane default map for named vectors
-        self.vectors_config_raw: Optional[Union[Dict[str, Any], Any]] = config.get(
+        self.vectors_config_raw: Optional[Union[Dict[str, Any], Any]] = memory_config.get(
             "vectors_config"
-        ) or config.get("vectors")
+        ) or memory_config.get("vectors")
         # Optional: allow caller to pass sparse config; else create a minimal default named sparse config
-        self.sparse_vectors_config: Optional[Dict[str, Any]] = config.get(
+        self.sparse_vectors_config: Optional[Dict[str, Any]] = memory_config.get(
             "sparse_vectors_config"
         )
 
         # Indexing and persistence tuning
-        hnsw_config: Dict[str, Any] = config.get("hnsw_config", {})
-        optimizers_config: Dict[str, Any] = config.get("optimizers_config", {})
-        wal_config: Dict[str, Any] = config.get("wal_config", {})
-        self.quantization_config: Dict[str, Any] = config.get("quantization_config", {})
+        hnsw_config: Dict[str, Any] = memory_config.get("hnsw_config", {})
+        optimizers_config: Dict[str, Any] = memory_config.get("optimizers_config", {})
+        wal_config: Dict[str, Any] = memory_config.get("wal_config", {})
+        self.quantization_config: Dict[str, Any] = memory_config.get("quantization_config", {})
 
         # Auto-thread defaults
         if hnsw_config.get("max_indexing_threads") == -1:

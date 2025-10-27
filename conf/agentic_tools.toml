@@ -63,15 +63,15 @@ device = "cuda" # Device for FastEmbed (e.g., "cuda", "cpu").
 search_hnsw_ef = 128
 
 # Weights for time-based memory retrieval decay.
-hourly_retrieval_weight = 0.1
-daily_retrieval_weight = 0.2
-weekly_retrieval_weight = 0.3
-two_weeks_retrieval_weight = 0.1
-monthly_retrieval_weight = 0.1
-ninety_days_retrieval_weight = 0.05
-one_eighty_days_retrieval_weight = 0.05
-three_sixty_days_retrieval_weight = 0.05
-knowledge_bank_retrieval_weight = 0.05
+hourly_retrieval_weight = 0.0
+daily_retrieval_weight = 0.0
+weekly_retrieval_weight = 0.0
+two_weeks_retrieval_weight = 0.0
+monthly_retrieval_weight = 0.0
+ninety_days_retrieval_weight = 0.0
+one_eighty_days_retrieval_weight = 0.0
+three_sixty_days_retrieval_weight = 0.0
+knowledge_bank_retrieval_weight = 1.0
 
 # Qdrant HNSW configuration for on-disk storage and high precision.
 [agentic-tools.memory.hnsw_config]

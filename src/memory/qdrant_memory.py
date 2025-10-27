@@ -26,79 +26,62 @@ class QdrantMemory:
         qdrant_manager: QdrantClientManager,
         agent_name: Optional[str] = None,
     ) -> None:
-        self.collection_name: str = config.get("collection_name", "agent_memory")
-        self.knowledge_bank_collection_name: str = config.get(
+        # Determine the source of the global memory configuration (full project config vs. memory-only config)
+        global_memory_config = config.get("memory", config)
+
+        self.collection_name: str = global_memory_config.get("collection_name", "agent_memory")
+        self.knowledge_bank_collection_name: str = global_memory_config.get(
             "knowledge_bank",
             "knowledge-bank",
         )
 
         # Embeddings
-        self.embedding_model: str = config.get(
+        self.embedding_model: str = global_memory_config.get(
             "embedding_model",
             "mixedbread-ai/mxbai-embed-large-v1",
         )
-        self.device: str = config.get("device", "cpu")
+        self.device: str = global_memory_config.get("device", "cpu")
         self.embedder = TextEmbedding(model_name=self.embedding_model)
 
-        self.sparse_embedding_model: str = config.get(
+        self.sparse_embedding_model: str = global_memory_config.get(
             "sparse_embedding_model",
             "naver/splade-v3",
         )
         self.sparse_embedder = SparseEncoder(self.sparse_embedding_model)
 
         self.embedding_size: int = self.embedder.embedding_size
-        self.total_memories_to_retrieve: int = config.get(
+        self.total_memories_to_retrieve: int = global_memory_config.get(
             "total_memories_to_retrieve", 20
         )
-        self.query_points_hnsw_ef: int = config.get("query_points_hnsw_ef", 128)
+        self.query_points_hnsw_ef: int = global_memory_config.get("query_points_hnsw_ef", 128)
 
         # Optional preferred names from config (used as hints if they exist in the collection)
-        self.preferred_dense_vector_name: Optional[str] = config.get(
+        self.preferred_dense_vector_name: Optional[str] = global_memory_config.get(
             "dense_vector_name"
         )
-        self.preferred_sparse_vector_name: Optional[str] = config.get(
+        self.preferred_sparse_vector_name: Optional[str] = global_memory_config.get(
             "sparse_vector_name"
         )
 
         agent_specific_config = config.get(agent_name, {}) if agent_name else {}
         agent_memory_config = agent_specific_config.get("memory", {})
 
-        self.hourly_retrieval_weight: float = agent_memory_config.get(
-            "hourly_retrieval_weight",
-            config.get("hourly_retrieval_weight", 0.1),
-        )
-        self.daily_retrieval_weight: float = agent_memory_config.get(
-            "daily_retrieval_weight",
-            config.get("daily_retrieval_weight", 0.2),
-        )
-        self.weekly_retrieval_weight: float = agent_memory_config.get(
-            "weekly_retrieval_weight",
-            config.get("weekly_retrieval_weight", 0.3),
-        )
-        self.two_weeks_retrieval_weight: float = agent_memory_config.get(
-            "two_weeks_retrieval_weight",
-            config.get("two_weeks_retrieval_weight", 0.1),
-        )
-        self.monthly_retrieval_weight: float = agent_memory_config.get(
-            "monthly_retrieval_weight",
-            config.get("monthly_retrieval_weight", 0.1),
-        )
-        self.ninety_days_retrieval_weight: float = agent_memory_config.get(
-            "ninety_days_retrieval_weight",
-            config.get("ninety_days_retrieval_weight", 0.05),
-        )
-        self.one_eighty_days_retrieval_weight: float = agent_memory_config.get(
-            "one_eighty_days_retrieval_weight",
-            config.get("one_eighty_days_retrieval_weight", 0.05),
-        )
-        self.three_sixty_days_retrieval_weight: float = agent_memory_config.get(
-            "three_sixty_days_retrieval_weight",
-            config.get("three_sixty_days_retrieval_weight", 0.05),
-        )
-        self.knowledge_bank_retrieval_weight: float = agent_memory_config.get(
-            "knowledge_bank_retrieval_weight",
-            config.get("knowledge_bank_retrieval_weight", 0.05),
-        )
+        # Helper function to get weight with fallback: Agent -> Global -> Hardcoded
+        def get_weight(key: str, default: float) -> float:
+            return agent_memory_config.get(
+                key,
+                global_memory_config.get(key, default),
+            )
+
+        self.hourly_retrieval_weight: float = get_weight("hourly_retrieval_weight", 0.1)
+        self.daily_retrieval_weight: float = get_weight("daily_retrieval_weight", 0.2)
+        self.weekly_retrieval_weight: float = get_weight("weekly_retrieval_weight", 0.3)
+        self.two_weeks_retrieval_weight: float = get_weight("two_weeks_retrieval_weight", 0.1)
+        self.monthly_retrieval_weight: float = get_weight("monthly_retrieval_weight", 0.1)
+        self.ninety_days_retrieval_weight: float = get_weight("ninety_days_retrieval_weight", 0.05)
+        self.one_eighty_days_retrieval_weight: float = get_weight("one_eighty_days_retrieval_weight", 0.05)
+        self.three_sixty_days_retrieval_weight: float = get_weight("three_sixty_days_retrieval_weight", 0.05)
+        self.knowledge_bank_retrieval_weight: float = get_weight("knowledge_bank_retrieval_weight", 0.05)
 
         self.qdrant_manager = qdrant_manager
         self.client = self.qdrant_manager.get_client()

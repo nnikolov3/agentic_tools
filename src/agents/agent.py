@@ -146,7 +146,7 @@ class Agent(abc.ABC):
 
         query = self.chat or self.agent_name
 
-        self.memory = await QdrantMemory.create(self.memory_config, self.agent_name)
+        self.memory = await QdrantMemory.create(self.configuration, self.agent_name)
         retrieved_context = await self.memory.retrieve_context(query)
         return retrieved_context or ""
 
@@ -357,17 +357,7 @@ class DeveloperAgent(CodeModifyingAgent):
 class ExpertAgent(DefaultAgent):
     """An agent that leverages the knowledge base to answer questions."""
 
-    async def _retrieve_context(self) -> str:
-        """Retrieves context from the knowledge base."""
-        if not self.memory_config:
-            logger.warning("No Qdrant memory configured. Skipping context retrieval.")
-            return ""
-
-        query = self.chat or self.agent_name
-
-        self.memory = await QdrantMemory.create(self.memory_config, self.agent_name)
-
-        return await self.memory.retrieve_context(query)
+    pass
 
 
 AGENT_CLASSES: dict[str, type[Agent]] = {
