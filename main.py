@@ -21,14 +21,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from fastmcp import FastMCP
 
-from src.agents.agent import (
-    AGENT_CLASSES,
-    DefaultAgent,
-    ReadmeWriterAgent,
-    CommentatorAgent,
-    DeveloperAgent,
-    ExpertAgent,
-)
+from src.agents.agent import AGENT_CLASSES, DefaultAgent
 from src.configurator import get_config_dictionary
 from src.scripts.ingest_knowledge_bank import KnowledgeBankIngestor
 
@@ -64,6 +57,7 @@ VALID_AGENTS: Tuple[str, ...] = (
     EXPERT,
 )
 
+
 # Initialize the configurator and load the configuration dictionary.
 # This approach centralizes configuration loading and error handling.
 def _load_configuration(config_path: Path) -> dict[str, Any]:
@@ -77,6 +71,7 @@ def _load_configuration(config_path: Path) -> dict[str, Any]:
     except Exception as e:
         logger.error(f"Failed to load or parse configuration: {e}")
         raise RuntimeError("Configuration loading failed") from e
+
 
 # Initialize the FastMCP instance, which serves as the tool runner.
 mcp = FastMCP(MCP_NAME)

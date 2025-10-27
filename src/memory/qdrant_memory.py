@@ -72,10 +72,12 @@ class QdrantMemory:
 
         # Helper function to get weight with fallback: Agent -> Global -> Hardcoded
         def get_weight(key: str, default: float) -> float:
-            return float(agent_memory_config.get(
-                key,
-                global_memory_config.get(key, default),
-            ))
+            return float(
+                agent_memory_config.get(
+                    key,
+                    global_memory_config.get(key, default),
+                )
+            )
 
         self.hourly_retrieval_weight: float = get_weight("hourly_retrieval_weight", 0.1)
         self.daily_retrieval_weight: float = get_weight("daily_retrieval_weight", 0.2)
