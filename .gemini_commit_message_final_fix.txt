@@ -1,7 +1,0 @@
-refactor(memory): ensure retrieval weights are correctly typed as float
-
-Configuration values for memory retrieval weights, whether from global or per-agent settings, could potentially be loaded as strings. This could lead to downstream TypeError exceptions when these weights are used in calculations.
-
-This change introduces an explicit `float()` cast within the `get_weight` helper function. This ensures that all weight values are correctly converted to floats at the point of configuration loading, making the system more robust against varied configuration sources.
-
-Additionally, this commit includes formatting improvements for better readability in related memory management files.

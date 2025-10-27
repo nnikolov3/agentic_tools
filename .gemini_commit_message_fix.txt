@@ -1,9 +1,0 @@
-fix(typing): Resolve mypy errors and apply consistent formatting
-
-This commit addresses several static analysis issues reported by mypy and applies consistent code formatting across the codebase.
-
-- Resolves mypy errors in `src/memory/qdrant_memory.py` by using `typing.cast` for objects from external libraries (`fastembed`, `qdrant-client`) where type stubs are incomplete. This makes the code type-safe without resorting to `# type: ignore`.
-- Adds explicit type hints in `src/memory/test_qdrant_memory.py` for complex data structures to improve clarity and static analysis accuracy.
-- Strengthens the test suite by adding an `isinstance` check for `models.FusionQuery` to ensure correct object creation.
-- Applies automated code formatting (`black`) across multiple files for improved readability and consistency.
-- Includes minor updates to `README.md` to reflect the addition of the 'expert' agent and clarify configuration details.
