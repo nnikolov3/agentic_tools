@@ -29,7 +29,9 @@ class QdrantMemory:
         # Determine the source of the global memory configuration (full project config vs. memory-only config)
         global_memory_config = config.get("memory", config)
 
-        self.collection_name: str = global_memory_config.get("collection_name", "agent_memory")
+        self.collection_name: str = global_memory_config.get(
+            "collection_name", "agent_memory"
+        )
         self.knowledge_bank_collection_name: str = global_memory_config.get(
             "knowledge_bank",
             "knowledge-bank",
@@ -53,7 +55,9 @@ class QdrantMemory:
         self.total_memories_to_retrieve: int = global_memory_config.get(
             "total_memories_to_retrieve", 20
         )
-        self.query_points_hnsw_ef: int = global_memory_config.get("query_points_hnsw_ef", 128)
+        self.query_points_hnsw_ef: int = global_memory_config.get(
+            "query_points_hnsw_ef", 128
+        )
 
         # Optional preferred names from config (used as hints if they exist in the collection)
         self.preferred_dense_vector_name: Optional[str] = global_memory_config.get(
@@ -68,20 +72,32 @@ class QdrantMemory:
 
         # Helper function to get weight with fallback: Agent -> Global -> Hardcoded
         def get_weight(key: str, default: float) -> float:
-            return agent_memory_config.get(
+            return float(agent_memory_config.get(
                 key,
                 global_memory_config.get(key, default),
-            )
+            ))
 
         self.hourly_retrieval_weight: float = get_weight("hourly_retrieval_weight", 0.1)
         self.daily_retrieval_weight: float = get_weight("daily_retrieval_weight", 0.2)
         self.weekly_retrieval_weight: float = get_weight("weekly_retrieval_weight", 0.3)
-        self.two_weeks_retrieval_weight: float = get_weight("two_weeks_retrieval_weight", 0.1)
-        self.monthly_retrieval_weight: float = get_weight("monthly_retrieval_weight", 0.1)
-        self.ninety_days_retrieval_weight: float = get_weight("ninety_days_retrieval_weight", 0.05)
-        self.one_eighty_days_retrieval_weight: float = get_weight("one_eighty_days_retrieval_weight", 0.05)
-        self.three_sixty_days_retrieval_weight: float = get_weight("three_sixty_days_retrieval_weight", 0.05)
-        self.knowledge_bank_retrieval_weight: float = get_weight("knowledge_bank_retrieval_weight", 0.05)
+        self.two_weeks_retrieval_weight: float = get_weight(
+            "two_weeks_retrieval_weight", 0.1
+        )
+        self.monthly_retrieval_weight: float = get_weight(
+            "monthly_retrieval_weight", 0.1
+        )
+        self.ninety_days_retrieval_weight: float = get_weight(
+            "ninety_days_retrieval_weight", 0.05
+        )
+        self.one_eighty_days_retrieval_weight: float = get_weight(
+            "one_eighty_days_retrieval_weight", 0.05
+        )
+        self.three_sixty_days_retrieval_weight: float = get_weight(
+            "three_sixty_days_retrieval_weight", 0.05
+        )
+        self.knowledge_bank_retrieval_weight: float = get_weight(
+            "knowledge_bank_retrieval_weight", 0.05
+        )
 
         self.qdrant_manager = qdrant_manager
         self.client = self.qdrant_manager.get_client()

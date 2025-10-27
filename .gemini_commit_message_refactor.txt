@@ -1,0 +1,7 @@
+feat(memory): Enable per-agent memory configuration and set new defaults
+
+Refactors the memory configuration loading to allow individual agents to override global memory settings, such as retrieval weights.
+
+- Updates QdrantMemory and QdrantClientManager to correctly parse configuration when receiving the full project config object, resolving unit test regressions.
+- Removes redundant ExpertAgent._retrieve_context method, relying on the fixed base Agent implementation.
+- Sets global memory retrieval weights in conf/agentic_tools.toml to prioritize the knowledge bank (1.0) by default, as requested.

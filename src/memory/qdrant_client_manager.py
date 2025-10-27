@@ -35,8 +35,12 @@ class QdrantClientManager:
 
         # Named vector configuration (dense + sparse)
         # These names MUST match what QdrantMemory uses for upsert/query.
-        self.dense_vector_name: str = memory_config.get("dense_vector_name", "text-dense")
-        self.sparse_vector_name: str = memory_config.get("sparse_vector_name", "text-sparse")
+        self.dense_vector_name: str = memory_config.get(
+            "dense_vector_name", "text-dense"
+        )
+        self.sparse_vector_name: str = memory_config.get(
+            "sparse_vector_name", "text-sparse"
+        )
 
         # For backward-compatibility: vector_name is the primary dense vector used by "using="
         self.vector_name: Optional[str] = memory_config.get(
@@ -44,9 +48,9 @@ class QdrantClientManager:
         )
 
         # If caller provided full vectors_config, keep it; else build a sane default map for named vectors
-        self.vectors_config_raw: Optional[Union[Dict[str, Any], Any]] = memory_config.get(
-            "vectors_config"
-        ) or memory_config.get("vectors")
+        self.vectors_config_raw: Optional[Union[Dict[str, Any], Any]] = (
+            memory_config.get("vectors_config") or memory_config.get("vectors")
+        )
         # Optional: allow caller to pass sparse config; else create a minimal default named sparse config
         self.sparse_vectors_config: Optional[Dict[str, Any]] = memory_config.get(
             "sparse_vectors_config"
@@ -56,7 +60,9 @@ class QdrantClientManager:
         hnsw_config: Dict[str, Any] = memory_config.get("hnsw_config", {})
         optimizers_config: Dict[str, Any] = memory_config.get("optimizers_config", {})
         wal_config: Dict[str, Any] = memory_config.get("wal_config", {})
-        self.quantization_config: Dict[str, Any] = memory_config.get("quantization_config", {})
+        self.quantization_config: Dict[str, Any] = memory_config.get(
+            "quantization_config", {}
+        )
 
         # Auto-thread defaults
         if hnsw_config.get("max_indexing_threads") == -1:
