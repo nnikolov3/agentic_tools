@@ -4,7 +4,7 @@ import logging
 import math
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Coroutine, Dict, List, Optional, Tuple, Union
+from typing import Any, Coroutine, Dict, List, Optional, Tuple, Union, cast
 
 from faker import Faker
 from fastembed import TextEmbedding
@@ -47,12 +47,18 @@ class QdrantMemory:
         self.sparse_embedder = SparseEncoder(self.sparse_embedding_model)
 
         self.embedding_size: int = self.embedder.embedding_size
-        self.total_memories_to_retrieve: int = config.get("total_memories_to_retrieve", 20)
+        self.total_memories_to_retrieve: int = config.get(
+            "total_memories_to_retrieve", 20
+        )
         self.query_points_hnsw_ef: int = config.get("query_points_hnsw_ef", 128)
 
         # Optional preferred names from config (used as hints if they exist in the collection)
-        self.preferred_dense_vector_name: Optional[str] = config.get("dense_vector_name")
-        self.preferred_sparse_vector_name: Optional[str] = config.get("sparse_vector_name")
+        self.preferred_dense_vector_name: Optional[str] = config.get(
+            "dense_vector_name"
+        )
+        self.preferred_sparse_vector_name: Optional[str] = config.get(
+            "sparse_vector_name"
+        )
 
         agent_specific_config = config.get(agent_name, {}) if agent_name else {}
         agent_memory_config = agent_specific_config.get("memory", {})
@@ -135,11 +141,13 @@ class QdrantMemory:
         )
 
         # Resolve actual vector names from each collection
-        instance.agent_dense_name, instance.agent_sparse_name = await instance._resolve_vector_names(
-            instance.collection_name
+        instance.agent_dense_name, instance.agent_sparse_name = (
+            await instance._resolve_vector_names(instance.collection_name)
         )
-        instance.kb_dense_name, instance.kb_sparse_name = await instance._resolve_vector_names(
-            instance.knowledge_bank_collection_name
+        instance.kb_dense_name, instance.kb_sparse_name = (
+            await instance._resolve_vector_names(
+                instance.knowledge_bank_collection_name
+            )
         )
 
         logger.info(
@@ -169,7 +177,10 @@ class QdrantMemory:
         # Dense
         dense_name: str
         if isinstance(params.vectors, dict):
-            if self.preferred_dense_vector_name and self.preferred_dense_vector_name in params.vectors:
+            if (
+                self.preferred_dense_vector_name
+                and self.preferred_dense_vector_name in params.vectors
+            ):
                 dense_name = self.preferred_dense_vector_name
             else:
                 dense_name = next(iter(params.vectors.keys()))
@@ -178,8 +189,15 @@ class QdrantMemory:
 
         # Sparse
         sparse_name: Optional[str] = None
-        if hasattr(params, "sparse_vectors") and isinstance(params.sparse_vectors, dict) and params.sparse_vectors:
-            if self.preferred_sparse_vector_name and self.preferred_sparse_vector_name in params.sparse_vectors:
+        if (
+            hasattr(params, "sparse_vectors")
+            and isinstance(params.sparse_vectors, dict)
+            and params.sparse_vectors
+        ):
+            if (
+                self.preferred_sparse_vector_name
+                and self.preferred_sparse_vector_name in params.sparse_vectors
+            ):
                 sparse_name = self.preferred_sparse_vector_name
             else:
                 sparse_name = next(iter(params.sparse_vectors.keys()))
@@ -194,12 +212,14 @@ class QdrantMemory:
             logger.error(f"Failed to generate embedding for text: {e}")
             raise RuntimeError("Embedding generation failed") from e
 
-    def _embed_sparse_documents(self, documents: List[str]) -> List[models.SparseVector]:
+    def _embed_sparse_documents(
+        self, documents: List[str]
+    ) -> List[models.SparseVector]:
         sparse_embeddings = self.sparse_embedder.encode_document(documents)
         return [
             models.SparseVector(
-                indices=embedding.coalesce().indices().squeeze().tolist(),
-                values=embedding.coalesce().values().squeeze().tolist(),
+                indices=cast(Any, embedding).coalesce().indices().squeeze().tolist(),
+                values=cast(Any, embedding).coalesce().values().squeeze().tolist(),
             )
             for embedding in sparse_embeddings
         ]
@@ -207,8 +227,8 @@ class QdrantMemory:
     def _embed_sparse_query(self, query: str) -> models.SparseVector:
         sparse_embedding = self.sparse_embedder.encode_query(query)
         return models.SparseVector(
-            indices=sparse_embedding.coalesce().indices().squeeze().tolist(),
-            values=sparse_embedding.coalesce().values().squeeze().tolist(),
+            indices=cast(Any, sparse_embedding).coalesce().indices().squeeze().tolist(),
+            values=cast(Any, sparse_embedding).coalesce().values().squeeze().tolist(),
         )
 
     async def add_memory(self, text_content: str) -> None:
@@ -233,7 +253,9 @@ class QdrantMemory:
             vector_payload: Dict[str, Any] = {}
             # Dense vector name can be "" (unnamed)
             if self.agent_dense_name is None:
-                raise RuntimeError("Dense vector name for agent collection is not resolved")
+                raise RuntimeError(
+                    "Dense vector name for agent collection is not resolved"
+                )
             vector_payload[self.agent_dense_name] = dense_vector
 
             # Only include sparse if the collection supports it
@@ -319,9 +341,13 @@ class QdrantMemory:
             limit=limit,
             with_payload=True,
             with_vectors=False,
-            search_params=models.SearchParams(hnsw_ef=self.query_points_hnsw_ef, exact=False),
+            search_params=models.SearchParams(
+                hnsw_ef=self.query_points_hnsw_ef, exact=False
+            ),
         )
-        prefetch = self._make_prefetch(dense_vec, sparse_vec, limit, dense_name, sparse_name)
+        prefetch = self._make_prefetch(
+            dense_vec, sparse_vec, limit, dense_name, sparse_name
+        )
         if prefetch:
             kwargs["prefetch"] = [prefetch]
         return kwargs
@@ -356,19 +382,27 @@ class QdrantMemory:
         ) = timestamps
 
         if self.agent_dense_name is None or self.kb_dense_name is None:
-            logger.error("Dense vector names were not resolved for one or more collections.")
+            logger.error(
+                "Dense vector names were not resolved for one or more collections."
+            )
             return []
 
         tasks: List[Coroutine[Any, Any, models.QueryResponse]] = []
 
         # Helper to make filters
-        def rng(gte: Optional[float] = None, lt: Optional[float] = None) -> models.Filter:
+        def rng(
+            gte: Optional[float] = None, lt: Optional[float] = None
+        ) -> models.Filter:
             must = []
             if lt is not None:
-                must.append(models.FieldCondition(key="timestamp", range=models.Range(lt=lt)))
+                must.append(
+                    models.FieldCondition(key="timestamp", range=models.Range(lt=lt))
+                )
             if gte is not None:
-                must.append(models.FieldCondition(key="timestamp", range=models.Range(gte=gte)))
-            return models.Filter(must=must)
+                must.append(
+                    models.FieldCondition(key="timestamp", range=models.Range(gte=gte))
+                )
+            return models.Filter(must=cast(List[Any], must))
 
         # agent_memory tasks (time buckets)
         if num_hourly > 0:

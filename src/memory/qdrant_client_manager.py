@@ -26,7 +26,9 @@ class QdrantClientManager:
 
         # Collection tuning
         self.replication_factor: Optional[int] = config.get("replication_factor")
-        self.write_consistency_factor: Optional[int] = config.get("write_consistency_factor")
+        self.write_consistency_factor: Optional[int] = config.get(
+            "write_consistency_factor"
+        )
         self.on_disk_payload: Optional[bool] = config.get("on_disk_payload")
 
         # Named vector configuration (dense + sparse)
@@ -35,14 +37,18 @@ class QdrantClientManager:
         self.sparse_vector_name: str = config.get("sparse_vector_name", "text-sparse")
 
         # For backward-compatibility: vector_name is the primary dense vector used by "using="
-        self.vector_name: Optional[str] = config.get("vector_name", self.dense_vector_name)
+        self.vector_name: Optional[str] = config.get(
+            "vector_name", self.dense_vector_name
+        )
 
         # If caller provided full vectors_config, keep it; else build a sane default map for named vectors
-        self.vectors_config_raw: Optional[Union[Dict[str, Any], Any]] = (
-            config.get("vectors_config") or config.get("vectors")
-        )
+        self.vectors_config_raw: Optional[Union[Dict[str, Any], Any]] = config.get(
+            "vectors_config"
+        ) or config.get("vectors")
         # Optional: allow caller to pass sparse config; else create a minimal default named sparse config
-        self.sparse_vectors_config: Optional[Dict[str, Any]] = config.get("sparse_vectors_config")
+        self.sparse_vectors_config: Optional[Dict[str, Any]] = config.get(
+            "sparse_vectors_config"
+        )
 
         # Indexing and persistence tuning
         hnsw_config: Dict[str, Any] = config.get("hnsw_config", {})
@@ -121,11 +127,20 @@ class QdrantClientManager:
         default_size: int,
     ) -> Union[models.VectorParams, Dict[str, models.VectorParams]]:
         # If caller provided a full mapping of named vectors, honor it
-        if isinstance(self.vectors_config_raw, dict) and "size" not in self.vectors_config_raw:
-            return {name: self._to_vector_params(v) for name, v in self.vectors_config_raw.items()}
+        if (
+            isinstance(self.vectors_config_raw, dict)
+            and "size" not in self.vectors_config_raw
+        ):
+            return {
+                name: self._to_vector_params(v)
+                for name, v in self.vectors_config_raw.items()
+            }
 
         # If caller provided a single-vector spec, convert it
-        if isinstance(self.vectors_config_raw, dict) and "size" in self.vectors_config_raw:
+        if (
+            isinstance(self.vectors_config_raw, dict)
+            and "size" in self.vectors_config_raw
+        ):
             return self._to_vector_params(self.vectors_config_raw)
 
         # Otherwise, default to a single named dense vector using dense_vector_name
@@ -157,13 +172,13 @@ class QdrantClientManager:
                             # Accept "idf" as string to models.Modifier.IDF
                             mod_upper = str(mod).upper()
                             modifier = getattr(models.Modifier, mod_upper, None)
-                    cfg[name] = models.SparseVectorParams(index=index, modifier=modifier)
+                    cfg[name] = models.SparseVectorParams(
+                        index=index, modifier=modifier
+                    )
             return cfg
 
         # Default: create a single named sparse vector with the configured sparse_vector_name
-        return {
-            self.sparse_vector_name: models.SparseVectorParams()
-        }
+        return {self.sparse_vector_name: models.SparseVectorParams()}
 
     async def _create_collection(
         self,
@@ -193,8 +208,16 @@ class QdrantClientManager:
             replication_factor=self.replication_factor,
             write_consistency_factor=self.write_consistency_factor,
             on_disk_payload=self.on_disk_payload,
-            hnsw_config=(models.HnswConfigDiff(**self.hnsw_config) if self.hnsw_config else None),
-            optimizers_config=(models.OptimizersConfigDiff(**self.optimizers_config) if self.optimizers_config else None),
-            wal_config=(models.WalConfigDiff(**self.wal_config) if self.wal_config else None),
+            hnsw_config=(
+                models.HnswConfigDiff(**self.hnsw_config) if self.hnsw_config else None
+            ),
+            optimizers_config=(
+                models.OptimizersConfigDiff(**self.optimizers_config)
+                if self.optimizers_config
+                else None
+            ),
+            wal_config=(
+                models.WalConfigDiff(**self.wal_config) if self.wal_config else None
+            ),
             quantization_config=quantization_cfg,
         )

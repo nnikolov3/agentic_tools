@@ -19,12 +19,12 @@ class ShellTools:
         self.git_diff_command: List[str] = self.config.get(
             "git_diff_command",
             ["diff", "--patch-with-raw", "--minimal", "--patience"],
-            )
+        )
         git_executable_path: Optional[str] = shutil.which("git")
         if not git_executable_path:
             logger.error(
                 "Git command not found. Please ensure git is installed and in your PATH.",
-                )
+            )
             raise FileNotFoundError("Git executable not found.")
         self.git_executable: str = git_executable_path
 
@@ -45,7 +45,7 @@ class ShellTools:
             if not directory_path.is_dir():
                 logger.warning(
                     f"Project directory does not exist or is not a directory: {directory_path}",
-                    )
+                )
                 continue
 
             project_tree.update(self._build_directory_tree(directory_path))
@@ -80,7 +80,7 @@ class ShellTools:
         if not directory_path.is_dir():
             logger.warning(
                 f"Directory does not exist or is not a directory: {directory_path}",
-                )
+            )
             return ""
 
         concatenated_content_parts: List[str] = []
@@ -90,7 +90,7 @@ class ShellTools:
             for file_path in self._get_filtered_files(
                 directory_path,
                 self.include_extensions,
-                ):
+            ):
                 file_content = self.read_file_content(file_path)
                 logger.info(f"Reading file: {file_path}")
 
@@ -111,11 +111,11 @@ class ShellTools:
         except Exception as error:
             logger.error(
                 f"Error processing directory {directory_path}: {error}",
-                exc_info = True,
-                )
+                exc_info=True,
+            )
             raise RuntimeError(
                 f"Failed to process directory {directory_path}",
-                ) from error
+            ) from error
 
     def get_design_docs_content(self) -> str:
         design_docs_content_parts: List[str] = []
@@ -128,7 +128,7 @@ class ShellTools:
             else:
                 logger.warning(
                     f"Design document not found or is not a file: {full_path}",
-                    )
+                )
 
         return "\n\n".join(design_docs_content_parts)
 
@@ -140,19 +140,19 @@ class ShellTools:
     def _is_in_excluded_directory(self, file_path: Path) -> bool:
         return any(
             ((excluded in file_path.parts) for excluded in self.exclude_directories),
-            )
+        )
 
     def _get_filtered_files(
         self,
         directory_path: Path,
         extensions: List[str],
-        ) -> Generator[Path, None, None]:
+    ) -> Generator[Path, None, None]:
         for item in directory_path.rglob("*"):
             if (
                 item.is_file()
                 and (
-                not extensions or any(item.name.endswith(ext) for ext in extensions)
-            )
+                    not extensions or any(item.name.endswith(ext) for ext in extensions)
+                )
                 and not self._is_in_excluded_directory(item)
                 and not self._should_exclude_file(item.name)
             ):
@@ -162,30 +162,30 @@ class ShellTools:
         self,
         directory_path: Path,
         extensions: List[str],
-        ) -> List[Path]:
+    ) -> List[Path]:
         if not directory_path.is_dir():
             logger.warning(
                 f"Directory does not exist or is not a directory: {directory_path}",
-                )
+            )
             return []
 
         try:
             matching_files = list(self._get_filtered_files(directory_path, extensions))
             logger.info(
                 f"Found {len(matching_files)} matching files in {directory_path}",
-                )
+            )
             return matching_files
         except Exception as error:
             logger.error(
                 f"Error searching directory {directory_path}: {error}",
-                exc_info = True,
-                )
+                exc_info=True,
+            )
             return []
 
     def read_file_content(self, file_path: Path) -> str:
         try:
             file_path = self.current_working_directory / file_path
-            with file_path.open(encoding = self.encoding) as file_handle:
+            with file_path.open(encoding=self.encoding) as file_handle:
                 return file_handle.read()
         except UnicodeDecodeError:
             logger.warning(f"Skipping binary file (UnicodeDecodeError): {file_path}")
@@ -200,10 +200,10 @@ class ShellTools:
         payload: str,
         backup: bool = False,
         atomic: bool = True,
-        ) -> bool:
+    ) -> bool:
         try:
             filepath = Path(filepath)
-            filepath.parent.mkdir(parents = True, exist_ok = True)
+            filepath.parent.mkdir(parents=True, exist_ok=True)
             logger.info(f"Ensured directory exists: {filepath.parent}")
 
             if backup and filepath.exists():
@@ -214,12 +214,12 @@ class ShellTools:
             if atomic:
                 self._atomic_write(filepath, payload)
             else:
-                with filepath.open("w", encoding = self.encoding) as file_handle:
+                with filepath.open("w", encoding=self.encoding) as file_handle:
                     file_handle.write(payload)
 
             logger.info(
                 f"Successfully wrote {len(payload)} characters to {filepath.name}",
-                )
+            )
             return True
 
         except (PermissionError, OSError) as file_error:
@@ -228,34 +228,34 @@ class ShellTools:
         except Exception as exception:
             logger.error(
                 f"Unexpected error writing to {filepath.name}: {exception}",
-                exc_info = True,
-                )
+                exc_info=True,
+            )
             return False
 
     def _atomic_write(self, target_path: Path, payload: str) -> None:
         temp_file_path: Optional[Path] = None
         try:
             with NamedTemporaryFile(
-                mode = "w",
-                encoding = self.encoding,
-                dir = target_path.parent,
-                delete = False,
-                prefix = f".tmp_{target_path.name}_",
-                suffix = ".tmp",
-                ) as temp_file:
+                mode="w",
+                encoding=self.encoding,
+                dir=target_path.parent,
+                delete=False,
+                prefix=f".tmp_{target_path.name}_",
+                suffix=".tmp",
+            ) as temp_file:
                 temp_file_path = Path(temp_file.name)
                 temp_file.write(payload)
                 temp_file.flush()
                 if platform.system() != "Windows":
                     try:
-                        subprocess.run(["sync"], check = True, capture_output = True)
+                        subprocess.run(["sync"], check=True, capture_output=True)
                     except (
-                            subprocess.CalledProcessError,
-                            FileNotFoundError,
-                        ) as sync_error:
+                        subprocess.CalledProcessError,
+                        FileNotFoundError,
+                    ) as sync_error:
                         logger.warning(
                             f"Failed to execute 'sync' command: {sync_error}",
-                            )
+                        )
 
             if target_path.exists():
                 shutil.copymode(target_path, temp_file_path)
@@ -264,7 +264,7 @@ class ShellTools:
 
         except Exception as error:
             if temp_file_path and temp_file_path.exists():
-                temp_file_path.unlink(missing_ok = True)
+                temp_file_path.unlink(missing_ok=True)
             raise IOError(f"Atomic write to {target_path} failed") from error
 
     def get_git_info(self) -> Dict[str, Optional[str]]:
@@ -272,21 +272,21 @@ class ShellTools:
         try:
             username_result = subprocess.run(
                 [self.git_executable, "config", "user.name"],
-                cwd = str(self.current_working_directory),
-                capture_output = True,
-                text = True,
-                timeout = 5,
-                )
+                cwd=str(self.current_working_directory),
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
             if username_result.returncode == 0:
                 git_info["username"] = username_result.stdout.strip()
 
             url_result = subprocess.run(
                 [self.git_executable, "config", "--get", "remote.origin.url"],
-                cwd = str(self.current_working_directory),
-                capture_output = True,
-                text = True,
-                timeout = 5,
-                )
+                cwd=str(self.current_working_directory),
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
             if url_result.returncode == 0:
                 git_info["url"] = url_result.stdout.strip()
 
@@ -296,7 +296,7 @@ class ShellTools:
             logger.error("Git command timed out while getting repository info.")
             return git_info
         except Exception as error:
-            logger.error(f"Error getting git info: {error}", exc_info = True)
+            logger.error(f"Error getting git info: {error}", exc_info=True)
             return git_info
 
     @staticmethod
@@ -306,7 +306,7 @@ class ShellTools:
         except UnicodeDecodeError:
             logger.warning(
                 f"Could not decode unicode escapes in string: {input_string[:100]}...",
-                )
+            )
             return input_string
 
     def create_patch(self) -> str:
@@ -315,17 +315,17 @@ class ShellTools:
         try:
             result = subprocess.run(
                 command,
-                cwd = str(self.current_working_directory),
-                capture_output = True,
-                text = True,
-                check = True,
-                timeout = 15,
-                )
+                cwd=str(self.current_working_directory),
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=15,
+            )
             return result.stdout
         except subprocess.CalledProcessError as error:
             logger.error(
                 f"Git diff command failed with exit code {error.returncode}:\nSTDOUT: {error.stdout}\nSTDERR: {error.stderr}",
-                )
+            )
             raise RuntimeError("Failed to create git patch") from error
         except subprocess.TimeoutExpired as error:
             logger.error(f"Git diff command timed out: {error}")

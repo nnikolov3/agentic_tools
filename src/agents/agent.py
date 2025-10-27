@@ -52,7 +52,7 @@ class Agent(abc.ABC):
         project: str,
         chat: Optional[str],
         filepath: Optional[str | PathLike[str]],
-        ) -> None:
+    ) -> None:
         """
         Initializes the Agent with its configuration and operational context.
 
@@ -116,7 +116,7 @@ class Agent(abc.ABC):
                 self.chat,
                 self.memory_context,
                 str(self.filepath) if self.filepath else None,
-                )
+            )
 
             if self.response:
                 await self._post_process()
@@ -126,7 +126,7 @@ class Agent(abc.ABC):
 
         except Exception as agent_error:
             error_message = f"Agent '{self.agent_name}' failed to run: {agent_error}"
-            logger.error(error_message, exc_info = True)
+            logger.error(error_message, exc_info=True)
             raise RuntimeError(error_message) from agent_error
 
     async def _retrieve_context(self) -> str:
@@ -159,11 +159,11 @@ class Agent(abc.ABC):
         """
         if self.memory and self.response:
             logger.info("Storing response in memory.")
-            await self.memory.add_memory(text_content = self.response)
+            await self.memory.add_memory(text_content=self.response)
         else:
             logger.debug(
                 "Skipping memory storage: memory not initialized or no response.",
-                )
+            )
 
     async def _update_memory_weights(self) -> None:
         """
@@ -233,13 +233,15 @@ class ReadmeWriterAgent(Agent):
         formatted_readme = await asyncio.to_thread(
             mdformat.text,
             cleaned_response,
-            options = {"wrap": "preserve"},
-            )
+            options={"wrap": "preserve"},
+        )
 
         # File I/O is blocking; run it in a thread pool.
         await asyncio.to_thread(
-            self.shell_tools.write_file, readme_filepath, formatted_readme,
-            )
+            self.shell_tools.write_file,
+            readme_filepath,
+            formatted_readme,
+        )
 
         # Update self.response so the clean, formatted version is stored in memory.
         self.response = formatted_readme
@@ -266,7 +268,7 @@ class CodeModifyingAgent(Agent):
         project: str,
         chat: Optional[str],
         filepath: Optional[str | PathLike[str]],
-        ) -> None:
+    ) -> None:
         """
         Initializes the CodeModifyingAgent.
 
@@ -278,7 +280,7 @@ class CodeModifyingAgent(Agent):
         if not self.filepath:
             raise ValueError(
                 f"{self.__class__.__name__} requires a valid filepath, but None was provided.",
-                )
+            )
         self._validation_service = ValidationService()
 
     def _clean_response_for_code(self) -> str:

@@ -4,7 +4,7 @@ The Agentic Tools Framework is a sophisticated system designed to automate compl
 
 ## Key Features
 
-- **Specialized Agents:** Includes dedicated agents for development (`developer`), documentation (`readme_writer`), code review (`approver`), architectural planning (`architect`), and code commenting (`commentator`).
+- **Specialized Agents:** Includes dedicated agents for development (`developer`), documentation (`readme_writer`), code review (`approver`), architectural planning (`architect`), code commenting (`commentator`), and knowledge retrieval (`expert`).
 - **Time-Aware RAG System:** Utilizes Qdrant and FastEmbed for high-performance vector storage, retrieval, and cross-encoder reranking (`jinaai/jina-reranker-v2-base-multilingual`). Memory retrieval is time-bucketed (hourly, daily, weekly, etc.) to ensure agents receive contextually relevant project history.
 - **Knowledge Bank Ingestion Pipeline:** A dedicated script for processing, chunking, embedding, and deduplicating documents (PDF, JSON, Markdown) into the vector database, including LLM-enhanced summarization for PDFs via the Google Gemini API.
 - **Code Quality Enforcement:** Code-modifying agents (`developer`, `commentator`) automatically validate generated Python code against static analysis tools (`black`, `ruff`, `mypy`) before writing to disk, ensuring file integrity.
@@ -18,7 +18,7 @@ To run this project, you need the following installed:
 - **Python 3.13+**
 - **Git** (must be accessible in your system's PATH)
 - **Qdrant Service:** A running instance of the Qdrant vector database (default URL: `http://localhost:6333`).
-- **LLM API Key:** An API key for the configured model provider (e.g., Google Gemini).
+- **LLM API Key:** An API key for the configured model provider (currently Google Gemini).
 - **Static Analysis Tools:** The validation service requires `black`, `ruff`, and `mypy` to be installed globally or in the environment.
 
 ## Installation
@@ -104,15 +104,17 @@ You must set the API key environment variables specified in your agent configura
 export GEMINI_API_KEY_DEVELOPER="YOUR_API_KEY_HERE"
 export GEMINI_API_KEY_README_WRITER="YOUR_API_KEY_HERE"
 export GEMINI_API_KEY_KNOWLEDGE_INGESTION="YOUR_API_KEY_HERE"
+# ... and others for architect, approver, expert, commentator
 ```
 
 ### `conf/agentic_tools.toml` Overview
 
 | Section | Key Parameters | Description |
 | :--- | :--- | :--- |
-| `[agentic-tools]` | `source`, `design_docs`, `include_extensions` | Defines directories to scan for source code context and paths to design documents, along with file filtering rules. |
-| `[agentic-tools.memory]` | `qdrant_url`, `embedding_model`, `device` | Connection details for Qdrant and the embedding model (`mixedbread-ai/mxbai-embed-large-v1`). |
+| `[agentic-tools]` | `source`, `design_docs`, `include_extensions` | Defines directories to scan for source code context (`src`) and paths to design documents, along with file filtering rules (`.py`, `.md`, `.toml`). |
+| `[agentic-tools.memory]` | `qdrant_url`, `embedding_model`, `device` | Connection details for Qdrant (`http://localhost:6333`) and the embedding model (`mixedbread-ai/mxbai-embed-large-v1`). |
 | | `*retrieval_weight` | Weights defining the proportion of memories retrieved from different time buckets (e.g., `hourly_retrieval_weight`). |
 | `[agentic-tools.memory.reranker]` | `enabled`, `model_name` | Configuration for the cross-encoder reranker (`jinaai/jina-reranker-v2-base-multilingual`). |
-| `[knowledge_bank_ingestion]` | `source_directory`, `chunk_size`, `qdrant_batch_size` | Settings for the ingestion script, including document source, chunking parameters (default: 1024/200), and concurrency limits. |
-| `[<agent_name>]` | `model_provider`, `model_name`, `prompt`, `api_key` | Agent-specific settings defining the LLM provider (`google`), model (e.g., `gemini-2.5-pro`), system instruction, and the environment variable name holding the API key. |
+| `[knowledge_bank_ingestion]` | `source_directory`, `chunk_size`, `concurrency_limit` | Settings for the ingestion script, including document source (`../knowledge_bank`), chunking parameters (default: 1024/200), and concurrency limits (5). |
+| `[<agent_name>]` | `model_provider`, `model_name`, `api_key` | Agent-specific settings defining the LLM provider (`google`), model (e.g., `gemini-2.5-pro`), and the environment variable name holding the API key. |
+| `[agentic-tools.expert.memory]` | `knowledge_bank_retrieval_weight` | The `expert` agent is configured to rely 100% on the knowledge bank, ignoring time-based project memory. |

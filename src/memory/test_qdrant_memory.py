@@ -1,4 +1,3 @@
-
 # src/memory/test_qdrant_memory.py
 
 """Unit tests for QdrantClientManager and QdrantMemory.
@@ -14,7 +13,8 @@ behavior.
 """
 
 # Standard Library Imports
-
+import asyncio
+from typing import Any, Dict, List, Tuple, Union
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Third-Party Library Imports
@@ -157,7 +157,9 @@ class TestQdrantClientManager:
         client_mock.collection_exists.return_value = False
         collection_name = "new_collection"
         embedding_size = 128
-        payload_indexes = [("metadata.source", "keyword")]
+        payload_indexes: List[Tuple[str, Union[str, Dict[str, Any]]]] = [
+            ("metadata.source", "keyword")
+        ]
 
         # Act
         await manager.ensure_collection_exists(
@@ -287,7 +289,9 @@ class TestQdrantMemory:
 
         collection_info = MagicMock()
         collection_info.config.params.vectors = {
-            "other_dense": models.VectorParams(size=1024, distance=models.Distance.COSINE),
+            "other_dense": models.VectorParams(
+                size=1024, distance=models.Distance.COSINE
+            ),
             "preferred_dense": models.VectorParams(
                 size=1024, distance=models.Distance.COSINE
             ),
@@ -331,6 +335,7 @@ class TestQdrantMemory:
         # Assert
         assert prefetch is not None
         assert isinstance(prefetch, models.Prefetch)
+        assert isinstance(prefetch.query, models.FusionQuery)
         assert prefetch.query.fusion == models.Fusion.RRF
 
     def test_make_prefetch_without_sparse_name(
@@ -376,7 +381,9 @@ class TestQdrantMemory:
         mock_text_embedding.return_value.embedding_size = 1024
         mock_embedding_result = MagicMock()
         mock_embedding_result.tolist.return_value = [0.1] * 1024
-        mock_text_embedding.return_value.embed.return_value = iter([mock_embedding_result])
+        mock_text_embedding.return_value.embed.return_value = iter(
+            [mock_embedding_result]
+        )
         mock_sparse_encoder.return_value.encode_query.return_value = MagicMock()
         mock_reranker.return_value.rerank.return_value = [
             ("memory 1", 0.9),
@@ -424,4 +431,3 @@ class TestQdrantMemory:
         assert "memory 2" in context
         assert "memory 3" in context
         mock_reranker.return_value.rerank.assert_called_once()
-

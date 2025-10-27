@@ -31,9 +31,9 @@ MCP_NAME: str = "agentic-tools"
 
 # Configure basic logging for clear, explicit output.
 logging.basicConfig(
-    level = logging.INFO,
-    format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
 logger: logging.Logger = logging.getLogger(__name__)
 
 # Initialize the configurator and load the configuration dictionary.
@@ -51,6 +51,7 @@ except Exception as e:
 mcp = FastMCP(MCP_NAME)
 
 # --- Core Logic ---
+
 
 async def _run_agent_tool(
     agent_name: str,
@@ -89,8 +90,8 @@ async def _run_agent_tool(
     except Exception as error:
         logger.error(
             f"An error occurred while running the '{agent_name}' tool.",
-            exc_info = True,
-            )
+            exc_info=True,
+        )
         # Re-raising after logging ensures the failure is visible to the caller
         # and preserves the original exception context.
         raise RuntimeError(f"Agent '{agent_name}' failed to execute.") from error
@@ -100,13 +101,14 @@ async def _run_agent_tool(
 
 
 @mcp.tool(
-    description = (
+    description=(
         "Walks the project directories, gets git information, and updates the README.md file."
     ),
-    )
+)
 async def readme_writer_tool(
-    chat: Optional[str] = None, filepath: Optional[str | PathLike[str]] = None,
-    ) -> Any:
+    chat: Optional[str] = None,
+    filepath: Optional[str | PathLike[str]] = None,
+) -> Any:
     """
     Invokes the 'readme_writer' agent to update the project's README.md file.
 
@@ -120,10 +122,11 @@ async def readme_writer_tool(
     return await _run_agent_tool("readme_writer", chat, filepath)
 
 
-@mcp.tool(description = "Audits recent code changes and approves or rejects them.")
+@mcp.tool(description="Audits recent code changes and approves or rejects them.")
 async def approver_tool(
-    chat: Optional[str] = None, filepath: Optional[str | PathLike[str]] = None,
-    ) -> Any:
+    chat: Optional[str] = None,
+    filepath: Optional[str | PathLike[str]] = None,
+) -> Any:
     """
     Invokes the 'approver' agent to audit recent code changes.
 
@@ -138,11 +141,12 @@ async def approver_tool(
 
 
 @mcp.tool(
-    description = "Writes high-quality code based on design guidelines and standards.",
-    )
+    description="Writes high-quality code based on design guidelines and standards.",
+)
 async def developer_tool(
-    chat: Optional[str] = None, filepath: Optional[str | PathLike[str]] = None,
-    ) -> Any:
+    chat: Optional[str] = None,
+    filepath: Optional[str | PathLike[str]] = None,
+) -> Any:
     """
     Invokes the 'developer' agent to write or modify code.
 
@@ -157,11 +161,12 @@ async def developer_tool(
 
 
 @mcp.tool(
-    description = "Creates a high-quality architecture based on design guidelines.",
-    )
+    description="Creates a high-quality architecture based on design guidelines.",
+)
 async def architect_tool(
-    chat: Optional[str] = None, filepath: Optional[str | PathLike[str]] = None,
-    ) -> Any:
+    chat: Optional[str] = None,
+    filepath: Optional[str | PathLike[str]] = None,
+) -> Any:
     """
     Invokes the 'architect' agent to assist in software architecture design.
 
@@ -175,10 +180,11 @@ async def architect_tool(
     return await _run_agent_tool("architect", chat, filepath)
 
 
-@mcp.tool(description = "Updates a source code file with comments and documentation.")
+@mcp.tool(description="Updates a source code file with comments and documentation.")
 async def commentator_tool(
-    chat: Optional[str] = None, filepath: Optional[str | PathLike[str]] = None,
-    ) -> Any:
+    chat: Optional[str] = None,
+    filepath: Optional[str | PathLike[str]] = None,
+) -> Any:
     """
     Invokes the 'commentator' agent to add documentation to source code.
 

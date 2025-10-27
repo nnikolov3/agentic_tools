@@ -93,14 +93,18 @@ class Tool:
             logger.warning(f"API call for agent '{self.agent}' returned no response.")
             return None
         except ValueError as value_error:
-            logger.error(f"Payload creation failed for agent '{self.agent}': {value_error}")
+            logger.error(
+                f"Payload creation failed for agent '{self.agent}': {value_error}"
+            )
             raise
         except Exception as unexpected_error:
             logger.error(
                 f"An unexpected error occurred in run_tool for agent '{self.agent}': {unexpected_error}",
                 exc_info=True,
             )
-            raise RuntimeError(f"Tool execution failed for agent '{self.agent}'") from unexpected_error
+            raise RuntimeError(
+                f"Tool execution failed for agent '{self.agent}'"
+            ) from unexpected_error
 
     async def _create_payload(
         self,
@@ -131,7 +135,9 @@ class Tool:
         match self.agent:
             case "commentator":
                 if not filepath:
-                    raise ValueError("Filepath is required for the 'commentator' agent.")
+                    raise ValueError(
+                        "Filepath is required for the 'commentator' agent."
+                    )
                 return self._create_commentator_payload(chat, filepath)
             case "developer":
                 if not filepath:
@@ -216,7 +222,7 @@ class Tool:
             "USER_PROMPT": chat,
             "GIT_INFO": self.shell_tools.get_git_info(),
             "SRC_CODE": self.shell_tools.process_directory(self.source_directory),
-            "PROJECT_TOP_FILES": self._get_common_project_files_context()
+            "PROJECT_TOP_FILES": self._get_common_project_files_context(),
         }
 
         return payload

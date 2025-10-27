@@ -85,9 +85,7 @@ class MemoryConfig:
     qdrant_config: dict[str, Any] = field(default_factory=dict)
 
 
-def create_text_chunks(
-    text: str, chunk_size: int, chunk_overlap: int
-) -> list[str]:
+def create_text_chunks(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
     """Splits a text string into overlapping chunks using a simple sliding window.
 
     This function provides a basic, non-semantic chunking mechanism suitable for
@@ -136,9 +134,7 @@ class KnowledgeBankIngestor:
         """
         ingestion_cfg = configuration.get("knowledge_bank_ingestion")
         memory_cfg = configuration.get("memory")
-        if not isinstance(ingestion_cfg, dict) or not isinstance(
-            memory_cfg, dict
-        ):
+        if not isinstance(ingestion_cfg, dict) or not isinstance(memory_cfg, dict):
             raise ValueError(
                 "Configuration must contain 'knowledge_bank_ingestion' and 'memory' sections."
             )
@@ -152,16 +148,10 @@ class KnowledgeBankIngestor:
         )
         self.embedding_size = self._get_embedding_size()
 
-        self.qdrant_manager = QdrantClientManager(
-            self.memory_config.qdrant_config
-        )
+        self.qdrant_manager = QdrantClientManager(self.memory_config.qdrant_config)
         self.qdrant_client = self.qdrant_manager.get_client()
-        self.shell_tools = ShellTools(
-            "knowledge_bank_ingestion", configuration
-        )
-        self.semaphore = asyncio.Semaphore(
-            self.ingestion_config.concurrency_limit
-        )
+        self.shell_tools = ShellTools("knowledge_bank_ingestion", configuration)
+        self.semaphore = asyncio.Semaphore(self.ingestion_config.concurrency_limit)
 
         self._content_extractors: dict[str, ContentExtractor] = {
             ".pdf": self._extract_and_summarize_pdf,
@@ -214,9 +204,7 @@ class KnowledgeBankIngestor:
     def _load_ingestion_config(config: dict[str, Any]) -> IngestionConfig:
         """Loads and validates the ingestion-specific configuration."""
         return IngestionConfig(
-            source_directory=Path(
-                config.get("source_directory", "knowledge_bank")
-            ),
+            source_directory=Path(config.get("source_directory", "knowledge_bank")),
             supported_extensions=tuple(
                 config.get("supported_extensions", [".json", ".md", ".pdf"])
             ),
@@ -469,9 +457,7 @@ class KnowledgeBankIngestor:
             async with self.semaphore:
                 logger.info(f"Processing file: {file_path}")
 
-                processed_content = await self._extract_content_from_file(
-                    file_path
-                )
+                processed_content = await self._extract_content_from_file(file_path)
                 if not processed_content:
                     logger.warning(f"No content extracted from: {file_path}")
                     return "skipped"
