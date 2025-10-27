@@ -84,6 +84,7 @@ class ValidationService:
         The service is configured using the module-level `_VALIDATION_COMMANDS`
         constant, ensuring consistent behavior across all instances.
         """
+
         self.commands: List[Tuple[str, List[str]]] = [
             (name, list(args)) for name, args in _VALIDATION_COMMANDS
         ]

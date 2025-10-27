@@ -20,6 +20,7 @@ from src.agents.agent import (
     ReadmeWriterAgent,
     CommentatorAgent,
     DeveloperAgent,
+    ExpertAgent,
 )
 
 from src.configurator import get_config_dictionary
@@ -39,6 +40,7 @@ ARCHITECT: str = "architect"
 APPROVER: str = "approver"
 README_WRITER: str = "readme_writer"
 INGEST_KNOWLEDGE_BANK: str = "ingest_knowledge_bank"
+EXPERT: str = "expert"
 VALID_AGENTS: Tuple[str, ...] = (
     COMMENTATOR,
     DEVELOPER,
@@ -46,6 +48,7 @@ VALID_AGENTS: Tuple[str, ...] = (
     APPROVER,
     README_WRITER,
     INGEST_KNOWLEDGE_BANK,
+    EXPERT,
 )
 
 # --- Logging Configuration ---
@@ -93,6 +96,8 @@ async def execute_agent_task(
             agent = CommentatorAgent(config, agent_name, PROJECT_NAME, chat, filepath)
         case "developer":
             agent = DeveloperAgent(config, agent_name, PROJECT_NAME, chat, filepath)
+        case "expert":
+            agent = ExpertAgent(config, agent_name, PROJECT_NAME, chat, filepath)
         case "ingest_knowledge_bank":
             return await KnowledgeBankIngestor(config["agentic-tools"]).run_ingestion()
         case _:

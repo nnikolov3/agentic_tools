@@ -7,6 +7,6 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "multi-agent-mcp"
+name = "agentic-tools"
 version = "0.1.0"
 source = { virtual = "." }

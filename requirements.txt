@@ -1,1 +1,12 @@
+pytest
+mdformat
+langchain-core
+langchain-text-splitters
+langchain-community
+tenacity
+qdrant-client
+httpx
+fastembed
+fastmcp
 faker
+sentence-transformers

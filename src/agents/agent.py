@@ -175,7 +175,6 @@ class Agent(abc.ABC):
         if self.memory and self.context_quality_score < 0.5:
             logger.info("Context quality is low. Updating memory weights.")
             # For now, we do nothing. This will be implemented in the future.
-            pass
 
     @abc.abstractmethod
     async def _post_process(self) -> None:
@@ -353,10 +352,27 @@ class DeveloperAgent(CodeModifyingAgent):
         return 1.0
 
 
+class ExpertAgent(DefaultAgent):
+    """An agent that leverages the knowledge base to answer questions."""
+
+    async def _retrieve_context(self) -> str:
+        """Retrieves context from the knowledge base."""
+        if not self.memory_config:
+            logger.warning("No Qdrant memory configured. Skipping context retrieval.")
+            return ""
+
+        query = self.chat or self.agent_name
+
+        self.memory = await QdrantMemory.create(self.memory_config, self.agent_name)
+
+        return await self.memory.retrieve_context(query)
+
+
 AGENT_CLASSES: dict[str, type[Agent]] = {
     "readme_writer": ReadmeWriterAgent,
     "commentator": CommentatorAgent,
     "developer": DeveloperAgent,
     "approver": DefaultAgent,
     "architect": DefaultAgent,
+    "expert": ExpertAgent,
 }
