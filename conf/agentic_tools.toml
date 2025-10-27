@@ -21,7 +21,6 @@ common_project_files = [
     "README.md",
     "main.py",
     "pyproject.toml",
-    "run_agents_manually.py",
     "conf/agentic_tools.toml"
 ]
 
