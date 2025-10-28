@@ -21,7 +21,15 @@ class ShellTools:
 
         self.git_diff_command: List[str] = self.config.get(
             "git_diff_command",
-            ["diff", "--patch-with-raw", "--minimal", "--patience"],
+            [
+                "diff",
+                "HEAD",
+                "--patch-with-raw",
+                "--minimal",
+                "--patience",
+                ":!uv.lock",
+                ":!MANIFEST.in",
+            ],
         )
         git_executable_path: Optional[str] = shutil.which("git")
         if not git_executable_path:
