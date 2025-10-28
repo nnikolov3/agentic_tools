@@ -66,6 +66,7 @@ Agents are invoked using their registered tool names. Most agents accept a prima
 | `commentator_tool` | `CommentatorAgent` | `--chat`, `--filepath` | Adds documentation, docstrings, and organizes imports in a source file. |
 | `approver_tool` | `DefaultAgent` | `--chat` | Audits recent Git changes (`git diff`) against design documents. |
 | `architect_tool` | `DefaultAgent` | `--chat` | Assists in high-level architectural design and planning. |
+| `knowledge_base_builder_tool` | `KnowledgeBaseAgent` | `--chat`, `--filepath` | Fetches content from a list of URLs and writes it to a file for knowledge base creation. |
 
 **Example: Generating/Updating the README**
 

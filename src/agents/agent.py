@@ -202,11 +202,7 @@ class Agent(abc.ABC):
 
 class KnowledgeBaseAgent(Agent):
     """
-
-
     An agent that fetches content from a list of URLs and writes it to a file.
-
-
     """
 
     def __init__(
@@ -218,23 +214,11 @@ class KnowledgeBaseAgent(Agent):
         filepath: Optional[str | PathLike[str]],
     ) -> None:
         """
-
-
         Initializes the KnowledgeBaseAgent.
 
-
-
-
-
         Raises:
-
-
             ValueError: If `filepath` is not provided, as it is essential
-
-
                         for this agent's operation.
-
-
         """
 
         super().__init__(configuration, agent_name, project, chat, filepath)
@@ -247,17 +231,9 @@ class KnowledgeBaseAgent(Agent):
 
     async def run_agent(self) -> Optional[str]:
         """
-
-
         Executes the agent's task by fetching content from URLs.
 
-
-
-
-
         This method overrides the base class's run_agent to bypass the LLM API call.
-
-
         """
 
         try:
@@ -292,11 +268,7 @@ class KnowledgeBaseAgent(Agent):
 
     async def _post_process(self) -> None:
         """
-
-
         Writes the fetched URL content to the specified output file.
-
-
         """
 
         if not self.response:
@@ -329,11 +301,7 @@ class KnowledgeBaseAgent(Agent):
 
     async def _store_memory(self) -> None:
         """
-
-
         Stores the fetched content in the knowledge_bank memory collection.
-
-
         """
 
         if self.response:
