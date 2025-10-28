@@ -9,3 +9,11 @@ __pycache__/
 megalinter-reports/
 .mypy_cache/
 /knowledge_bank/.env
+
+# Added by agent for cleanup
+# Python build/packaging artifacts
+dist/
+*.egg-info/
+
+# Local files
+approver_report_original.json
