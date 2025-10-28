@@ -4,9 +4,9 @@ The Agentic Tools Framework is a sophisticated system designed to automate compl
 
 ## Key Features
 
-- **Specialized Agents:** Includes dedicated agents for development (`developer`), documentation (`readme_writer`), code review (`approver`), architectural planning (`architect`), code commenting (`commentator`), and knowledge retrieval (`expert`).
+- **Specialized Agents:** Includes dedicated agents for development (`developer`), documentation (`readme_writer`), code review (`approver`), architectural planning (`architect`), code commenting (`commentator`), knowledge retrieval (`expert`), and web content ingestion (`knowledge_base_builder`).
 - **Time-Aware RAG System:** Utilizes Qdrant, FastEmbed, and Jina Reranker for high-performance vector storage and retrieval. Memory retrieval is segmented into time buckets (hourly, daily, weekly, etc.) and weighted to prioritize recent or highly relevant context.
-- **Knowledge Bank Ingestion Pipeline:** A dedicated script for processing, chunking, embedding, and deduplicating documents (PDF, JSON, Markdown) into the vector database, including LLM-enhanced summarization for PDFs via the Google Gemini API.
+- **Knowledge Bank Ingestion Pipeline:** A dedicated script for processing, chunking, embedding, and deduplicating documents (PDF, JSON, Markdown) into the vector database, including LLM-enhanced summarization for complex file types via the Google Gemini API.
 - **Code Quality Enforcement:** Code-modifying agents (`developer`, `commentator`) automatically validate generated Python code against static analysis tools (`black`, `ruff`, and `mypy`) before writing to disk, ensuring file integrity.
 - **Comprehensive Context:** Agents are automatically provided with project source code, Git diffs, repository metadata, design documents, and memory context during execution.
 - **Atomic File Operations:** Ensures data integrity when writing or modifying files using safe, atomic write operations.
@@ -65,8 +65,15 @@ Agents are invoked using their registered tool names. Most agents accept a prima
 | `developer_tool` | `DeveloperAgent` | `--chat`, `--filepath` | Writes or refactors code in a specific file, with validation. |
 | `commentator_tool` | `CommentatorAgent` | `--chat`, `--filepath` | Adds documentation, docstrings, and organizes imports in a source file. |
 | `approver_tool` | `DefaultAgent` | `--chat` | Audits recent Git changes (`git diff`) against design documents. |
-| `architect_tool` | `DefaultAgent` | `--chat` | Assists in high-level architectural design and planning. |
-| `knowledge_base_builder_tool` | `KnowledgeBaseAgent` | `--chat`, `--filepath` | Fetches content from a list of URLs and writes it to a file for knowledge base creation. |
+| `knowledge_base_builder_tool` | `KnowledgeBaseAgent` | `--chat` (URLs), `--filepath` | Fetches content from a comma-separated list of URLs and saves the concatenated result to a specified file. |
+
+**Example: Building a Knowledge Base File from URLs**
+
+This agent fetches content from the specified URLs and writes the concatenated text to the output file, making it available for subsequent ingestion or direct use.
+
+```bash
+python main.py knowledge_base_builder_tool     --chat "https://docs.qdrant.tech/cloud/quickstart/, https://fastembed.ai/docs/usage/"     --filepath knowledge_bank/qdrant_and_fastembed_docs.txt
+```
 
 **Example: Generating/Updating the README**
 
@@ -74,15 +81,9 @@ Agents are invoked using their registered tool names. Most agents accept a prima
 python main.py readme_writer_tool --chat "Generate a concise and practical README.md for the project, focusing on the Qdrant RAG system and agent orchestration."
 ```
 
-**Example: Modifying a Source File**
-
-```bash
-python main.py developer_tool --filepath src/tools/api_tools.py --chat "Refactor the google method to use a more explicit try-except block for API key validation."
-```
-
 ### 2. Ingesting Knowledge Bank Documents
 
-The ingestion pipeline is run using the `run-agent` command:
+The ingestion pipeline processes local documents into the vector database for the `expert` agent to use.
 
 1. Place documents (`.pdf`, `.md`, `.json`) into the configured source directory (default: `knowledge_bank/`).
 
@@ -113,8 +114,7 @@ export GEMINI_API_KEY_KNOWLEDGE_INGESTION="YOUR_API_KEY_HERE"
 | :--- | :--- | :--- |
 | `[agentic-tools]` | `source`, `design_docs`, `include_extensions` | Defines directories to scan (`src`), design document paths, and file filters (`.py`, `.md`, `.toml`). |
 | `[agentic-tools.memory]` | `qdrant_url`, `embedding_model`, `device` | Qdrant connection (`http://localhost:6333`), embedding model (`mixedbread-ai/mxbai-embed-large-v1`), and processing device (`cuda`/`cpu`). |
-| | `*retrieval_weight` | Weights (0.0 to 1.0) defining the proportion of memories retrieved from time buckets (e.g., `hourly_retrieval_weight`). |
-| `[agentic-tools.memory.reranker]` | `enabled`, `model_name` | Enables and specifies the cross-encoder reranker (`jinaai/jina-reranker-v2-base-multilingual`). |
-| `[knowledge_bank_ingestion]` | `source_directory`, `chunk_size`, `concurrency_limit` | Source directory (`../knowledge_bank`), chunking parameters (1024/200), and max concurrent file processing (5). |
+| | `*retrieval_weight` | Weights (0.0 to 1.0) defining the proportion of memories retrieved from time buckets. Default weights are set to prioritize the knowledge bank (`knowledge_bank_retrieval_weight = 1.0`). |
+| `[knowledge_bank_ingestion]` | `source_directory`, `chunk_size`, `concurrency_limit` | Source directory (`../knowledge_bank`), chunking parameters (1024/200), and max concurrent file processing (5). This section also defines the LLM model and prompt used for PDF/JSON summarization. |
 | `[<agent_name>]` | `model_provider`, `model_name`, `api_key` | Agent-specific LLM settings (e.g., `google`, `gemini-2.5-pro`), and the environment variable name for the API key. |
-| `[agentic-tools.expert.memory]` | `knowledge_bank_retrieval_weight` | Overrides global memory weights for the `expert` agent, typically set to `1.0` to rely solely on the knowledge bank. |
+| `[agentic-tools.expert.memory]` | `knowledge_bank_retrieval_weight` | Overrides global memory weights for the `expert` agent, typically set to `1.0` to rely solely on the knowledge bank for answers. |
