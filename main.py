@@ -90,9 +90,10 @@ configuration: dict[str, Any] = {}
 async def _execute_agent_task(
     config: Dict[str, Any],
     agent_name: str,
+    project: str,
     chat: Optional[str],
     filepath: Optional[str | PathLike[str]],
-    target_directory: Path,
+    target_directory: Optional[Path],
 ) -> Any:
     """
     Initializes and runs a single agent task.
@@ -125,7 +126,7 @@ async def _execute_agent_task(
         agent = agent_class(
             configuration=config,
             agent_name=agent_name,
-            project=MCP_NAME,
+            project=project,
             chat=chat,
             filepath=filepath,
             target_directory=target_directory,
@@ -167,8 +168,8 @@ async def _run_agent_tool(
         RuntimeError: If the agent execution fails for any reason.
     """
     return await _execute_agent_task(
-        configuration, agent_name, chat, filepath, target_directory
-    )
+        configuration, agent_name, MCP_NAME, chat, filepath, target_directory
+        )
 
 
 # --- Tool Definitions ---
@@ -402,12 +403,9 @@ async def _run_cli_mode(args: argparse.Namespace) -> None:
     try:
         target_directory = Path(args.target_directory).resolve()
         result = await _execute_agent_task(
-            configuration,
-            args.agent_name,
-            args.chat,
-            args.filepath,
-            target_directory,
-        )
+            configuration, args.agent_name, MCP_NAME, args.chat, args.filepath,
+            target_directory
+            )
         logger.info("--- Agent Result ---")
         # The result can be any data type, so printing it directly provides the
         # clearest output for a developer using this manual tool.

@@ -51,7 +51,7 @@ class Agent(abc.ABC):
         project: str,
         chat: Optional[str],
         filepath: Optional[str | PathLike[str]],
-        target_directory: Path,
+        target_directory: Optional[Path],
     ) -> None:
         """
         Initializes the Agent with its configuration and operational context.
@@ -84,6 +84,7 @@ class Agent(abc.ABC):
         self.shell_tools = ShellTools(agent_name, self.configuration, target_directory)
         self.tool = Tool(agent_name, self.configuration, target_directory)
         self.memory_config: dict[str, Any] = self.configuration.get("memory", {})
+        self.target_directory: Optional[Path] = target_directory
 
         logger.debug("Initialized Agent '%s' for project '%s'.", self.agent_name, project)
 
@@ -117,6 +118,8 @@ class Agent(abc.ABC):
                 self.chat,
                 self.memory_context,
                 str(self.filepath) if self.filepath else None,
+
+
             )
 
             if self.response:
