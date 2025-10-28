@@ -22,7 +22,8 @@ dependencies = [
     "langchain-text-splitters",
     "black",
     "ruff",
-    "mypy"
+    "mypy",
+    "beautifulsoup4"
 ]
 
 [project.scripts]

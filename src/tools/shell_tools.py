@@ -10,6 +10,7 @@ from tempfile import NamedTemporaryFile
 from typing import Any, Dict, Generator, List, Optional
 
 import httpx
+from bs4 import BeautifulSoup
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -288,15 +289,15 @@ class ShellTools:
 
     async def fetch_urls_content(self, urls: List[str]) -> str:
         """
-        Fetches content from a list of URLs concurrently.
+        Fetches content from a list of URLs concurrently and extracts clean text.
 
         Args:
             urls: A list of URL strings to fetch.
 
         Returns:
-            A single string concatenating the content of all successfully fetched URLs.
+            A single string concatenating the clean text from all successfully fetched URLs.
         """
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
             tasks = [client.get(url) for url in urls]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -305,8 +306,13 @@ class ShellTools:
             url = urls[i]
             if isinstance(result, httpx.Response) and result.status_code == 200:
                 header = f"\n\n--- Content from: {url} ---\n\n"
-                content_parts.append(header + result.text)
-                logger.info("Successfully fetched content from %s", url)
+
+                # Parse HTML and extract text
+                soup = BeautifulSoup(result.text, "html.parser")
+                clean_text = soup.get_text(separator='\n', strip=True)
+
+                content_parts.append(header + clean_text)
+                logger.info("Successfully fetched and parsed content from %s", url)
             else:
                 error_msg = (
                     result
@@ -315,7 +321,7 @@ class ShellTools:
                 )
                 logger.warning("Failed to fetch content from %s: %s", url, error_msg)
 
-        return "".join(content_parts).strip()
+        return "\n".join(content_parts).strip()
 
     async def run_project_linters(self) -> str:
         """
