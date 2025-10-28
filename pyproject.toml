@@ -1,7 +1,92 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "agentic-tools==*"
+name = "agentic-tools"
 version = "0.1.0"
-description = "Add your description here"
+description = "An agentic toolchain for architecting, designing, and validating code via specialized AI agents."
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "fastmcp",
+    "qdrant-client",
+    "fastembed",
+    "google-genai",
+    "mdformat",
+    "tenacity",
+    "pdfminer.six",
+    "faker",
+    "sentence-transformers",
+    "httpx",
+    "langchain-text-splitters",
+    "black",
+    "ruff",
+    "mypy"
+]
+
+[project.scripts]
+agentic-tools = "main:main_cli"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.bandit]
+# Recursively scan repo; exclude typical non-source dirs and generated code
+exclude_dirs = [
+  ".git",
+  ".hg",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".venv",
+  "venv",
+  "build",
+  "dist",
+  "__pycache__",
+  "site-packages",
+  "node_modules",
+  "migrations",
+  "tests/fixtures",
+]
+
+# Only include these file extensions
+targets = ["./"]
+
+# Optional: limit which tests to run (uncomment to pin)
+# tests = ["B201","B301"]
+
+# Skip common false positives (adjust per project)
+skips = [
+  "B101",   # assert_used
+  "B601",   # paramiko calls (often in tooling)
+]
+
+# Gatekeeping
+severity = "LOW"        # LOW|MEDIUM|HIGH threshold shown
+confidence = "MEDIUM"   # LOW|MEDIUM|HIGH threshold shown
+
+# Fail build if any finding at/above thresholds (set to true to fail CI)
+# exit_zero = false
+
+# Baseline to compare against (create with: bandit -r . -f json -o bandit-baseline.json)
+# baseline = "bandit-baseline.json"
+
+# Per-plugin tuning (examples)
+[tool.bandit.assert_used]
+# Ignore asserts in tests and benchmarks
+skips = ["*/tests/*.py", "*/test_*.py", "*/benchmarks/*.py"]
+
+[tool.bandit.blacklist_imports]
+# Add imports to flag project-wide (example)
+bad_imports = ["pickle", "telnetlib"]
+
+[tool.bandit.blacklist_calls]
+# Flag dangerous calls by fully qualified name (example)
+bad_name_sets = [
+  # e.g., use yaml.safe_load instead of yaml.load
+  {qualnames = ["yaml.load"], message = "Use yaml.safe_load instead of yaml.load"},
+]
