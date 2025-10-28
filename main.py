@@ -47,6 +47,7 @@ APPROVER: str = "approver"
 README_WRITER: str = "readme_writer"
 INGEST_KNOWLEDGE_BANK: str = "ingest_knowledge_bank"
 EXPERT: str = "expert"
+KNOWLEDGE_BASE_BUILDER: str = "knowledge_base_builder"
 VALID_AGENTS: Tuple[str, ...] = (
     COMMENTATOR,
     DEVELOPER,
@@ -55,6 +56,7 @@ VALID_AGENTS: Tuple[str, ...] = (
     README_WRITER,
     INGEST_KNOWLEDGE_BANK,
     EXPERT,
+    KNOWLEDGE_BASE_BUILDER,
 )
 
 
@@ -63,8 +65,8 @@ VALID_AGENTS: Tuple[str, ...] = (
 def _load_configuration(config_path: Path) -> dict[str, Any]:
     """Loads the application configuration from the specified path."""
     try:
-        configuration: dict[str, Any] = get_config_dictionary(config_path)
-        return configuration
+        _configuration: dict[str, Any] = get_config_dictionary(config_path)
+        return _configuration
     except FileNotFoundError as e:
         logger.error(f"Configuration file not found at '{config_path}'.")
         raise RuntimeError(f"Missing configuration file: {config_path}") from e
@@ -260,6 +262,26 @@ async def commentator_tool(
     return await _run_agent_tool("commentator", chat, filepath)
 
 
+@mcp.tool(
+    description="Fetches content from URLs and saves it to a file for knowledge base creation."
+)
+async def knowledge_base_builder_tool(
+    chat: Optional[str] = None,
+    filepath: Optional[str | PathLike[str]] = None,
+) -> Any:
+    """
+    Invokes the 'knowledge_base_builder' agent to fetch web content.
+
+    Args:
+        chat: A comma-separated string of URLs to fetch.
+        filepath: The path to the output file where content will be saved.
+
+    Returns:
+        The result of the agent's operation.
+    """
+    return await _run_agent_tool(KNOWLEDGE_BASE_BUILDER, chat, filepath)
+
+
 # --- CLI Execution Logic ---
 
 
@@ -271,13 +293,13 @@ def _setup_cli_parser() -> argparse.ArgumentParser:
         An `argparse.ArgumentParser` instance configured with the script's
         command-line arguments.
     """
-    parser = argparse.ArgumentParser(
+    _parser = argparse.ArgumentParser(
         description="A command-line tool to manually trigger AI agents or run the FastMCP server.",
         formatter_class=argparse.RawTextHelpFormatter,
     )
 
     # Top-level arguments for configuration
-    parser.add_argument(
+    _parser.add_argument(
         "--config",
         type=str,
         default=CONFIG_FILE_PATH,
@@ -285,7 +307,7 @@ def _setup_cli_parser() -> argparse.ArgumentParser:
     )
 
     # Subparser for the 'run-agent' command
-    subparsers = parser.add_subparsers(dest="command", required=False)
+    subparsers = _parser.add_subparsers(dest="command", required=False)
 
     run_agent_parser = subparsers.add_parser(
         "run-agent",
@@ -312,14 +334,13 @@ def _setup_cli_parser() -> argparse.ArgumentParser:
         help="The path to the file or directory for the agent to process.",
     )
 
-    return parser
+    return _parser
 
 
 async def _run_cli_mode(args: argparse.Namespace) -> None:
     """
     Executes the selected agent task in CLI mode.
     """
-    global configuration
     try:
         # Load configuration based on the --config argument
         config_path = Path(args.config)
@@ -350,7 +371,9 @@ async def _run_cli_mode(args: argparse.Namespace) -> None:
 
 # --- Main Execution Block ---
 
-if __name__ == "__main__":
+
+def main_cli():
+    """Main function for the command-line interface."""
     parser = _setup_cli_parser()
     args = parser.parse_args()
 
@@ -360,5 +383,13 @@ if __name__ == "__main__":
     else:
         # Run in FastMCP server mode (default)
         # Load default configuration for server mode
+        # NOTE: The global configuration is required here because FastMCP's tool
+        # functions are registered globally and need access to the configuration
+        # without explicit passing.
+        global configuration
         configuration = _load_configuration(CONFIG_FILE_PATH)
         mcp.run()
+
+
+if __name__ == "__main__":
+    main_cli()
