@@ -246,6 +246,7 @@ When generating Python tests, you must follow these standards:
 - Use `pytest` as the testing framework
 - Make all tests independent with proper setup and teardown using fixtures
 - Use `pytest.raises()` to assert expected exceptions
+- All tests must pass with zero warnings. Warnings are treated as failures and must be resolved.
 
 Example of what you MUST generate for test code:
 

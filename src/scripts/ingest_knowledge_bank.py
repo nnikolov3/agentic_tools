@@ -25,7 +25,7 @@ from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Final, Optional
+from typing import Any, Final, Optional, cast
 
 # Third-Party Library Imports
 import httpx
@@ -314,10 +314,11 @@ class KnowledgeBankIngestor:
                     ]
                 ),
                 limit=1,
-                with_payload=False,
+                with_payload=True,
                 timeout=60,
             )
             points = getattr(response, "points", response)
+            logger.debug(f"Exists check via query result: {points}")
             return bool(points)
         except Exception:
             logger.exception(
@@ -406,10 +407,7 @@ class KnowledgeBankIngestor:
             return ""
         return await extractor(file_path)
 
-    async def _extract_and_summarize_pdf(self, file_path: Path) -> str:
-        """Extracts text from a PDF and prepends an LLM-generated summary."""
-        logger.info(f"Extracting text from PDF: {file_path}")
-        extracted_text = extract_text(file_path)
+    async def _get_llm_summary(self, file_path: Path) -> str:
         logger.info(f"Generating LLM summary for: {file_path}")
         llm_summary = await google_documents_api(
             self.ingestion_config.model,
@@ -417,17 +415,25 @@ class KnowledgeBankIngestor:
             self.ingestion_config.prompt,
             file_path,
         )
+        return cast(str, llm_summary)
+
+    async def _extract_and_summarize_pdf(self, file_path: Path) -> str:
+        """Extracts text from a PDF and prepends an LLM-generated summary."""
+        logger.info(f"Extracting text from PDF: {file_path}")
+        extracted_text = extract_text(file_path)
+        logger.info(f"Generating LLM summary for: {file_path}")
+        llm_summary = await self._get_llm_summary(file_path)
         return f"{llm_summary}\n\n{extracted_text}"
 
-    @staticmethod
-    async def _flatten_json_content(file_path: Path) -> str:
+    async def _flatten_json_content(self, file_path: Path) -> str:
         """Reads a JSON file and flattens its content into a single string."""
         try:
             with file_path.open(encoding="utf-8") as file_handle:
                 data = json.load(file_handle)
             if isinstance(data, dict):
                 return ". ".join(f"{key}: {value}" for key, value in data.items())
-            return str(data)
+            llm_summary = await self._get_llm_summary(file_path)
+            return f"{llm_summary}\n\n{data}"
         except Exception:
             logger.exception(f"Error processing JSON file {file_path}.")
             return ""
@@ -516,7 +522,10 @@ class KnowledgeBankIngestor:
                 logger.info(
                     f"Successfully processed {len(points)} chunks for: {file_path}"
                 )
-                return "processed"
+                llm_summary = await self._get_llm_summary(file_path)
+
+                return f"{llm_summary}\n\n{processed_content}"
+
         except Exception:
             logger.exception(f"Failed to process file: {file_path}")
             return "failed"
