@@ -9,10 +9,10 @@ re-processing of unchanged files.
 
 The core component is the `KnowledgeBankIngestor`, which orchestrates the
 entire pipeline. It supports various file formats like PDF, JSON, and Markdown,
-employing specific content extraction strategies for each. For PDFs, it uses an
-LLM to generate a summary, which is prepended to the extracted text to provide
-richer context. The process is asynchronous and uses semaphore to limit
-concurrent file processing, ensuring controlled resource usage.
+employing specific content extraction strategies for each. For PDFs and JSON,
+it uses an LLM to generate a summary, which is prepended to the extracted text
+to provide richer context. The process is asynchronous and uses a semaphore to
+limit concurrent file processing, ensuring controlled resource usage.
 """
 
 # Standard Library Imports
@@ -20,6 +20,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import uuid
 from collections import Counter
 from collections.abc import Awaitable, Callable
@@ -46,8 +47,7 @@ from tenacity import (
 
 # Local Application/Module Imports
 from src.memory.qdrant_client_manager import QdrantClientManager
-from src.tools.api_tools import google_documents_api
-from src.tools.api_tools import google_text
+from src.tools.api_tools import google_documents_api, google_text
 from src.tools.shell_tools import ShellTools
 
 # Initialize logger for this module.
@@ -56,6 +56,20 @@ logger = logging.getLogger(__name__)
 # Define constants for payload field names to ensure consistency.
 RAW_FILE_HASH_FIELD: Final[str] = "raw_file_hash"
 PROCESSED_CONTENT_HASH_FIELD: Final[str] = "processed_content_hash"
+TEXT_CONTENT_FIELD: Final[str] = "text_content"
+ORIGINAL_FILE_PATH_FIELD: Final[str] = "original_file_path"
+CHUNK_ID_FIELD: Final[str] = "chunk_id"
+
+# Text cleaning constants
+LIGATURES: Final[dict[str, str]] = {
+    "\ufb00": "ff",
+    "\ufb01": "fi",
+    "\ufb02": "fl",
+    "\ufb03": "ffi",
+    "\ufb04": "ffl",
+}
+RE_NON_PRINTABLE: Final[re.Pattern[str]] = re.compile(r"[^\x20-\x7E\n\r\t]")
+RE_MULTI_WHITESPACE: Final[re.Pattern[str]] = re.compile(r"\s+")
 
 # Type alias for content extraction functions.
 ContentExtractor = Callable[[Path], Awaitable[str]]
@@ -95,7 +109,7 @@ def create_text_chunks(text: str, chunk_size: int, chunk_overlap: int) -> list[s
 
     Args:
         text: The input text to be chunked.
-        chunk_size: The target size for each chunk.
+        chunk_size: The target size for each chunk. Must be a positive integer.
         chunk_overlap: The number of characters to overlap between chunks.
 
     Returns:
@@ -104,15 +118,17 @@ def create_text_chunks(text: str, chunk_size: int, chunk_overlap: int) -> list[s
     if not text or not text.strip():
         return []
     if chunk_size <= 0:
-        # If chunk_size is not positive, return the whole text as one chunk.
+        logger.warning(
+            "chunk_size must be positive. Returning the whole text as one chunk."
+        )
         return [text]
 
     text_length = len(text)
     chunks: list[str] = []
     start_index = 0
-    # Calculate the step size, ensuring it's at least 1 to prevent infinite loops.
-    chunk_step = max(1, chunk_size - max(0, chunk_overlap))
-
+    # The step size determines how much the window slides for the next chunk.
+    # It's clamped to a minimum of 1 to prevent infinite loops if overlap >= chunk_size.
+    chunk_step = max(1, chunk_size - chunk_overlap)
 
     while start_index < text_length:
         end_index = min(text_length, start_index + chunk_size)
@@ -152,7 +168,9 @@ class KnowledgeBankIngestor:
 
         self.qdrant_manager = QdrantClientManager(self.memory_config.qdrant_config)
         self.qdrant_client = self.qdrant_manager.get_client()
-        self.shell_tools = ShellTools("knowledge_bank_ingestion", configuration)
+        self.shell_tools = ShellTools(
+            "knowledge_bank_ingestion", configuration, Path(__file__).parent
+        )
         self.semaphore = asyncio.Semaphore(self.ingestion_config.concurrency_limit)
 
         self._content_extractors: dict[str, ContentExtractor] = {
@@ -164,6 +182,18 @@ class KnowledgeBankIngestor:
         # These will be resolved at runtime by inspecting the Qdrant collection.
         self.kb_dense_name: Optional[str] = None
         self.kb_sparse_name: Optional[str] = None
+    @staticmethod
+    def clean_text(text: str) -> str:
+        """Cleans text by removing ligatures and non-printable characters."""
+        if not text:
+            return ""
+
+        for ligature, replacement in LIGATURES.items():
+            text = text.replace(ligature, replacement)
+
+        text = RE_NON_PRINTABLE.sub("", text)
+        text = RE_MULTI_WHITESPACE.sub(" ", text).strip()
+        return text
 
     async def run_ingestion(self) -> Counter[str]:
         """Executes the end-to-end ingestion workflow.
@@ -175,7 +205,7 @@ class KnowledgeBankIngestor:
             A Counter object summarizing the results (e.g., processed, skipped, failed).
         """
         logger.info(
-            f"Starting ingestion from: '{self.ingestion_config.source_directory}'"
+            "Starting ingestion from: '%s'", self.ingestion_config.source_directory
         )
         await self._ensure_collection_exists()
         await self._resolve_kb_vector_names()
@@ -188,18 +218,23 @@ class KnowledgeBankIngestor:
             logger.warning("No files found to process. Ingestion finished.")
             return Counter()
 
-        tasks = [asyncio.create_task(self._process_file(p)) for p in files]
+        tasks = [
+            asyncio.create_task(self._process_file(file_path)) for file_path in files
+        ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         counts: Counter[str] = Counter()
         for result in results:
             if isinstance(result, str):
                 counts[result] += 1
+            elif isinstance(result, Exception):
+                counts["failed"] += 1
+                logger.error("Task failed with an exception", exc_info=result)
             else:
                 counts["failed"] += 1
-                if isinstance(result, Exception):
-                    logger.error("Task failed with an exception", exc_info=result)
-        logger.info("Ingestion complete")
+                logger.error("Task failed with an unknown error: %s", result)
+
+        logger.info("Ingestion complete. Results: %s", counts)
         return counts
 
     @staticmethod
@@ -241,9 +276,9 @@ class KnowledgeBankIngestor:
             size = len(vector)
             logger.info("Embedder dimension successfully determined: %d", size)
             return size
-        except (RuntimeError, ValueError) as error:
+        except (RuntimeError, ValueError, StopIteration) as error:
             logger.exception("Failed to initialize embedding model.")
-            raise RuntimeError("Embedding model initialization failed") from error
+            raise RuntimeError("Embedding generation failed") from error
 
     async def _ensure_collection_exists(self) -> None:
         """Creates the Qdrant collection and payload indexes if they don't exist."""
@@ -257,29 +292,22 @@ class KnowledgeBankIngestor:
         )
 
     async def _resolve_kb_vector_names(self) -> None:
-        """Inspects the live Qdrant collection to determine its vector names.
-
-        This is crucial for compatibility with collections that use named dense
-        vectors or a single unnamed vector. It makes the ingestor robust to
-        different collection schemas.
-        """
+        """Inspects the live Qdrant collection to determine its vector names."""
         info = await self.qdrant_client.get_collection(
             collection_name=self.memory_config.collection_name
         )
         params = info.config.params
 
-        # Resolve dense vector name
         if isinstance(params.vectors, dict):
             preferred = getattr(self.qdrant_manager, "vector_name", None)
-            if preferred and preferred in params.vectors:
-                self.kb_dense_name = preferred
-            else:
-                self.kb_dense_name = next(iter(params.vectors.keys()))
+            self.kb_dense_name = (
+                preferred
+                if preferred and preferred in params.vectors
+                else next(iter(params.vectors.keys()))
+            )
         else:
-            # This indicates a single, unnamed dense vector.
-            self.kb_dense_name = ""
+            self.kb_dense_name = ""  # Single, unnamed dense vector
 
-        # Resolve sparse vector name (for informational purposes)
         if (
             hasattr(params, "sparse_vectors")
             and isinstance(params.sparse_vectors, dict)
@@ -290,8 +318,9 @@ class KnowledgeBankIngestor:
             self.kb_sparse_name = None
 
         logger.info(
-            "Knowledge bank vectors resolved: "
-            f"dense='{self.kb_dense_name}', sparse='{self.kb_sparse_name}'"
+            "Knowledge bank vectors resolved: dense='%s', sparse='%s'",
+            self.kb_dense_name,
+            self.kb_sparse_name,
         )
 
     @retry(
@@ -299,15 +328,15 @@ class KnowledgeBankIngestor:
         stop=stop_after_attempt(3),
         wait=wait_exponential(min=2, max=10),
         retry=retry_if_exception_type(
-            (UnexpectedResponse, TimeoutError, httpx.TimeoutException)
+            (UnexpectedResponse, httpx.TimeoutException, httpx.RequestError)
         ),
     )
     async def _exists_by_hash(self, raw_file_hash: str) -> bool:
         """Checks if a document with the given hash already exists in Qdrant."""
         try:
-            response = await self.qdrant_client.query_points(
+            response = await self.qdrant_client.scroll(
                 collection_name=self.memory_config.collection_name,
-                query_filter=models.Filter(
+                scroll_filter=models.Filter(
                     must=[
                         models.FieldCondition(
                             key=RAW_FILE_HASH_FIELD,
@@ -316,15 +345,17 @@ class KnowledgeBankIngestor:
                     ]
                 ),
                 limit=1,
-                with_payload=True,
-                timeout=60,
+                with_payload=False,
+                with_vectors=False,
             )
-            points = getattr(response, "points", response)
-            logger.debug("Exists check via query result: %s", points)
+            points = response[0]
+            logger.debug("Exists check via scroll result: %s", points)
             return bool(points)
-        except Exception:
-            logger.exception(
-                f"Exists check via query failed for hash '{raw_file_hash}'."
+        except (UnexpectedResponse, httpx.RequestError) as error:
+            logger.warning(
+                "Exists check via query failed for hash '%s'. Assuming not present. Error: %s",
+                raw_file_hash,
+                error,
             )
             return False
 
@@ -342,7 +373,7 @@ class KnowledgeBankIngestor:
         stop=stop_after_attempt(3),
         wait=wait_exponential(min=2, max=10),
         retry=retry_if_exception_type(
-            (UnexpectedResponse, TimeoutError, httpx.TimeoutException)
+            (UnexpectedResponse, httpx.TimeoutException, httpx.RequestError)
         ),
     )
     async def _upsert_batch_with_retry(
@@ -371,27 +402,23 @@ class KnowledgeBankIngestor:
         file_path: Path,
     ) -> list[models.PointStruct]:
         """Constructs Qdrant PointStruct objects from processed data."""
-        points: list[models.PointStruct] = []
+        if self.kb_dense_name is None:
+            raise RuntimeError("Dense vector name not resolved before creating points.")
 
+        points: list[models.PointStruct] = []
         for index, (chunk, vector) in enumerate(zip(chunks, embeddings)):
             chunk_hash = hashlib.sha256(chunk.encode("utf-8")).hexdigest()
             payload = {
-                "text_content": chunk,
-                "original_file_path": str(file_path),
+                TEXT_CONTENT_FIELD: chunk,
+                ORIGINAL_FILE_PATH_FIELD: str(file_path),
                 RAW_FILE_HASH_FIELD: raw_file_hash,
                 PROCESSED_CONTENT_HASH_FIELD: chunk_hash,
-                "chunk_id": index,
+                CHUNK_ID_FIELD: index,
             }
 
-            # Build the vector payload based on the resolved name.
-            # This handles both named and unnamed dense vector collections.
-            if self.kb_dense_name is None:
-                # This should not happen if _resolve_kb_vector_names was called.
-                vector_payload: Any = vector
-            elif self.kb_dense_name == "":
-                vector_payload = vector  # For unnamed dense vectors.
-            else:
-                vector_payload = {self.kb_dense_name: vector}
+            vector_payload: models.VectorStruct = (
+                {self.kb_dense_name: vector} if self.kb_dense_name else vector
+            )
 
             points.append(
                 models.PointStruct(
@@ -409,136 +436,132 @@ class KnowledgeBankIngestor:
             return ""
         return await extractor(file_path)
 
-    async def _get_llm_summary_pdf(self, file_path: Path) -> str:
-        logger.info("Generating LLM summary for: %s", file_path)
-        llm_summary = await google_documents_api(
+    async def _get_llm_summary_for_pdf(self, file_path: Path) -> str:
+        """Invokes the LLM API to summarize a PDF document."""
+        logger.info("Generating LLM summary for PDF: %s", file_path)
+        return await google_documents_api(
             self.ingestion_config.model,
             self.ingestion_config.api_key_name,
             self.ingestion_config.prompt,
             str(file_path),
         )
-        return llm_summary
 
-    async def _get_llm_summary(self, text: str, filepath) -> str:
-        llm_summary = await google_text(
+    async def _get_llm_summary_for_text(self, text: str, file_path: Path) -> str:
+        """Invokes the LLM API to summarize a string of text."""
+        logger.info("Generating LLM summary for text from: %s", file_path)
+        return await google_text(
             self.ingestion_config.model,
             self.ingestion_config.api_key_name,
             self.ingestion_config.prompt,
-            text
+            text,
         )
-        logger.info("Generated LLM summary for %s", filepath)
-        return llm_summary
 
     async def _extract_and_summarize_pdf(self, file_path: Path) -> str:
         """Extracts text from a PDF and prepends an LLM-generated summary."""
         logger.info("Extracting text from PDF: %s", file_path)
         extracted_text = extract_text(file_path)
-        logger.info("Generating LLM summary for: %s", file_path)
-        llm_summary = await self._get_llm_summary_pdf(file_path)
-        return f"{llm_summary}\n\n{extracted_text}"
+        cleaned_text = self.clean_text(extracted_text)
+
+        llm_summary = await self._get_llm_summary_for_pdf(file_path)
+        cleaned_summary = self.clean_text(llm_summary)
+        return f"{cleaned_summary}\n\n{cleaned_text}"
 
     async def _process_json_content(self, file_path: Path) -> str:
-        """Reads a JSON file, optionally flattens its content, and prepends an LLM-generated summary."""
+        """Reads JSON, flattens it, and prepends an LLM-generated summary."""
         try:
             with file_path.open(encoding="utf-8") as file_handle:
                 data = json.load(file_handle)
-            if isinstance(data, dict):
-                content = ". ".join(f"{key}: {value}" for key, value in data.items())
-            else:
-                content = str(data)
-            llm_summary = await self._get_llm_summary(content, file_path)
-            logger.info("Generated LLM summary for: %s", file_path)
-            return f"{llm_summary}\n\n{content}"
-        except (OSError, json.JSONDecodeError):
+
+            content = (
+                ". ".join(f"{key}: {value}" for key, value in data.items())
+                if isinstance(data, dict)
+                else str(data)
+            )
+            cleaned_content = self.clean_text(content)
+
+            llm_summary = await self._get_llm_summary_for_text(
+                cleaned_content, file_path
+            )
+            cleaned_summary = self.clean_text(llm_summary)
+            return f"{cleaned_summary}\n\n{cleaned_content}"
+        except (OSError, json.JSONDecodeError) as error:
             logger.exception("Error processing JSON file %s.", file_path)
-            return ""
+            raise RuntimeError(f"Failed to process JSON file {file_path}") from error
 
     async def _read_markdown_content(self, file_path: Path) -> str:
-        """Reads the raw content of a Markdown file."""
-        return self.shell_tools.read_file_content(file_path)
+        """Reads and cleans the raw content of a Markdown file."""
+        raw_content = self.shell_tools.read_file_content(file_path)
+        return self.clean_text(raw_content)
+
+    def _chunk_document(self, content: str, file_extension: str) -> list[str]:
+        """Selects the appropriate strategy to chunk document content."""
+        if file_extension == ".md":
+            headers_to_split_on = [
+                ("#", "Header 1"),
+                ("##", "Header 2"),
+                ("###", "Header 3"),
+                ("####", "Header 4"),
+            ]
+            md_splitter = MarkdownHeaderTextSplitter(
+                headers_to_split_on=headers_to_split_on, strip_headers=False
+            )
+            header_docs = md_splitter.split_text(content)
+
+            recursive_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=self.ingestion_config.chunk_size,
+                chunk_overlap=self.ingestion_config.chunk_overlap,
+                separators=["\n\n", "\n", " ", ""],
+            )
+            sized_docs = recursive_splitter.split_documents(header_docs)
+            return [doc.page_content for doc in sized_docs]
+
+        return create_text_chunks(
+            content,
+            self.ingestion_config.chunk_size,
+            self.ingestion_config.chunk_overlap,
+        )
 
     async def _process_file(self, file_path: Path) -> str:
-        """Runs the complete processing pipeline for a single file.
+        """Runs the complete processing pipeline for a single file."""
+        async with self.semaphore:
+            logger.info("Processing file: %s", file_path)
 
-        This pipeline includes:
-        1. Content extraction based on file type.
-        2. Hashing the content for deduplication.
-        3. Checking if the content already exists in Qdrant.
-        4. Chunking the content (using specialized Markdown or basic splitting).
-        5. Generating embeddings for the chunks.
-        6. Creating Qdrant points and upserting them in batches.
+            # 1. Extract and clean content based on file type.
+            processed_content = await self._extract_content_from_file(file_path)
+            if not processed_content:
+                logger.warning("No content extracted from: %s", file_path)
+                return "skipped"
 
-        Args:
-            file_path: The path to the file to process.
+            # 2. Hash content to check for duplicates.
+            raw_file_hash = hashlib.sha256(
+                processed_content.encode("utf-8")
+            ).hexdigest()
+            if await self._exists_by_hash(raw_file_hash):
+                logger.info("Skipping already processed file: %s", file_path)
+                return "skipped"
 
-        Returns:
-            A status string: "processed", "skipped", or "failed".
-        """
-        try:
-            async with self.semaphore:
-                logger.info("Processing file: %s", file_path)
+            # 3. Chunk the content using the appropriate strategy.
+            chunks = self._chunk_document(processed_content, file_path.suffix.lower())
+            logger.info("Generated %d chunks for %s.", len(chunks), file_path)
+            if not chunks:
+                logger.warning("No chunks generated for: %s", file_path)
+                return "skipped"
 
-                processed_content = await self._extract_content_from_file(file_path)
-                if not processed_content:
-                    logger.warning("No content extracted from: %s", file_path)
-                    return "skipped"
+            # 4. Generate embeddings for the chunks.
+            embeddings = self._generate_embeddings(chunks)
 
-                raw_file_hash = hashlib.sha256(
-                    processed_content.encode("utf-8")
-                ).hexdigest()
+            # 5. Create Qdrant points from chunks and embeddings.
+            points = self._create_points_from_chunks(
+                chunks, embeddings, raw_file_hash, file_path
+            )
 
-                if await self._exists_by_hash(raw_file_hash):
-                    logger.info("Skipping already processed file: %s", file_path)
-                    return "skipped"
+            # 6. Upsert points to Qdrant in batches.
+            batch_size = self.ingestion_config.qdrant_batch_size
+            for i in range(0, len(points), batch_size):
+                batch = points[i : i + batch_size]
+                await self._upsert_batch_with_retry(batch, file_path)
 
-                if file_path.suffix.lower() == ".md":
-                    headers_to_split_on = [
-                        ("#", "Header 1"),
-                        ("##", "Header 2"),
-                        ("###", "Header 3"),
-                        ("####", "Header 4"),
-                    ]
-                    md_splitter = MarkdownHeaderTextSplitter(
-                        headers_to_split_on=headers_to_split_on,
-                        strip_headers=False,
-                    )
-                    header_docs = md_splitter.split_text(processed_content)
-
-                    recursive_splitter = RecursiveCharacterTextSplitter(
-                        chunk_size=self.ingestion_config.chunk_size,
-                        chunk_overlap=self.ingestion_config.chunk_overlap,
-                        separators=["\n\n", "\n", " ", ""],
-                    )
-                    sized_docs = recursive_splitter.split_documents(header_docs)
-                    chunks = [doc.page_content for doc in sized_docs]
-                else:
-                    chunks = create_text_chunks(
-                        processed_content,
-                        self.ingestion_config.chunk_size,
-                        self.ingestion_config.chunk_overlap,
-                    )
-
-                logger.info("Generated %d chunks for %s.", len(chunks), file_path)
-                if not chunks:
-                    logger.warning("No chunks generated for: %s", file_path)
-                    return "skipped"
-
-                embeddings = self._generate_embeddings(chunks)
-                points = self._create_points_from_chunks(
-                    chunks, embeddings, raw_file_hash, file_path
-                )
-
-                batch_size = self.ingestion_config.qdrant_batch_size
-                for i in range(0, len(points), batch_size):
-                    await self._upsert_batch_with_retry(
-                        points[i : i + batch_size], file_path
-                    )
-
-                logger.info(
-                    "Successfully processed %d chunks for: %s", len(points), file_path
-                )
-                return "processed"
-
-        except (RuntimeError, OSError):
-            logger.exception("Failed to process file: %s", file_path)
-            return "failed"
+            logger.info(
+                "Successfully processed %d chunks for: %s", len(points), file_path
+            )
+            return "processed"
