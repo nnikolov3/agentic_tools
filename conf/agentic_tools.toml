@@ -38,12 +38,12 @@ exclude_directories = [
     "build",
     "target",
 ]
-max_file_bytes = 2621440 # 2.5 MB limit per file to avoid excessive memory usage.
+max_file_bytes = 26214400 # 20.5 MB limit per file to avoid excessive memory usage.
 
 # Command for generating git diffs.
 # Note: The command must start with "git" itself.
 # The current setting is configured to review the last 10 atomic commits.
-git_diff_command = ["diff", "HEAD~10..HEAD", "--patch-with-raw", "--minimal", "--patience", ":!uv.lock", ":!MANIFEST.in"]
+git_diff_command = ["diff", "HEAD~2..HEAD", "--patch-with-raw", "--minimal", "--patience", ":!uv.lock", ":!MANIFEST.in"]
 
 
 # =============================================================================
@@ -120,7 +120,7 @@ run_pre_validation = true
 # The directory containing documents to be ingested into the vector database.
 source_directory = "../knowledge_bank"
 # The LLM model used for summarizing document content.
-model = "gemini-flash-lite-latest"
+model = "gemini-2.5-flash"
 # The name of the environment variable holding the API key for the summarization LLM.
 google_api_key_name = "GEMINI_API_KEY_KNOWLEDGE_INGESTION"
 # A tuple of file extensions that the ingestion script will look for.
@@ -206,6 +206,8 @@ You are provided with a single source code file to refactor, optimize, and enhan
 Your goal is to produce a complete, working file that strictly adheres to the provided Design Principles and Python Coding Standards.
 ALWAYS USE THE LATEST LIBRARY SPECIFICATIONS.
 '''
+
+
 
 [agentic-tools.commentator]
 name = "commentator"
@@ -309,7 +311,6 @@ Your generated README.md should include the following sections:
 Your final output must be the complete, updated README.md file content.
 '''
 
-
 # =============================================================================
 # CENTRALIZED PROMPT TEMPLATES
 # =============================================================================
@@ -366,9 +367,26 @@ golden_rules = '''
 14. Better and more accurate comments makes life better.
 '''
 
+
+
 final_output_code_only = '''
+
+
+
 ## Final Output Instructions
 
+
+
+
+
+
+
 Your final output must be the complete, updated source file content.
+
+
+
 Do not add any explanations, apologies, or markdown formatting like ```python ... ``` around the code.
+
+
+
 '''

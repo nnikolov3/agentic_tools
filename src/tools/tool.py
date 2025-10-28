@@ -56,6 +56,12 @@ class Tool:
         self.agent_skills: Optional[list[str]] = self.agent_config.get("skills")
         self.agent_prompt: Optional[str] = self.agent_config.get("prompt")
 
+        prompts_config: dict[str, Any] = config.get("prompts", {})
+        golden_rules: Optional[str] = prompts_config.get("golden_rules")
+
+        if self.agent_prompt and golden_rules:
+            self.agent_prompt = f"{self.agent_prompt}\n\n{golden_rules}"
+
         self.current_working_directory: Path = Path.cwd()
         source_dirs: Optional[list[str]] = config.get("source")
         # Use the first source directory specified, or default to 'src'.
