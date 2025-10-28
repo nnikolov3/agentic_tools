@@ -51,6 +51,7 @@ class Agent(abc.ABC):
         project: str,
         chat: Optional[str],
         filepath: Optional[str | PathLike[str]],
+        target_directory: Path,
     ) -> None:
         """
         Initializes the Agent with its configuration and operational context.
@@ -61,6 +62,7 @@ class Agent(abc.ABC):
             project: The name of the project, used to select the relevant configuration.
             chat: The user input or query that triggers the agent's action.
             filepath: An optional file path relevant to the agent's task.
+            target_directory: The root directory of the project the agent will operate on.
         """
         if not isinstance(configuration, dict):
             raise TypeError("Configuration must be a dictionary.")
@@ -79,8 +81,8 @@ class Agent(abc.ABC):
         self.response: Optional[str] = None
         self.context_quality_score: float = 1.0
 
-        self.shell_tools = ShellTools(agent_name, self.configuration)
-        self.tool = Tool(agent_name, self.configuration)
+        self.shell_tools = ShellTools(agent_name, self.configuration, target_directory)
+        self.tool = Tool(agent_name, self.configuration, target_directory)
         self.memory_config: dict[str, Any] = self.configuration.get("memory", {})
 
         logger.debug("Initialized Agent '%s' for project '%s'.", self.agent_name, project)
@@ -211,6 +213,7 @@ class KnowledgeBaseAgent(Agent):
         project: str,
         chat: Optional[str],
         filepath: Optional[str | PathLike[str]],
+        target_directory: Path,
     ) -> None:
         """
         Initializes the KnowledgeBaseAgent.
@@ -220,7 +223,9 @@ class KnowledgeBaseAgent(Agent):
                         for this agent's operation.
         """
 
-        super().__init__(configuration, agent_name, project, chat, filepath)
+        super().__init__(
+            configuration, agent_name, project, chat, filepath, target_directory
+        )
 
         if not self.filepath:
 
@@ -407,6 +412,7 @@ class CodeModifyingAgent(Agent):
         project: str,
         chat: Optional[str],
         filepath: Optional[str | PathLike[str]],
+        target_directory: Path,
     ) -> None:
         """
         Initializes the CodeModifyingAgent.
@@ -415,7 +421,9 @@ class CodeModifyingAgent(Agent):
             ValueError: If `filepath` is not provided, as it is essential
                         for this agent's operation.
         """
-        super().__init__(configuration, agent_name, project, chat, filepath)
+        super().__init__(
+            configuration, agent_name, project, chat, filepath, target_directory
+        )
         if not self.filepath:
             raise ValueError(
                 f"{self.__class__.__name__} requires a valid filepath, but None was provided.",

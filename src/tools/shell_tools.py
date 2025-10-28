@@ -16,7 +16,7 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 
 class ShellTools:
-    def __init__(self, agent: str, config: Dict[str, Any]) -> None:
+    def __init__(self, agent: str, config: Dict[str, Any], target_directory: Path) -> None:
         self.config: Dict[str, Any] = config
         self.agent_config: Dict[str, Any] = self.config.get(agent, {})
 
@@ -50,7 +50,7 @@ class ShellTools:
         self.exclude_directories: List[str] = config.get("exclude_directories", [])
         self.exclude_files: List[str] = config.get("exclude_files", [])
         self.encoding: str = "utf-8"
-        self.current_working_directory: Path = Path.cwd()
+        self.current_working_directory: Path = target_directory
 
     def get_project_file_tree(self) -> Dict[str, Any]:
         project_tree: Dict[str, Any] = {}

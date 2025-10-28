@@ -92,6 +92,7 @@ async def _execute_agent_task(
     agent_name: str,
     chat: Optional[str],
     filepath: Optional[str | PathLike[str]],
+    target_directory: Path,
 ) -> Any:
     """
     Initializes and runs a single agent task.
@@ -105,6 +106,7 @@ async def _execute_agent_task(
         agent_name: The name of the agent to execute.
         chat: The input prompt or context for the agent.
         filepath: The path to a file or directory for the agent to process.
+        target_directory: The root directory of the project the agent will operate on.
 
     Returns:
         The result produced by the agent's execution. The type is 'Any' as
@@ -126,6 +128,7 @@ async def _execute_agent_task(
             project=MCP_NAME,
             chat=chat,
             filepath=filepath,
+            target_directory=target_directory,
         )
         return await agent.run_agent()
     except Exception as error:
@@ -142,6 +145,7 @@ async def _run_agent_tool(
     agent_name: str,
     chat: Optional[str],
     filepath: Optional[str | PathLike[str]],
+    target_directory: Path,
 ) -> Any:
     """
     A generic factory function to instantiate and run a specified agent.
@@ -154,6 +158,7 @@ async def _run_agent_tool(
         agent_name: The name of the agent to run (e.g., 'readme_writer').
         chat: The optional chat context or prompt for the agent.
         filepath: The optional path to a file or directory for the agent to process.
+        target_directory: The root directory of the project the agent will operate on.
 
     Returns:
         The result of the agent's operation.
@@ -161,7 +166,9 @@ async def _run_agent_tool(
     Raises:
         RuntimeError: If the agent execution fails for any reason.
     """
-    return await _execute_agent_task(configuration, agent_name, chat, filepath)
+    return await _execute_agent_task(
+        configuration, agent_name, chat, filepath, target_directory
+    )
 
 
 # --- Tool Definitions ---
@@ -175,6 +182,7 @@ async def _run_agent_tool(
 async def readme_writer_tool(
     chat: Optional[str] = None,
     filepath: Optional[str | PathLike[str]] = None,
+    target_directory: Path = Path.cwd(),
 ) -> Any:
     """
     Invokes the 'readme_writer' agent to update the project's README.md file.
@@ -182,17 +190,19 @@ async def readme_writer_tool(
     Args:
         chat: An optional prompt guiding the content generation.
         filepath: The path to the README.md file or its containing directory.
+        target_directory: The root directory of the project the agent will operate on.
 
     Returns:
         The result of the agent's operation.
     """
-    return await _run_agent_tool("readme_writer", chat, filepath)
+    return await _run_agent_tool("readme_writer", chat, filepath, target_directory)
 
 
 @mcp.tool(description="Audits recent code changes and approves or rejects them.")
 async def approver_tool(
     chat: Optional[str] = None,
     filepath: Optional[str | PathLike[str]] = None,
+    target_directory: Path = Path.cwd(),
 ) -> Any:
     """
     Invokes the 'approver' agent to audit recent code changes.
@@ -200,11 +210,12 @@ async def approver_tool(
     Args:
         chat: An optional prompt specifying approval criteria or review focus.
         filepath: The path to the code changes, repository, or specific files.
+        target_directory: The root directory of the project the agent will operate on.
 
     Returns:
         The result of the agent's audit.
     """
-    return await _run_agent_tool("approver", chat, filepath)
+    return await _run_agent_tool("approver", chat, filepath, target_directory)
 
 
 @mcp.tool(
@@ -213,6 +224,7 @@ async def approver_tool(
 async def developer_tool(
     chat: Optional[str] = None,
     filepath: Optional[str | PathLike[str]] = None,
+    target_directory: Path = Path.cwd(),
 ) -> Any:
     """
     Invokes the 'developer' agent to write or modify code.
@@ -220,11 +232,12 @@ async def developer_tool(
     Args:
         chat: An optional prompt guiding the code generation process.
         filepath: The path to the file where code modification is required.
+        target_directory: The root directory of the project the agent will operate on.
 
     Returns:
         The result of the agent's operation, such as the modified code.
     """
-    return await _run_agent_tool("developer", chat, filepath)
+    return await _run_agent_tool("developer", chat, filepath, target_directory)
 
 
 @mcp.tool(
@@ -233,6 +246,7 @@ async def developer_tool(
 async def architect_tool(
     chat: Optional[str] = None,
     filepath: Optional[str | PathLike[str]] = None,
+    target_directory: Path = Path.cwd(),
 ) -> Any:
     """
     Invokes the 'architect' agent to assist in software architecture design.
@@ -240,17 +254,19 @@ async def architect_tool(
     Args:
         chat: An optional prompt specifying architectural requirements or goals.
         filepath: The path to relevant project files for architectural analysis.
+        target_directory: The root directory of the project the agent will operate on.
 
     Returns:
         The result of the agent's operation, such as a design document.
     """
-    return await _run_agent_tool("architect", chat, filepath)
+    return await _run_agent_tool("architect", chat, filepath, target_directory)
 
 
 @mcp.tool(description="Updates a source code file with comments and documentation.")
 async def commentator_tool(
     chat: Optional[str] = None,
     filepath: Optional[str | PathLike[str]] = None,
+    target_directory: Path = Path.cwd(),
 ) -> Any:
     """
     Invokes the 'commentator' agent to add documentation to source code.
@@ -258,11 +274,12 @@ async def commentator_tool(
     Args:
         chat: An optional prompt specifying documentation requirements.
         filepath: The path to the source code file that needs commenting.
+        target_directory: The root directory of the project the agent will operate on.
 
     Returns:
         The result of the agent's operation.
     """
-    return await _run_agent_tool("commentator", chat, filepath)
+    return await _run_agent_tool("commentator", chat, filepath, target_directory)
 
 
 @mcp.tool(
@@ -271,6 +288,7 @@ async def commentator_tool(
 async def knowledge_base_builder_tool(
     chat: Optional[str] = None,
     filepath: Optional[str | PathLike[str]] = None,
+    target_directory: Path = Path.cwd(),
 ) -> Any:
     """
     Invokes the 'knowledge_base_builder' agent to fetch web content.
@@ -278,11 +296,12 @@ async def knowledge_base_builder_tool(
     Args:
         chat: A comma-separated string of URLs to fetch.
         filepath: The path to the output file where content will be saved.
+        target_directory: The root directory of the project the agent will operate on.
 
     Returns:
         The result of the agent's operation.
     """
-    return await _run_agent_tool(KNOWLEDGE_BASE_BUILDER, chat, filepath)
+    return await _run_agent_tool(KNOWLEDGE_BASE_BUILDER, chat, filepath, target_directory)
 
 
 @mcp.tool(
@@ -291,6 +310,7 @@ async def knowledge_base_builder_tool(
 async def linter_analyst_tool(
     chat: Optional[str] = None,
     filepath: Optional[str | PathLike[str]] = None,
+    target_directory: Path = Path.cwd(),
 ) -> Any:
     """
     Invokes the 'linter_analyst' agent.
@@ -298,11 +318,12 @@ async def linter_analyst_tool(
     Args:
         chat: An optional user prompt to focus the analysis.
         filepath: The path to relevant project files for analysis (optional).
+        target_directory: The root directory of the project the agent will operate on.
 
     Returns:
         The result of the agent's operation.
     """
-    return await _run_agent_tool(LINTER_ANALYST, chat, filepath)
+    return await _run_agent_tool(LINTER_ANALYST, chat, filepath, target_directory)
 
 
 # --- CLI Execution Logic ---
@@ -356,6 +377,12 @@ def _setup_cli_parser() -> argparse.ArgumentParser:
         default=None,
         help="The path to the file or directory for the agent to process.",
     )
+    run_agent_parser.add_argument(
+        "--target-directory",
+        type=str,
+        default=str(Path.cwd()),
+        help="The root directory of the project the agent will operate on. Defaults to the current working directory.",
+    )
 
     return _parser
 
@@ -373,11 +400,13 @@ async def _run_cli_mode(args: argparse.Namespace) -> None:
         return
 
     try:
+        target_directory = Path(args.target_directory).resolve()
         result = await _execute_agent_task(
             configuration,
             args.agent_name,
             args.chat,
             args.filepath,
+            target_directory,
         )
         logger.info("--- Agent Result ---")
         # The result can be any data type, so printing it directly provides the

@@ -39,17 +39,18 @@ class Tool:
     generation.
     """
 
-    def __init__(self, agent: str, config: dict[str, Any]) -> None:
+    def __init__(self, agent: str, config: dict[str, Any], target_directory: Path) -> None:
         """
         Initializes Tool with agent-specific configuration and tool instances.
 
         Args:
             agent: The agent name for sub-config and tool instantiation.
             config: The full configuration dictionary.
+            target_directory: The root directory of the project to operate on.
         """
         self.agent: str = agent
         self.config: dict[str, Any] = config
-        self.shell_tools: ShellTools = ShellTools(agent, config)
+        self.shell_tools: ShellTools = ShellTools(agent, config, target_directory)
         self.api_tools: ApiTools = ApiTools(agent, config)
 
         self.agent_config: dict[str, Any] = config.get(agent, {})
@@ -62,12 +63,12 @@ class Tool:
         if self.agent_prompt and golden_rules:
             self.agent_prompt = f"{self.agent_prompt}\n\n{golden_rules}"
 
-        self.current_working_directory: Path = Path.cwd()
+        self.target_directory: Path = target_directory
         source_dirs: Optional[list[str]] = config.get("source")
         # Use the first source directory specified, or default to 'src'.
         # This makes the primary source code location configurable.
         source_dir_name = source_dirs[0] if source_dirs else "src"
-        self.source_directory = self.current_working_directory / source_dir_name
+        self.source_directory = self.target_directory / source_dir_name
 
     async def run_tool(
         self,
@@ -179,7 +180,7 @@ class Tool:
 
         common_context = {}
         for filename in project_files_to_read:
-            file_path = self.current_working_directory / filename
+            file_path = self.target_directory / filename
             common_context[filename] = self.shell_tools.read_file_content(file_path)
         return common_context
 
