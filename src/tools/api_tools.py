@@ -154,7 +154,7 @@ class ApiTools:
 # Rate limiting for concurrent Google Generative AI API calls to prevent
 # exceeding quotas. A semaphore is used to limit the number of simultaneous
 # requests, ensuring stability and adherence to API rate limits.
-_GEMINI_SEMAPHORE = asyncio.Semaphore(5)
+_GEMINI_SEMAPHORE = asyncio.Semaphore(2)
 
 
 async def google_documents_api(model: str, api_key: str, prompt: str, file: str) -> str:
@@ -194,22 +194,43 @@ async def google_documents_api(model: str, api_key: str, prompt: str, file: str)
 
         # Resolve the file path to an absolute path for clarity and robustness.
         file_path = pathlib.Path(file).resolve()
+        if file_path:
+            response = await google_client.models.generate_content(
+                model = model,
+                contents = [
+                    types.Part.from_bytes(
+                        data = file_path.read_bytes(),
+                        mime_type = 'application/pdf',
+                        ),
+                    prompt
+                    ])
+        else:
+            raise ValueError("File path is None")
 
-        # Run file upload in a separate thread to avoid blocking the asyncio
-        # event loop. This is necessary because google_client.files.upload is a
-        # potentially blocking I/O operation.
-        file_upload = await asyncio.to_thread(
-            lambda: google_client.files.upload(file=file_path)
+        if response.text is None:
+            raise ValueError("Response text is None")
+
+        return response.text
+
+async def google_text(model: str, api_key: str, prompt: str, text: str) -> str:
+    api_key: str | None = (
+        os.getenv(api_key) if api_key else None
+    )
+
+    google_client = Client(api_key=api_key)
+
+    async with google_client.aio as a_client:
+        system_instruction: str | None = prompt
+        config = types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            thinking_config=types.ThinkingConfig(thinking_budget=-1),
         )
 
-        # Run content generation in a separate thread to avoid blocking the
-        # asyncio event loop. This is necessary because
-        # google_client.models.generate_content is a potentially blocking I/O
-        # operation.
-        response = await asyncio.to_thread(
-            lambda: google_client.models.generate_content(
-                model=model, contents=[file_upload, types.Part.from_text(text=prompt)]
-            )
+        response = await a_client.models.generate_content(
+            model=model,
+            contents=text,
+            config=config,
         )
 
-        return response.text if response.text else ""
+        response_text: str = response.text if response.text else ""
+        return response_text

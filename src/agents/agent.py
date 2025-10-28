@@ -143,7 +143,7 @@ class Agent(abc.ABC):
             logger.warning("No Qdrant memory configured. Skipping context retrieval.")
             return ""
 
-        query = self.chat or self.agent_name
+        query = (self.chat + self.agent_name)
 
         self.memory = await QdrantMemory.create(self.configuration, self.agent_name)
         retrieved_context = await self.memory.retrieve_context(query)

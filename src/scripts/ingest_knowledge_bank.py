@@ -11,7 +11,7 @@ The core component is the `KnowledgeBankIngestor`, which orchestrates the
 entire pipeline. It supports various file formats like PDF, JSON, and Markdown,
 employing specific content extraction strategies for each. For PDFs, it uses an
 LLM to generate a summary, which is prepended to the extracted text to provide
-richer context. The process is asynchronous and uses a semaphore to limit
+richer context. The process is asynchronous and uses semaphore to limit
 concurrent file processing, ensuring controlled resource usage.
 """
 
@@ -25,7 +25,7 @@ from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Final, Optional, cast
+from typing import Any, Final, Optional
 
 # Third-Party Library Imports
 import httpx
@@ -47,6 +47,7 @@ from tenacity import (
 # Local Application/Module Imports
 from src.memory.qdrant_client_manager import QdrantClientManager
 from src.tools.api_tools import google_documents_api
+from src.tools.api_tools import google_text
 from src.tools.shell_tools import ShellTools
 
 # Initialize logger for this module.
@@ -111,6 +112,7 @@ def create_text_chunks(text: str, chunk_size: int, chunk_overlap: int) -> list[s
     start_index = 0
     # Calculate the step size, ensuring it's at least 1 to prevent infinite loops.
     chunk_step = max(1, chunk_size - max(0, chunk_overlap))
+
 
     while start_index < text_length:
         end_index = min(text_length, start_index + chunk_size)
@@ -197,7 +199,7 @@ class KnowledgeBankIngestor:
                 counts["failed"] += 1
                 if isinstance(result, Exception):
                     logger.error("Task failed with an exception", exc_info=result)
-        logger.info("Ingestion complete. Results: %s", counts)
+        logger.info("Ingestion complete")
         return counts
 
     @staticmethod
@@ -407,7 +409,7 @@ class KnowledgeBankIngestor:
             return ""
         return await extractor(file_path)
 
-    async def _get_llm_summary(self, file_path: Path) -> str:
+    async def _get_llm_summary_pdf(self, file_path: Path) -> str:
         logger.info("Generating LLM summary for: %s", file_path)
         llm_summary = await google_documents_api(
             self.ingestion_config.model,
@@ -415,14 +417,24 @@ class KnowledgeBankIngestor:
             self.ingestion_config.prompt,
             str(file_path),
         )
-        return cast(str, llm_summary)
+        return llm_summary
+
+    async def _get_llm_summary(self, text: str, filepath) -> str:
+        llm_summary = await google_text(
+            self.ingestion_config.model,
+            self.ingestion_config.api_key_name,
+            self.ingestion_config.prompt,
+            text
+        )
+        logger.info("Generated LLM summary for %s", filepath)
+        return llm_summary
 
     async def _extract_and_summarize_pdf(self, file_path: Path) -> str:
         """Extracts text from a PDF and prepends an LLM-generated summary."""
         logger.info("Extracting text from PDF: %s", file_path)
         extracted_text = extract_text(file_path)
         logger.info("Generating LLM summary for: %s", file_path)
-        llm_summary = await self._get_llm_summary(file_path)
+        llm_summary = await self._get_llm_summary_pdf(file_path)
         return f"{llm_summary}\n\n{extracted_text}"
 
     async def _process_json_content(self, file_path: Path) -> str:
@@ -434,7 +446,8 @@ class KnowledgeBankIngestor:
                 content = ". ".join(f"{key}: {value}" for key, value in data.items())
             else:
                 content = str(data)
-            llm_summary = await self._get_llm_summary(file_path)
+            llm_summary = await self._get_llm_summary(content, file_path)
+            logger.info("Generated LLM summary for: %s", file_path)
             return f"{llm_summary}\n\n{content}"
         except (OSError, json.JSONDecodeError):
             logger.exception("Error processing JSON file %s.", file_path)
