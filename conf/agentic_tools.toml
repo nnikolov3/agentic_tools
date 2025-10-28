@@ -42,7 +42,8 @@ max_file_bytes = 2621440 # 2.5 MB limit per file to avoid excessive memory usage
 
 # Command for generating git diffs.
 # Note: The command must start with "git" itself.
-git_diff_command = ["diff", "--patch-with-raw", "--minimal", "--patience"]
+# The current setting is configured to review the last 10 atomic commits.
+git_diff_command = ["diff", "HEAD~10..HEAD", "--patch-with-raw", "--minimal", "--patience", ":!uv.lock", ":!MANIFEST.in"]
 
 
 # =============================================================================
