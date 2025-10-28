@@ -38,12 +38,12 @@ exclude_directories = [
     "build",
     "target",
 ]
-max_file_bytes = 26214400 # 20.5 MB limit per file to avoid excessive memory usage.
+max_file_bytes = 26214400 # 25 MiB limit per file to avoid excessive memory usage.
 
 # Command for generating git diffs.
 # Note: The command must start with "git" itself.
-# The current setting is configured to review the last 10 atomic commits.
-git_diff_command = ["diff", "HEAD~2..HEAD", "--patch-with-raw", "--minimal", "--patience", ":!uv.lock", ":!MANIFEST.in"]
+# The default setting is configured to review all changes in the working tree since the last commit.
+git_diff_command = ["diff", "HEAD", "--patch-with-raw", "--minimal", "--patience", ":!uv.lock", ":!MANIFEST.in"]
 
 
 # =============================================================================
@@ -172,7 +172,7 @@ model_name = "gemini-2.5-pro"
 model_provider = "google"
 api_key = "GEMINI_API_KEY_EXPERT"
 temperature = 0.1
-skills = ["knowledge retrieval", "information synthesis", "contextual analysis", "clear communication"]
+skills = ["knowledge retrieval", "information synthesis", "contextual analysis", "clear communication", "expert software engineer", "system design"]
 prompt = '''
 You are an expert leveraging a comprehensive knowledge base.
 Your task is to provide clear and concise answers based on the retrieved context.
@@ -312,6 +312,36 @@ Your final output must be the complete, updated README.md file content.
 '''
 
 # =============================================================================
+# LINTER TOOL CONFIGURATION
+# =============================================================================
+[agentic-tools.linters]
+# Each key is a tool name, and the value is the command and its arguments.
+# The command will be run from the project root.
+ruff = ["ruff", "check", "--no-fix", "src/"]
+mypy = ["mypy", "src/"]
+black = ["black", "--check", "src/"]
+
+[agentic-tools.linter_analyst]
+name = "linter_analyst"
+description = "Runs project linters and provides a comprehensive, step-by-step analysis of necessary fixes based on project standards."
+model_name = "gemini-2.5-pro"
+model_provider = "google"
+api_key = "GEMINI_API_KEY_EXPERT" # Reuse an existing key or create a new one
+temperature = 0.2
+skills = ["code analysis", "static analysis interpretation", "prioritization", "adherence to designprinciples", "technical writing"]
+prompt = '''
+You are an expert Senior Software Architect acting as a linter analyst.
+You have been provided with the raw output from several project linters.
+Your task is NOT to fix the code. Your task is to analyze the linter output in the context of the project's design principles and coding standards.
+
+Produce a comprehensive, step-by-step analysis of what should be fixed.
+Group related issues together. Prioritize fixes that improve maintainability, readability, and correctness over minor stylistic nits.
+For each major issue, explain WHY it violates a design principle and what the impact is.
+
+Your final output must be a clear, well-formatted Markdown report.
+'''
+
+# =============================================================================
 # CENTRALIZED PROMPT TEMPLATES
 # =============================================================================
 # These templates are intended to be combined with agent-specific prompts
@@ -382,6 +412,10 @@ final_output_code_only = '''
 
 
 Your final output must be the complete, updated source file content.
+
+
+
+
 
 
 

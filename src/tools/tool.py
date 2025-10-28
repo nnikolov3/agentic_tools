@@ -153,6 +153,8 @@ class Tool:
                 return self._create_readme_writer_payload(chat)
             case "approver":
                 return self._create_approver_payload(chat)
+            case "linter_analyst":
+                return self._create_linter_analyst_payload(chat, memory_context)
             case _:
                 return self._create_default_payload(chat, memory_context)
 
@@ -241,6 +243,21 @@ class Tool:
             "SKILLS": self.agent_skills,
             "USER_PROMPT": chat,
             "GIT_DIFF_PATCH": self.shell_tools.create_patch(),
+            "DESIGN_DOCS": self.shell_tools.get_design_docs_content(),
+        }
+
+    def _create_linter_analyst_payload(
+        self,
+        chat: Optional[str],  # This is the raw linter report from the agent's run_agent method
+        memory_context: Optional[str],
+    ) -> dict[str, Any]:
+        """Constructs a payload with linter output and design docs for the 'linter_analyst' agent."""
+        logger.info("Using linter report and design context for 'linter_analyst' agent.")
+        return {
+            "SYSTEM_PROMPT": self.agent_prompt,
+            "SKILLS": self.agent_skills,
+            "USER_PROMPT": chat,
+            "MEMORY_CONTEXT": memory_context,
             "DESIGN_DOCS": self.shell_tools.get_design_docs_content(),
         }
 

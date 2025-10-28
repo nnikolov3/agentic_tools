@@ -326,6 +326,57 @@ class KnowledgeBaseAgent(Agent):
         return 1.0
 
 
+class LinterAnalystAgent(Agent):
+    """
+    An agent that runs project linters and uses an LLM to create a prioritized
+    analysis of the findings based on project design principles.
+    """
+
+    async def run_agent(self) -> Optional[str]:
+        """
+        Orchestrates the linting and analysis workflow.
+        """
+        logger.info("Starting linter analysis...")
+
+        # 1. Run all configured project linters via ShellTools
+        linter_report = await self.shell_tools.run_project_linters()
+        logger.info(f"Linter report generated:\n{linter_report}")
+
+        if "No issues found" in linter_report or not linter_report.strip():
+            self.response = "All linters passed successfully. No analysis needed."
+            logger.info(self.response)
+            return self.response
+
+        # 2. Use the report as input for the LLM tool
+        # The 'chat' here is the raw linter output for the LLM to analyze
+        self.response = await self.tool.run_tool(
+            chat=linter_report,
+            memory_context=self.memory_context,
+        )
+
+        # 3. Post-process the response (e.g., print or save it)
+        if self.response:
+            await self._post_process()
+            # Storing the analysis in memory could be useful for future context
+            await self._store_memory()
+
+        return self.response
+
+    async def _post_process(self) -> None:
+        """
+        Formats and presents the final analysis report.
+        """
+        if self.response:
+            formatted_report = f"--- Linter Analysis Report ---\n\n{self.response}"
+            print(formatted_report)
+        else:
+            logger.warning("Linter analyst agent did not produce a response.")
+
+    async def _assess_context_quality(self) -> float:
+        """Returns a default quality score of 1.0."""
+        return 1.0
+
+
 class DefaultAgent(Agent):
     """An agent that performs no special post-processing."""
 
@@ -494,4 +545,5 @@ AGENT_CLASSES: dict[str, type[Agent]] = {
     "architect": DefaultAgent,
     "expert": ExpertAgent,
     "knowledge_base_builder": KnowledgeBaseAgent,
+    "linter_analyst": LinterAnalystAgent,
 }

@@ -309,6 +309,56 @@ class ShellTools:
 
         return "".join(content_parts).strip()
 
+    async def run_project_linters(self) -> str:
+        """
+        Runs all configured linters against the project and aggregates their output.
+        """
+        linter_configs: dict[str, list[str]] = self.config.get("linters", {})
+        if not linter_configs:
+            logger.warning(
+                "No linters configured in agentic_tools.toml under [agentic-tools.linters]",
+            )
+            return "No linters configured."
+
+        report_parts: list[str] = []
+        for tool_name, command in linter_configs.items():
+            executable = command[0]
+            if not shutil.which(executable):
+                error_msg = (
+                    f"Linter '{tool_name}' not found. Please ensure '{executable}' is installed."
+                )
+                logger.error(error_msg)
+                report_parts.append(f"--- {tool_name.upper()} FAILED ---\n{error_msg}\n")
+                continue
+
+            logger.info(f"Running linter: {' '.join(command)}")
+            try:
+                # Linters often use non-zero exit codes to indicate issues, so we don't check for success.
+                process = await asyncio.create_subprocess_exec(
+                    *command,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await process.communicate()
+                output = stdout.decode(self.encoding, errors="ignore") + stderr.decode(
+                    self.encoding,
+                    errors="ignore",
+                )
+
+                if output.strip():
+                    report_parts.append(
+                        f"--- Linter Report: {tool_name.upper()} ---\n{output.strip()}\n",
+                    )
+
+            except Exception as e:
+                logger.error(f"Error running linter '{tool_name}': {e}")
+                report_parts.append(f"--- {tool_name.upper()} FAILED ---\n{e}\n")
+
+        if not report_parts:
+            return "All linters passed successfully. No issues found."
+
+        return "\n".join(report_parts)
+
     def get_git_info(self) -> Dict[str, Optional[str]]:
         git_info: Dict[str, Optional[str]] = {"username": None, "url": None}
         try:

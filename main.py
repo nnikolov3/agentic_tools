@@ -48,6 +48,7 @@ README_WRITER: str = "readme_writer"
 INGEST_KNOWLEDGE_BANK: str = "ingest_knowledge_bank"
 EXPERT: str = "expert"
 KNOWLEDGE_BASE_BUILDER: str = "knowledge_base_builder"
+LINTER_ANALYST: str = "linter_analyst"
 VALID_AGENTS: Tuple[str, ...] = (
     COMMENTATOR,
     DEVELOPER,
@@ -57,6 +58,7 @@ VALID_AGENTS: Tuple[str, ...] = (
     INGEST_KNOWLEDGE_BANK,
     EXPERT,
     KNOWLEDGE_BASE_BUILDER,
+    LINTER_ANALYST,
 )
 
 
@@ -280,6 +282,26 @@ async def knowledge_base_builder_tool(
         The result of the agent's operation.
     """
     return await _run_agent_tool(KNOWLEDGE_BASE_BUILDER, chat, filepath)
+
+
+@mcp.tool(
+    description="Runs project linters and generates a prioritized analysis report."
+)
+async def linter_analyst_tool(
+    chat: Optional[str] = None,
+    filepath: Optional[str | PathLike[str]] = None,
+) -> Any:
+    """
+    Invokes the 'linter_analyst' agent.
+
+    Args:
+        chat: An optional user prompt to focus the analysis.
+        filepath: The path to relevant project files for analysis (optional).
+
+    Returns:
+        The result of the agent's operation.
+    """
+    return await _run_agent_tool(LINTER_ANALYST, chat, filepath)
 
 
 # --- CLI Execution Logic ---
