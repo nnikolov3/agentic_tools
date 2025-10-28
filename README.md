@@ -7,7 +7,7 @@ The Agentic Tools Framework is a sophisticated system designed to automate compl
 - **Specialized Agents:** Includes dedicated agents for development (`developer`), documentation (`readme_writer`), code review (`approver`), architectural planning (`architect`), code commenting (`commentator`), knowledge retrieval (`expert`), and web content ingestion (`knowledge_base_builder`).
 - **Time-Aware RAG System:** Utilizes Qdrant, FastEmbed, and Jina Reranker for high-performance vector storage and retrieval. Memory retrieval is segmented into time buckets (hourly, daily, weekly, etc.) and weighted to prioritize recent or highly relevant context.
 - **Knowledge Bank Ingestion Pipeline:** A dedicated script for processing, chunking, embedding, and deduplicating documents (PDF, JSON, Markdown) into the vector database, including LLM-enhanced summarization for complex file types via the Google Gemini API.
-- **Code Quality Enforcement:** Code-modifying agents (`developer`, `commentator`) automatically validate generated Python code against static analysis tools (`black`, `ruff`, and `mypy`) before writing to disk, ensuring file integrity.
+- **Code Quality Enforcement:** The pre-write code validation feature has been removed from the base agent to ensure language-agnosticism. Code-modifying agents now write code directly, relying on external tools (like the `linter_analyst` agent) for post-write quality checks.
 - **Comprehensive Context:** Agents are automatically provided with project source code, Git diffs, repository metadata, design documents, and memory context during execution.
 - **Atomic File Operations:** Ensures data integrity when writing or modifying files using safe, atomic write operations.
 
