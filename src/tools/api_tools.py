@@ -124,7 +124,6 @@ class ApiTools:
             system_instruction: str | None = self.agent_config.get("prompt")
             config = types.GenerateContentConfig(
                 temperature=self.agent_temperature,
-                http_options=types.HttpOptions(api_version="v1alpha"),
                 system_instruction=system_instruction,
                 # Setting thinking_budget to -1 disables the default thinking budget,
                 # allowing the model to use its own judgment for reasoning steps.
