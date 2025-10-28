@@ -94,14 +94,16 @@ class QdrantClientManager:
     ) -> None:
         try:
             if await self.client.collection_exists(collection_name=collection_name):
-                logger.debug(f"Collection '{collection_name}' already exists.")
+                logger.debug("Collection '%s' already exists.", collection_name)
                 return
 
             logger.info(
-                f"Creating optimized collection '{collection_name}' with embedding size {embedding_size}.",
+                "Creating optimized collection '%s' with embedding size %d.",
+                collection_name,
+                embedding_size,
             )
             await self._create_collection(collection_name, embedding_size)
-            logger.info(f"Created optimized collection '{collection_name}'.")
+            logger.info("Created optimized collection '%s'.", collection_name)
 
             if payload_indexes:
                 for field_name, field_schema in payload_indexes:

@@ -12,12 +12,13 @@ MOCK_CONFIG: dict[str, Any] = {
 
 
 @pytest.fixture
-def mock_agent_instance():
+def mock_agent_instance(tmp_path):
     """Mocks a KnowledgeBaseAgent instance with mocked dependencies."""
-    with patch("src.agents.agent.ShellTools", new_callable=MagicMock) as MockShellTools:
+    output_file = tmp_path / "output.txt"
+    with patch("src.agents.agent.ShellTools", new_callable=MagicMock) as mock_shell_tools_class:
 
         # Configure the mocked shell tools
-        mock_shell_tools = MockShellTools.return_value
+        mock_shell_tools = mock_shell_tools_class.return_value
         mock_shell_tools.fetch_urls_content = AsyncMock(return_value="Fetched Content")
 
         agent = KnowledgeBaseAgent(
@@ -25,7 +26,7 @@ def mock_agent_instance():
             agent_name="knowledge_base_builder",
             project="agentic-tools",
             chat="url1,url2",
-            filepath="/tmp/output.txt",
+            filepath=str(output_file),
         )
 
         # Attach mocks to the instance for easy access

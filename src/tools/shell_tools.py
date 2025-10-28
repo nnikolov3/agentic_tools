@@ -39,6 +39,10 @@ class ShellTools:
             raise FileNotFoundError("Git executable not found.")
         self.git_executable: str = git_executable_path
 
+        self.sync_executable: Optional[str] = shutil.which("sync")
+        if not self.sync_executable:
+            logger.warning("'sync' command not found. File system sync may be skipped.")
+
         self.design_docs: List[str] = config.get("design_docs", [])
         self.project_directories: List[str] = config.get("project_directories", [])
         self.include_extensions: List[str] = config.get("include_extensions", [])
@@ -51,11 +55,12 @@ class ShellTools:
         project_tree: Dict[str, Any] = {}
         for directory_str in self.project_directories:
             directory_path = Path(directory_str)
-            logger.info(f"Processing project directory: {directory_path}")
+            logger.info("Processing project directory: %s", directory_path)
 
             if not directory_path.is_dir():
                 logger.warning(
-                    f"Project directory does not exist or is not a directory: {directory_path}",
+                    "Project directory does not exist or is not a directory: %s",
+                    directory_path,
                 )
                 continue
 
@@ -73,7 +78,7 @@ class ShellTools:
                 current_level = current_level.setdefault(part, {})
 
             file_name = relative_path.name
-            logger.info(f"Reading file: {file_path}")
+            logger.info("Reading file: %s", file_path)
             file_content = self.read_file_content(file_path)
             if file_content:
                 current_level[file_name] = file_content
@@ -90,7 +95,8 @@ class ShellTools:
     def process_directory(self, directory_path: Path) -> str:
         if not directory_path.is_dir():
             logger.warning(
-                f"Directory does not exist or is not a directory: {directory_path}",
+                "Directory does not exist or is not a directory: %s",
+                directory_path,
             )
             return ""
 
@@ -103,7 +109,7 @@ class ShellTools:
                 self.include_extensions,
             ):
                 file_content = self.read_file_content(file_path)
-                logger.info(f"Reading file: {file_path}")
+                logger.info("Reading file: %s", file_path)
 
                 if not file_content or file_content.strip().startswith("<"):
                     continue
@@ -114,12 +120,12 @@ class ShellTools:
                 file_count += 1
 
             if file_count == 0:
-                logger.info(f"No matching files found in directory: {directory_path}")
+                logger.info("No matching files found in directory: %s", directory_path)
 
-            logger.info(f"Concatenated {file_count} files from {directory_path}")
+            logger.info("Concatenated %d files from %s", file_count, directory_path)
             return "".join(concatenated_content_parts).strip()
 
-        except Exception as error:
+        except OSError as error:
             logger.error(
                 f"Error processing directory {directory_path}: {error}",
                 exc_info=True,
@@ -186,7 +192,7 @@ class ShellTools:
                 f"Found {len(matching_files)} matching files in {directory_path}",
             )
             return matching_files
-        except Exception as error:
+        except OSError as error:
             logger.error(
                 f"Error searching directory {directory_path}: {error}",
                 exc_info=True,
@@ -257,23 +263,25 @@ class ShellTools:
                 temp_file_path = Path(temp_file.name)
                 temp_file.write(payload)
                 temp_file.flush()
-                if platform.system() != "Windows":
+                if platform.system() != "Windows" and self.sync_executable:
                     try:
-                        subprocess.run(["sync"], check=True, capture_output=True)
+                        subprocess.run([self.sync_executable], check=True, capture_output=True)
                     except (
                         subprocess.CalledProcessError,
                         FileNotFoundError,
                     ) as sync_error:
                         logger.warning(
-                            f"Failed to execute 'sync' command: {sync_error}",
+                            f"Failed to execute '{self.sync_executable}' command: {sync_error}",
                         )
+                elif platform.system() != "Windows":
+                    logger.warning("'sync' executable not found, skipping file system sync.")
 
             if target_path.exists():
                 shutil.copymode(target_path, temp_file_path)
 
             temp_file_path.rename(target_path)
 
-        except Exception as error:
+        except OSError as error:
             if temp_file_path and temp_file_path.exists():
                 temp_file_path.unlink(missing_ok=True)
             raise IOError(f"Atomic write to {target_path} failed") from error
@@ -298,14 +306,14 @@ class ShellTools:
             if isinstance(result, httpx.Response) and result.status_code == 200:
                 header = f"\n\n--- Content from: {url} ---\n\n"
                 content_parts.append(header + result.text)
-                logger.info(f"Successfully fetched content from {url}")
+                logger.info("Successfully fetched content from %s", url)
             else:
                 error_msg = (
                     result
                     if isinstance(result, Exception)
                     else f"Status code: {getattr(result, 'status_code', 'N/A')}"
                 )
-                logger.warning(f"Failed to fetch content from {url}: {error_msg}")
+                logger.warning("Failed to fetch content from %s: %s", url, error_msg)
 
         return "".join(content_parts).strip()
 
@@ -324,14 +332,14 @@ class ShellTools:
         for tool_name, command in linter_configs.items():
             executable = command[0]
             if not shutil.which(executable):
-                error_msg = (
-                    f"Linter '{tool_name}' not found. Please ensure '{executable}' is installed."
-                )
+                error_msg = f"Linter '{tool_name}' not found. Please ensure '{executable}' is installed."
                 logger.error(error_msg)
-                report_parts.append(f"--- {tool_name.upper()} FAILED ---\n{error_msg}\n")
+                report_parts.append(
+                    f"--- {tool_name.upper()} FAILED ---\n{error_msg}\n"
+                )
                 continue
 
-            logger.info(f"Running linter: {' '.join(command)}")
+            logger.info("Running linter: %s", ' '.join(command))
             try:
                 # Linters often use non-zero exit codes to indicate issues, so we don't check for success.
                 process = await asyncio.create_subprocess_exec(
@@ -351,7 +359,7 @@ class ShellTools:
                     )
 
             except Exception as e:
-                logger.error(f"Error running linter '{tool_name}': {e}")
+                logger.error("Error running linter '%s': %s", tool_name, e)
                 report_parts.append(f"--- {tool_name.upper()} FAILED ---\n{e}\n")
 
         if not report_parts:
@@ -388,7 +396,7 @@ class ShellTools:
             logger.error("Git command timed out while getting repository info.")
             return git_info
         except Exception as error:
-            logger.error(f"Error getting git info: {error}", exc_info=True)
+            logger.error("Error getting git info: %s", error, exc_info=True)
             return git_info
 
     @staticmethod
@@ -397,13 +405,14 @@ class ShellTools:
             return codecs.decode(input_string, "unicode_escape")
         except UnicodeDecodeError:
             logger.warning(
-                f"Could not decode unicode escapes in string: {input_string[:100]}...",
+                "Could not decode unicode escapes in string: %s...",
+                input_string[:100],
             )
             return input_string
 
     def create_patch(self) -> str:
         command = [self.git_executable, *self.git_diff_command]
-        logger.debug(f"Running git diff command: {' '.join(command)}")
+        logger.debug("Running git diff command: %s", ' '.join(command))
         try:
             result = subprocess.run(
                 command,
@@ -416,9 +425,12 @@ class ShellTools:
             return result.stdout
         except subprocess.CalledProcessError as error:
             logger.error(
-                f"Git diff command failed with exit code {error.returncode}:\nSTDOUT: {error.stdout}\nSTDERR: {error.stderr}",
+                "Git diff command failed with exit code %d:\nSTDOUT: %s\nSTDERR: %s",
+                error.returncode,
+                error.stdout,
+                error.stderr,
             )
             raise RuntimeError("Failed to create git patch") from error
         except subprocess.TimeoutExpired as error:
-            logger.error(f"Git diff command timed out: {error}")
+            logger.error("Git diff command timed out: %s", error)
             raise RuntimeError("Git diff command timed out") from error

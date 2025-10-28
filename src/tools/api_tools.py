@@ -137,7 +137,8 @@ class ApiTools:
             json_payload: Dict[str, Any] = {
                 k: v for k, v in self.payload.items() if k != "chat"
             }
-            contents: str = f"{chat_message}\n{json.dumps(json_payload)}"
+            text_content = f"{chat_message}\n{json.dumps(json_payload)}"
+            contents: list[types.Part] = [types.Part.from_text(text=text_content)]
 
             response = await a_client.models.generate_content(
                 model=self.agent_model_name,
@@ -157,7 +158,7 @@ class ApiTools:
 _GEMINI_SEMAPHORE = asyncio.Semaphore(5)
 
 
-async def google_documents_api(model, api_key, prompt, file):
+async def google_documents_api(model: str, api_key: str, prompt: str, file: str) -> str:
     """Calls the Google Generative AI API for document processing.
 
     This function is designed to handle file uploads and subsequent content generation
@@ -208,8 +209,8 @@ async def google_documents_api(model, api_key, prompt, file):
         # operation.
         response = await asyncio.to_thread(
             lambda: google_client.models.generate_content(
-                model=model, contents=[file_upload, prompt]
+                model=model, contents=[file_upload, types.Part.from_text(text=prompt)]
             )
         )
 
-        return response.text
+        return response.text if response.text else ""

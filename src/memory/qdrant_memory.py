@@ -10,6 +10,7 @@ from faker import Faker
 from fastembed import TextEmbedding
 from fastembed.rerank.cross_encoder import TextCrossEncoder
 
+import httpx
 from qdrant_client import models
 from sentence_transformers import SparseEncoder  # used
 from src.memory.qdrant_client_manager import QdrantClientManager
@@ -209,8 +210,8 @@ class QdrantMemory:
         try:
             embedding_generator = self.embedder.embed(documents=[text])
             return next(embedding_generator).tolist()  # type: ignore
-        except Exception as e:
-            logger.error(f"Failed to generate embedding for text: {e}")
+        except (RuntimeError, ValueError) as e:
+            logger.error("Failed to generate embedding for text: %s", e)
             raise RuntimeError("Embedding generation failed") from e
 
     def _embed_sparse_documents(
@@ -274,9 +275,9 @@ class QdrantMemory:
                 ],
                 wait=True,
             )
-            logger.info(f"Added memory ID '{point_id}' to '{self.collection_name}'.")
-        except Exception as e:
-            logger.error(f"Failed to add memory: {e}")
+            logger.info("Added memory ID '%s' to '%s'.", point_id, self.collection_name)
+        except (httpx.HTTPError, RuntimeError) as e:
+            logger.error("Failed to add memory: %s", e)
             raise RuntimeError("Memory addition failed") from e
 
     def _calculate_retrieval_limits(
@@ -572,8 +573,8 @@ class QdrantMemory:
                 reverse=True,
             )
             return [text for text, _ in ranked_pairs]
-        except Exception as e:
-            logger.warning(f"Reranking failed, returning original order. Error: {e}")
+        except (RuntimeError, ValueError) as e:
+            logger.warning("Reranking failed, returning original order. Error: %s", e)
             return memory_texts
 
     async def retrieve_context(self, query_text: str) -> str:
@@ -617,7 +618,7 @@ class QdrantMemory:
 
         try:
             query_results = await asyncio.gather(*query_tasks, return_exceptions=True)
-        except Exception as e:
+        except (httpx.HTTPError, asyncio.TimeoutError) as e:
             logger.error(
                 f"Unexpected error during asyncio.gather for Qdrant queries: {e}",
             )

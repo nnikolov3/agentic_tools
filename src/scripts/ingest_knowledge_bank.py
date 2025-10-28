@@ -197,7 +197,7 @@ class KnowledgeBankIngestor:
                 counts["failed"] += 1
                 if isinstance(result, Exception):
                     logger.error("Task failed with an exception", exc_info=result)
-        logger.info(f"Ingestion complete. Results: {counts}")
+        logger.info("Ingestion complete. Results: %s", counts)
         return counts
 
     @staticmethod
@@ -237,9 +237,9 @@ class KnowledgeBankIngestor:
             embedding_generator = self.embedder.embed(documents=["test"])
             vector = next(iter(embedding_generator))
             size = len(vector)
-            logger.info(f"Embedder dimension successfully determined: {size}")
+            logger.info("Embedder dimension successfully determined: %d", size)
             return size
-        except Exception as error:
+        except (RuntimeError, ValueError) as error:
             logger.exception("Failed to initialize embedding model.")
             raise RuntimeError("Embedding model initialization failed") from error
 
@@ -318,7 +318,7 @@ class KnowledgeBankIngestor:
                 timeout=60,
             )
             points = getattr(response, "points", response)
-            logger.debug(f"Exists check via query result: {points}")
+            logger.debug("Exists check via query result: %s", points)
             return bool(points)
         except Exception:
             logger.exception(
@@ -331,7 +331,7 @@ class KnowledgeBankIngestor:
         try:
             embedding_generator = self.embedder.embed(documents=chunks)
             return [embedding.tolist() for embedding in embedding_generator]
-        except Exception as error:
+        except (RuntimeError, ValueError) as error:
             logger.exception("Embedding generation failed.")
             raise RuntimeError("Embedding generation failed") from error
 
@@ -403,25 +403,25 @@ class KnowledgeBankIngestor:
         extension = file_path.suffix.lower()
         extractor = self._content_extractors.get(extension)
         if not extractor:
-            logger.warning(f"No content extractor found for extension '{extension}'.")
+            logger.warning("No content extractor found for extension '%s'.", extension)
             return ""
         return await extractor(file_path)
 
     async def _get_llm_summary(self, file_path: Path) -> str:
-        logger.info(f"Generating LLM summary for: {file_path}")
+        logger.info("Generating LLM summary for: %s", file_path)
         llm_summary = await google_documents_api(
             self.ingestion_config.model,
             self.ingestion_config.api_key_name,
             self.ingestion_config.prompt,
-            file_path,
+            str(file_path),
         )
         return cast(str, llm_summary)
 
     async def _extract_and_summarize_pdf(self, file_path: Path) -> str:
         """Extracts text from a PDF and prepends an LLM-generated summary."""
-        logger.info(f"Extracting text from PDF: {file_path}")
+        logger.info("Extracting text from PDF: %s", file_path)
         extracted_text = extract_text(file_path)
-        logger.info(f"Generating LLM summary for: {file_path}")
+        logger.info("Generating LLM summary for: %s", file_path)
         llm_summary = await self._get_llm_summary(file_path)
         return f"{llm_summary}\n\n{extracted_text}"
 
@@ -436,8 +436,8 @@ class KnowledgeBankIngestor:
                 content = str(data)
             llm_summary = await self._get_llm_summary(file_path)
             return f"{llm_summary}\n\n{content}"
-        except Exception:
-            logger.exception(f"Error processing JSON file {file_path}.")
+        except (OSError, json.JSONDecodeError):
+            logger.exception("Error processing JSON file %s.", file_path)
             return ""
 
     async def _read_markdown_content(self, file_path: Path) -> str:
@@ -463,11 +463,11 @@ class KnowledgeBankIngestor:
         """
         try:
             async with self.semaphore:
-                logger.info(f"Processing file: {file_path}")
+                logger.info("Processing file: %s", file_path)
 
                 processed_content = await self._extract_content_from_file(file_path)
                 if not processed_content:
-                    logger.warning(f"No content extracted from: {file_path}")
+                    logger.warning("No content extracted from: %s", file_path)
                     return "skipped"
 
                 raw_file_hash = hashlib.sha256(
@@ -475,7 +475,7 @@ class KnowledgeBankIngestor:
                 ).hexdigest()
 
                 if await self._exists_by_hash(raw_file_hash):
-                    logger.info(f"Skipping already processed file: {file_path}")
+                    logger.info("Skipping already processed file: %s", file_path)
                     return "skipped"
 
                 if file_path.suffix.lower() == ".md":
@@ -505,9 +505,9 @@ class KnowledgeBankIngestor:
                         self.ingestion_config.chunk_overlap,
                     )
 
-                logger.info(f"Generated {len(chunks)} chunks for {file_path}.")
+                logger.info("Generated %d chunks for %s.", len(chunks), file_path)
                 if not chunks:
-                    logger.warning(f"No chunks generated for: {file_path}")
+                    logger.warning("No chunks generated for: %s", file_path)
                     return "skipped"
 
                 embeddings = self._generate_embeddings(chunks)
@@ -522,10 +522,10 @@ class KnowledgeBankIngestor:
                     )
 
                 logger.info(
-                    f"Successfully processed {len(points)} chunks for: {file_path}"
+                    "Successfully processed %d chunks for: %s", len(points), file_path
                 )
                 return "processed"
 
-        except Exception:
-            logger.exception(f"Failed to process file: {file_path}")
+        except (RuntimeError, OSError):
+            logger.exception("Failed to process file: %s", file_path)
             return "failed"

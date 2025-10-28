@@ -110,11 +110,6 @@ sparse = {}
 # =============================================================================
 # WORKFLOW CONFIGURATIONS
 # =============================================================================
-[agentic-tools.code_quality_enforcer]
-# The maximum number of times the 'developer' agent will be invoked to fix validation errors for a single file.
-max_fix_attempts = 3
-# If true, the workflow will first validate files and skip any that are already 'dirty' (fail validation).
-run_pre_validation = true
 
 [agentic-tools.knowledge_bank_ingestion]
 # The directory containing documents to be ingested into the vector database.
@@ -318,9 +313,10 @@ Your final output must be the complete, updated README.md file content.
 # Each key is a tool name, and the value is the command and its arguments.
 # The command will be run from the project root.
 ruff = ["ruff", "check", "--no-fix", "src/"]
-mypy = ["mypy", "src/"]
-black = ["black", "--check", "src/"]
-
+mypy = ["mypy", "."]
+black = ["black", "--check", "."]
+bandit = ["bandit", "-r", "src/"]
+pylint = ["pylint", "src/"]
 [agentic-tools.linter_analyst]
 name = "linter_analyst"
 description = "Runs project linters and provides a comprehensive, step-by-step analysis of necessary fixes based on project standards."

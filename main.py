@@ -15,6 +15,7 @@ particular aspect of the software development lifecycle.
 import argparse
 import asyncio
 import logging
+import sys
 from os import PathLike
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -69,12 +70,12 @@ def _load_configuration(config_path: Path) -> dict[str, Any]:
     try:
         _configuration: dict[str, Any] = get_config_dictionary(config_path)
         return _configuration
-    except FileNotFoundError as e:
-        logger.error(f"Configuration file not found at '{config_path}'.")
-        raise RuntimeError(f"Missing configuration file: {config_path}") from e
+    except FileNotFoundError:
+        logger.error("Configuration file not found at '%s'.", config_path)
+        sys.exit(1)
     except Exception as e:
-        logger.error(f"Failed to load or parse configuration: {e}")
-        raise RuntimeError("Configuration loading failed") from e
+        logger.error("Failed to load or parse configuration: %s", e)
+        sys.exit(1)
 
 
 # Initialize the FastMCP instance, which serves as the tool runner.
@@ -112,7 +113,7 @@ async def _execute_agent_task(
     Raises:
         RuntimeError: If the agent's execution fails, wrapping the original exception.
     """
-    logger.info(f"Executing '{agent_name}' tool.")
+    logger.info("Executing '%s' tool.", agent_name)
 
     if agent_name == INGEST_KNOWLEDGE_BANK:
         return await KnowledgeBankIngestor(config["agentic-tools"]).run_ingestion()
@@ -367,7 +368,7 @@ async def _run_cli_mode(args: argparse.Namespace) -> None:
         # Load configuration based on the --config argument
         config_path = Path(args.config)
         configuration = _load_configuration(config_path)
-        logger.info(f"Configuration loaded successfully from {config_path}.")
+        logger.info("Configuration loaded successfully from %s.", config_path)
     except RuntimeError:
         return
 

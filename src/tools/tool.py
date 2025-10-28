@@ -93,19 +93,24 @@ class Tool:
         try:
             payload = await self._create_payload(chat, memory_context, filepath)
             response = await self.api_tools.run_api(payload)
+
             if response:
-                logger.info(f"Tool execution completed for agent '{self.agent}'.")
+                logger.info("Tool execution completed for agent '%s'.", self.agent)
                 return response
-            logger.warning(f"API call for agent '{self.agent}' returned no response.")
-            return None
+            else:
+                logger.warning("API call for agent '%s' returned no response.", self.agent)
+                return ""
+
         except ValueError as value_error:
             logger.error(
-                f"Payload creation failed for agent '{self.agent}': {value_error}"
+                "Payload creation failed for agent '%s': %s", self.agent, value_error
             )
             raise
         except Exception as unexpected_error:
             logger.error(
-                f"An unexpected error occurred in run_tool for agent '{self.agent}': {unexpected_error}",
+                "An unexpected error occurred in run_tool for agent '%s': %s",
+                self.agent,
+                unexpected_error,
                 exc_info=True,
             )
             raise RuntimeError(
@@ -137,7 +142,7 @@ class Tool:
         Raises:
             ValueError: If a required argument (like filepath) is missing for an agent.
         """
-        logger.info(f"Creating payload for agent '{self.agent}'.")
+        logger.info("Creating payload for agent '%s'.", self.agent)
         match self.agent:
             case "commentator":
                 if not filepath:
@@ -248,11 +253,15 @@ class Tool:
 
     def _create_linter_analyst_payload(
         self,
-        chat: Optional[str],  # This is the raw linter report from the agent's run_agent method
+        chat: Optional[
+            str
+        ],  # This is the raw linter report from the agent's run_agent method
         memory_context: Optional[str],
     ) -> dict[str, Any]:
         """Constructs a payload with linter output and design docs for the 'linter_analyst' agent."""
-        logger.info("Using linter report and design context for 'linter_analyst' agent.")
+        logger.info(
+            "Using linter report and design context for 'linter_analyst' agent."
+        )
         return {
             "SYSTEM_PROMPT": self.agent_prompt,
             "SKILLS": self.agent_skills,
@@ -267,7 +276,7 @@ class Tool:
         memory_context: Optional[str],
     ) -> dict[str, Any]:
         """Constructs a default, comprehensive payload for other agents."""
-        logger.info(f"Using standard context payload for '{self.agent}'.")
+        logger.info("Using standard context payload for '%s'.", self.agent)
         payload = {
             "SYSTEM_PROMPT": self.agent_prompt,
             "SKILLS": self.agent_skills,

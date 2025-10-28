@@ -25,7 +25,6 @@ from typing import Any, Optional
 import mdformat
 
 from src.memory.qdrant_memory import QdrantMemory
-from src.tools.validation_tools import ValidationService
 from src.tools.shell_tools import ShellTools
 from src.tools.tool import Tool
 
@@ -68,7 +67,7 @@ class Agent(abc.ABC):
 
         project_config: dict[str, Any] = configuration.get(project, {})
         if not project_config:
-            logger.warning(f"No configuration found for project '{project}'.")
+            logger.warning("No configuration found for project '%s'.", project)
 
         self.configuration: dict[str, Any] = project_config
         self.agent_name: str = agent_name
@@ -84,7 +83,7 @@ class Agent(abc.ABC):
         self.tool = Tool(agent_name, self.configuration)
         self.memory_config: dict[str, Any] = self.configuration.get("memory", {})
 
-        logger.debug(f"Initialized Agent '{self.agent_name}' for project '{project}'.")
+        logger.debug("Initialized Agent '%s' for project '%s'.", self.agent_name, project)
 
     async def run_agent(self) -> Optional[str]:
         """
@@ -236,68 +235,31 @@ class KnowledgeBaseAgent(Agent):
         This method overrides the base class's run_agent to bypass the LLM API call.
         """
 
-        try:
+        if not self.chat or not isinstance(self.chat, str):
 
-            if not self.chat or not isinstance(self.chat, str):
+            raise ValueError(
+                "A comma-separated string of URLs is required for the 'knowledge_base_builder' agent."
+            )
 
-                raise ValueError(
-                    "A comma-separated string of URLs is required for the 'knowledge_base_builder' agent."
-                )
+        urls = [url.strip() for url in self.chat.split(",") if url.strip()]
+        logger.info("Fetching content from %d URLs for knowledge base.", len(urls))
+        self.response = await self.shell_tools.fetch_urls_content(urls)
 
-            urls = [url.strip() for url in self.chat.split(",")]
+        if self.response:
+            await self._post_process()
+            await self._store_memory()
 
-            logger.info(f"Fetching content from {len(urls)} URLs for knowledge base.")
-
-            self.response = await self.shell_tools.fetch_urls_content(urls)
-
-            if self.response:
-
-                await self._post_process()
-
-                await self._store_memory()
-
-            return self.response
-
-        except Exception as agent_error:
-
-            error_message = f"Agent '{self.agent_name}' failed to run: {agent_error}"
-
-            logger.error(error_message, exc_info=True)
-
-            raise RuntimeError(error_message) from agent_error
+        return self.response
 
     async def _post_process(self) -> None:
-        """
-        Writes the fetched URL content to the specified output file.
-        """
-
+        """Writes the fetched content to the specified file path."""
         if not self.response:
-
-            logger.warning(
-                "Cannot write knowledge base file: response (fetched content) is missing."
-            )
-
             return
-
-        if not self.filepath:
-
-            logger.error(
-                "Cannot write knowledge base file: output filepath is missing."
-            )
-
-            return
-
         output_path = Path(self.filepath)
-
-        # File I/O is blocking; run it in a thread pool.
-
         await asyncio.to_thread(
-            self.shell_tools.write_file,
-            output_path,
-            self.response,
+            lambda: self.shell_tools.write_file(output_path, self.response)
         )
-
-        logger.info(f"Successfully wrote fetched content to '{output_path}'.")
+        logger.info("Successfully wrote fetched content to '%s'.", output_path)
 
     async def _store_memory(self) -> None:
         """
@@ -340,7 +302,7 @@ class LinterAnalystAgent(Agent):
 
         # 1. Run all configured project linters via ShellTools
         linter_report = await self.shell_tools.run_project_linters()
-        logger.info(f"Linter report generated:\n{linter_report}")
+        logger.info("Linter report generated:\n%s", linter_report)
 
         if "No issues found" in linter_report or not linter_report.strip():
             self.response = "All linters passed successfully. No analysis needed."
@@ -382,7 +344,7 @@ class DefaultAgent(Agent):
 
     async def _post_process(self) -> None:
         """Logs that no post-processing is needed for this agent."""
-        logger.info(f"No post-processing required for agent '{self.agent_name}'.")
+        logger.info("No post-processing required for agent '%s'.", self.agent_name)
 
     async def _assess_context_quality(self) -> float:
         """Returns a default quality score of 1.0."""
@@ -422,7 +384,7 @@ class ReadmeWriterAgent(Agent):
 
         # Update self.response so the clean, formatted version is stored in memory.
         self.response = formatted_readme
-        logger.info(f"Successfully formatted and wrote '{readme_filepath}'.")
+        logger.info("Successfully formatted and wrote '%s'.", readme_filepath)
 
     async def _assess_context_quality(self) -> float:
         """Returns a default quality score of 1.0."""
@@ -458,7 +420,6 @@ class CodeModifyingAgent(Agent):
             raise ValueError(
                 f"{self.__class__.__name__} requires a valid filepath, but None was provided.",
             )
-        self._validation_service = ValidationService()
 
     def _clean_response_for_code(self) -> str:
         """
@@ -504,10 +465,10 @@ class CodeModifyingAgent(Agent):
             )
             if is_success:
                 logger.info(
-                    f"Successfully validated and updated source file: {self.filepath}"
+                    "Successfully validated and updated source file: %s", self.filepath
                 )
             else:
-                logger.error(f"Failed to write to source file: {self.filepath}")
+                logger.error("Failed to write to source file: %s", self.filepath)
                 return
 
     async def _assess_context_quality(self) -> float:
