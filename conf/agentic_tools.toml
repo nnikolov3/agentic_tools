@@ -119,7 +119,7 @@ run_pre_validation = true
 # The directory containing documents to be ingested into the vector database.
 source_directory = "../knowledge_bank"
 # The LLM model used for summarizing document content.
-model = "gemini-2.5-flash-preview-09-2025"
+model = "gemini-flash-lite-latest"
 # The name of the environment variable holding the API key for the summarization LLM.
 google_api_key_name = "GEMINI_API_KEY_KNOWLEDGE_INGESTION"
 # A tuple of file extensions that the ingestion script will look for.

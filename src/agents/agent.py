@@ -200,6 +200,164 @@ class Agent(abc.ABC):
         raise NotImplementedError
 
 
+class KnowledgeBaseAgent(Agent):
+    """
+
+
+    An agent that fetches content from a list of URLs and writes it to a file.
+
+
+    """
+
+    def __init__(
+        self,
+        configuration: dict[str, Any],
+        agent_name: str,
+        project: str,
+        chat: Optional[str],
+        filepath: Optional[str | PathLike[str]],
+    ) -> None:
+        """
+
+
+        Initializes the KnowledgeBaseAgent.
+
+
+
+
+
+        Raises:
+
+
+            ValueError: If `filepath` is not provided, as it is essential
+
+
+                        for this agent's operation.
+
+
+        """
+
+        super().__init__(configuration, agent_name, project, chat, filepath)
+
+        if not self.filepath:
+
+            raise ValueError(
+                f"{self.__class__.__name__} requires a valid output filepath, but None was provided.",
+            )
+
+    async def run_agent(self) -> Optional[str]:
+        """
+
+
+        Executes the agent's task by fetching content from URLs.
+
+
+
+
+
+        This method overrides the base class's run_agent to bypass the LLM API call.
+
+
+        """
+
+        try:
+
+            if not self.chat or not isinstance(self.chat, str):
+
+                raise ValueError(
+                    "A comma-separated string of URLs is required for the 'knowledge_base_builder' agent."
+                )
+
+            urls = [url.strip() for url in self.chat.split(",")]
+
+            logger.info(f"Fetching content from {len(urls)} URLs for knowledge base.")
+
+            self.response = await self.shell_tools.fetch_urls_content(urls)
+
+            if self.response:
+
+                await self._post_process()
+
+                await self._store_memory()
+
+            return self.response
+
+        except Exception as agent_error:
+
+            error_message = f"Agent '{self.agent_name}' failed to run: {agent_error}"
+
+            logger.error(error_message, exc_info=True)
+
+            raise RuntimeError(error_message) from agent_error
+
+    async def _post_process(self) -> None:
+        """
+
+
+        Writes the fetched URL content to the specified output file.
+
+
+        """
+
+        if not self.response:
+
+            logger.warning(
+                "Cannot write knowledge base file: response (fetched content) is missing."
+            )
+
+            return
+
+        if not self.filepath:
+
+            logger.error(
+                "Cannot write knowledge base file: output filepath is missing."
+            )
+
+            return
+
+        output_path = Path(self.filepath)
+
+        # File I/O is blocking; run it in a thread pool.
+
+        await asyncio.to_thread(
+            self.shell_tools.write_file,
+            output_path,
+            self.response,
+        )
+
+        logger.info(f"Successfully wrote fetched content to '{output_path}'.")
+
+    async def _store_memory(self) -> None:
+        """
+
+
+        Stores the fetched content in the knowledge_bank memory collection.
+
+
+        """
+
+        if self.response:
+
+            logger.info("Storing fetched content in knowledge_bank memory.")
+
+            # Explicitly create a memory instance targeting the knowledge_bank
+
+            knowledge_bank_memory = await QdrantMemory.create(
+                self.configuration, "knowledge_bank"
+            )
+
+            await knowledge_bank_memory.add_memory(text_content=self.response)
+
+        else:
+
+            logger.debug("Skipping memory storage: no response available.")
+
+    async def _assess_context_quality(self) -> float:
+        """Returns a default quality score of 1.0 as RAG is not used for this agent."""
+
+        return 1.0
+
+
 class DefaultAgent(Agent):
     """An agent that performs no special post-processing."""
 
@@ -367,4 +525,5 @@ AGENT_CLASSES: dict[str, type[Agent]] = {
     "approver": DefaultAgent,
     "architect": DefaultAgent,
     "expert": ExpertAgent,
+    "knowledge_base_builder": KnowledgeBaseAgent,
 }

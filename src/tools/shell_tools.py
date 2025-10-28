@@ -1,4 +1,5 @@
 # src/tools/shell_tools.py
+import asyncio
 import codecs
 import logging
 import platform
@@ -7,6 +8,8 @@ import subprocess
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, Dict, Generator, List, Optional
+
+import httpx
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -266,6 +269,37 @@ class ShellTools:
             if temp_file_path and temp_file_path.exists():
                 temp_file_path.unlink(missing_ok=True)
             raise IOError(f"Atomic write to {target_path} failed") from error
+
+    async def fetch_urls_content(self, urls: List[str]) -> str:
+        """
+        Fetches content from a list of URLs concurrently.
+
+        Args:
+            urls: A list of URL strings to fetch.
+
+        Returns:
+            A single string concatenating the content of all successfully fetched URLs.
+        """
+        async with httpx.AsyncClient() as client:
+            tasks = [client.get(url) for url in urls]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        content_parts: List[str] = []
+        for i, result in enumerate(results):
+            url = urls[i]
+            if isinstance(result, httpx.Response) and result.status_code == 200:
+                header = f"\n\n--- Content from: {url} ---\n\n"
+                content_parts.append(header + result.text)
+                logger.info(f"Successfully fetched content from {url}")
+            else:
+                error_msg = (
+                    result
+                    if isinstance(result, Exception)
+                    else f"Status code: {getattr(result, 'status_code', 'N/A')}"
+                )
+                logger.warning(f"Failed to fetch content from {url}: {error_msg}")
+
+        return "".join(content_parts).strip()
 
     def get_git_info(self) -> Dict[str, Optional[str]]:
         git_info: Dict[str, Optional[str]] = {"username": None, "url": None}
