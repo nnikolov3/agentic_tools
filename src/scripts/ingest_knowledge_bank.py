@@ -524,9 +524,7 @@ class KnowledgeBankIngestor:
                 logger.info(
                     f"Successfully processed {len(points)} chunks for: {file_path}"
                 )
-                llm_summary = await self._get_llm_summary(file_path)
-
-                return f"{llm_summary}\n\n{processed_content}"
+                return "processed"
 
         except Exception:
             logger.exception(f"Failed to process file: {file_path}")
