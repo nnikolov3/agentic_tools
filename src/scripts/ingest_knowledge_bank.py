@@ -155,7 +155,7 @@ class KnowledgeBankIngestor:
 
         self._content_extractors: dict[str, ContentExtractor] = {
             ".pdf": self._extract_and_summarize_pdf,
-            ".json": self._flatten_json_content,
+            ".json": self._process_json_content,
             ".md": self._read_markdown_content,
         }
 
@@ -425,15 +425,17 @@ class KnowledgeBankIngestor:
         llm_summary = await self._get_llm_summary(file_path)
         return f"{llm_summary}\n\n{extracted_text}"
 
-    async def _flatten_json_content(self, file_path: Path) -> str:
-        """Reads a JSON file and flattens its content into a single string."""
+    async def _process_json_content(self, file_path: Path) -> str:
+        """Reads a JSON file, optionally flattens its content, and prepends an LLM-generated summary."""
         try:
             with file_path.open(encoding="utf-8") as file_handle:
                 data = json.load(file_handle)
             if isinstance(data, dict):
-                return ". ".join(f"{key}: {value}" for key, value in data.items())
+                content = ". ".join(f"{key}: {value}" for key, value in data.items())
+            else:
+                content = str(data)
             llm_summary = await self._get_llm_summary(file_path)
-            return f"{llm_summary}\n\n{data}"
+            return f"{llm_summary}\n\n{content}"
         except Exception:
             logger.exception(f"Error processing JSON file {file_path}.")
             return ""
