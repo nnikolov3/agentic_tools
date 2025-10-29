@@ -50,6 +50,7 @@ INGEST_KNOWLEDGE_BANK: str = "ingest_knowledge_bank"
 EXPERT: str = "expert"
 KNOWLEDGE_BASE_BUILDER: str = "knowledge_base_builder"
 LINTER_ANALYST: str = "linter_analyst"
+CONFIGURATION_BUILDER: str = "configuration_builder"
 VALID_AGENTS: Tuple[str, ...] = (
     COMMENTATOR,
     DEVELOPER,
@@ -60,6 +61,7 @@ VALID_AGENTS: Tuple[str, ...] = (
     EXPERT,
     KNOWLEDGE_BASE_BUILDER,
     LINTER_ANALYST,
+    CONFIGURATION_BUILDER,
 )
 
 
@@ -325,6 +327,26 @@ async def linter_analyst_tool(
         The result of the agent's operation.
     """
     return await _run_agent_tool(LINTER_ANALYST, chat, filepath, target_directory)
+
+
+@mcp.tool(description="Automatically generates a TOML configuration file for a project.")
+async def configuration_builder_tool(
+    chat: Optional[str] = None,
+    filepath: Optional[str | PathLike[str]] = None,
+    target_directory: Path = Path.cwd(),
+) -> Any:
+    """
+    Invokes the 'configuration_builder' agent to generate a project configuration file.
+
+    Args:
+        chat: An optional prompt to guide the configuration generation.
+        filepath: The path to the output file where the configuration will be saved.
+        target_directory: The root directory of the project to analyze.
+
+    Returns:
+        The result of the agent's operation.
+    """
+    return await _run_agent_tool(CONFIGURATION_BUILDER, chat, filepath, target_directory)
 
 
 # --- CLI Execution Logic ---

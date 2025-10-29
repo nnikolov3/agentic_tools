@@ -377,6 +377,52 @@ class ShellTools:
 
         return "\n".join(report_parts)
 
+    async def get_project_tree(self) -> str:
+        """
+        Generates a file and directory tree.
+        """
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "tree",
+                "-L",
+                "3",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await process.communicate()
+            output = stdout.decode(self.encoding, errors="ignore") + stderr.decode(
+                self.encoding,
+                errors="ignore",
+            )
+            return output.strip()
+        except FileNotFoundError:
+            logger.warning("'tree' command not found. Please install it.")
+            return "tree command not found"
+        except Exception as e:
+            logger.error("Error running 'tree' command: %s", e)
+            return f"Error running 'tree' command: {e}"
+
+    async def get_detected_languages(self) -> str:
+        """
+        Detects the primary programming language by analyzing file extensions.
+        """
+        try:
+            cmd = "find . -type f -name '*.*' | sed 's/.*\\.//' | sort | uniq -c | sort -nr | head -n 5"
+            process = await asyncio.create_subprocess_shell(
+                cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await process.communicate()
+            output = stdout.decode(self.encoding, errors="ignore") + stderr.decode(
+                self.encoding,
+                errors="ignore",
+            )
+            return output.strip()
+        except Exception as e:
+            logger.error("Error detecting languages: %s", e)
+            return f"Error detecting languages: {e}"
+
     def get_git_info(self) -> Dict[str, Optional[str]]:
         git_info: Dict[str, Optional[str]] = {"username": None, "url": None}
         try:

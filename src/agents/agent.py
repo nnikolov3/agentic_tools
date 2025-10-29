@@ -509,6 +509,127 @@ class ExpertAgent(DefaultAgent):
     pass
 
 
+class ConfigurationBuilderAgent(Agent):
+    """
+    An agent that automatically generates a 'toml' configuration file by inspecting a project.
+    """
+
+    async def run_agent(self) -> Optional[str]:
+        """
+        Orchestrates the project inspection and configuration generation.
+        """
+        logger.info("Starting configuration builder...")
+
+        # 1. Gather project information using ShellTools
+        project_tree = await self.shell_tools.get_project_tree()
+        detected_languages = await self.shell_tools.get_detected_languages()
+
+        dependency_file = "pyproject.toml"
+        try:
+            project_dependencies = await asyncio.to_thread(self.shell_tools.read_file_content, Path(dependency_file))
+        except FileNotFoundError:
+            project_dependencies = f"{dependency_file} not found."
+
+
+        # 2. Structure the context for the LLM
+        structured_context = f"""
+        Project Analysis:
+        - File Tree:
+        {project_tree}
+        - Detected Languages (by file count):
+        {detected_languages}
+        - Dependencies (from {dependency_file}):
+        {project_dependencies}
+        """
+
+        # New, detailed prompt
+        detailed_prompt = f"""
+You are an expert system configuration builder. Your task is to generate a valid `agentic_tools.toml` configuration file for a new project based on the analysis provided below.
+
+**Project Analysis:**
+```
+{structured_context}
+```
+
+**Instructions:**
+1.  Analyze the project information to determine key settings.
+2.  Use the detected languages and dependencies to configure source directories, file extensions, and linter commands.
+3.  If the primary language is Python, configure linters like `ruff`, `mypy`, and `black`. If it's another language, suggest appropriate linters (e.g., `gofmt` for Go, `eslint` for JavaScript).
+4.  Populate all sections of the TOML file. Do not leave any sections blank.
+5.  Your final output MUST be only the raw TOML configuration content, without any explanations or markdown code fences.
+
+**TOML Template to Populate:**
+
+```toml
+# Master configuration for the new project
+[new-project]
+project_name = "New Project Name"
+project_description = "A concise description of the new project."
+
+# Configure source paths based on the file tree analysis.
+source = ["src"] # Or ["lib"], ["app"], etc.
+design_docs = ["docs/DESIGN.md"]
+project_directories = ["src", "docs", "tests"] # Adjust based on analysis
+
+# Configure file extensions based on detected languages.
+include_extensions = [".py", ".md"] # e.g., [".go"], [".js", ".css"]
+exclude_files = ["__init__.py"]
+exclude_directories = [".git", "__pycache__", "venv", ".venv", "node_modules"]
+
+# Linter configuration based on detected language.
+[new-project.linters]
+# Example for Python:
+ruff = ["ruff", "check", "--no-fix", "src/"]
+mypy = ["mypy", "."]
+black = ["black", "--check", "."]
+
+# Default agent configurations. These can be customized later.
+[new-project.architect]
+model_name = "gemini-2.5-pro"
+model_provider = "google"
+api_key = "GEMINI_API_KEY_ARCHITECT"
+# ... other agent settings
+
+[new-project.developer]
+model_name = "gemini-pro-latest"
+model_provider = "google"
+api_key = "GEMINI_API_KEY_DEVELOPER"
+# ... other agent settings
+
+# Add other standard agent configurations like commentator, approver, etc.
+```
+"""
+
+        self.response = await self.tool.run_tool(
+            chat=detailed_prompt,
+            memory_context=self.memory_context,
+        )
+
+        # 4. Post-process the response (e.g., save it)
+        if self.response:
+            await self._post_process()
+            await self._store_memory()
+
+        return self.response
+
+    async def _post_process(self) -> None:
+        """
+        Writes the generated TOML configuration to a file.
+        """
+        if not self.response:
+            return
+
+        output_path = Path(self.filepath) if self.filepath else Path("generated_config.toml")
+        await asyncio.to_thread(
+            lambda: self.shell_tools.write_file(output_path, self.response)
+        )
+        logger.info("Successfully wrote configuration to '%s'.", output_path)
+
+    async def _assess_context_quality(self) -> float:
+        """Returns a default quality score of 1.0."""
+        return 1.0
+
+
 AGENT_CLASSES: dict[str, type[Agent]] = {
     "readme_writer": ReadmeWriterAgent,
     "commentator": CommentatorAgent,
@@ -518,4 +639,5 @@ AGENT_CLASSES: dict[str, type[Agent]] = {
     "expert": ExpertAgent,
     "knowledge_base_builder": KnowledgeBaseAgent,
     "linter_analyst": LinterAnalystAgent,
+    "configuration_builder": ConfigurationBuilderAgent,
 }

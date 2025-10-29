@@ -128,6 +128,7 @@ Your response must be a single JSON object with the following structure:
   "short_summary": "<A one or two sentence summary of the document's purpose>",
   "content": "<A detailed and comprehensive write-up of the document's key information>",
   "tags": ["<A list of relevant keywords or tags>"]
+  "practical-examples": ["A list of relevant examples"]
 }
 '''
 # The target size for text chunks before embedding.

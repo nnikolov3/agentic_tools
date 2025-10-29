@@ -161,6 +161,8 @@ class Tool:
                 return self._create_approver_payload(chat)
             case "linter_analyst":
                 return self._create_linter_analyst_payload(chat, memory_context)
+            case "configuration_builder":
+                return self._create_configuration_builder_payload(chat)
             case _:
                 return self._create_default_payload(chat, memory_context)
 
