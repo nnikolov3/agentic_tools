@@ -25,6 +25,7 @@ import uuid
 from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Final, Optional
 
@@ -88,6 +89,7 @@ class IngestionConfig:
     chunk_overlap: int
     qdrant_batch_size: int
     concurrency_limit: int
+    old_file_threshold_days: int
 
 
 @dataclass(frozen=True)
@@ -95,6 +97,7 @@ class MemoryConfig:
     """Configuration settings for the memory/vector database."""
 
     collection_name: str
+    summaries_collection_name: str
     embedding_model_name: str
     device: str
     qdrant_config: dict[str, Any] = field(default_factory=dict)
@@ -254,6 +257,7 @@ class KnowledgeBankIngestor:
             chunk_overlap=config.get("chunk_overlap", 200),
             qdrant_batch_size=config.get("qdrant_batch_size", 128),
             concurrency_limit=config.get("concurrency_limit", 5),
+            old_file_threshold_days=config.get("old_file_threshold_days", 730),
         )
 
     @staticmethod
@@ -261,6 +265,7 @@ class KnowledgeBankIngestor:
         """Loads and validates the memory-specific configuration."""
         return MemoryConfig(
             collection_name=config.get("knowledge_bank", "knowledge-bank"),
+            summaries_collection_name=config.get("summaries_collection_name", "knowledge-bank-summaries"),
             embedding_model_name=config.get(
                 "embedding_model", "mixedbread-ai/mxbai-embed-large-v1"
             ),
@@ -281,15 +286,19 @@ class KnowledgeBankIngestor:
             raise RuntimeError("Embedding generation failed") from error
 
     async def _ensure_collection_exists(self) -> None:
-        """Creates the Qdrant collection and payload indexes if they don't exist."""
-        await self.qdrant_manager.ensure_collection_exists(
-            collection_name=self.memory_config.collection_name,
-            embedding_size=self.embedding_size,
-            payload_indexes=[
-                (PROCESSED_CONTENT_HASH_FIELD, "keyword"),
-                (RAW_FILE_HASH_FIELD, "keyword"),
-            ],
-        )
+        """Creates the Qdrant collections and payload indexes if they don't exist."""
+        for collection_name in [
+            self.memory_config.collection_name,
+            self.memory_config.summaries_collection_name,
+        ]:
+            await self.qdrant_manager.ensure_collection_exists(
+                collection_name=collection_name,
+                embedding_size=self.embedding_size,
+                payload_indexes=[
+                    (PROCESSED_CONTENT_HASH_FIELD, "keyword"),
+                    (RAW_FILE_HASH_FIELD, "keyword"),
+                ],
+            )
 
     async def _resolve_kb_vector_names(self) -> None:
         """Inspects the live Qdrant collection to determine its vector names."""
@@ -394,6 +403,30 @@ class KnowledgeBankIngestor:
                 f"Qdrant upsert status not OK for '{file_path}': {status}"
             )
 
+    async def _upsert_summary(self, summary: str, file_path: Path) -> None:
+        """Upserts a summary to the summaries collection."""
+        if not summary:
+            return
+
+        embedding = self._generate_embeddings([summary])[0]
+        point = models.PointStruct(
+            id=str(uuid.uuid4()),
+            vector={self.kb_dense_name: embedding} if self.kb_dense_name else embedding,
+            payload={
+                TEXT_CONTENT_FIELD: summary,
+                ORIGINAL_FILE_PATH_FIELD: str(file_path),
+                "ingestion_date": datetime.now(timezone.utc).isoformat(),
+                "modification_date": datetime.fromtimestamp(
+                    file_path.stat().st_mtime, tz=timezone.utc
+                ).isoformat(),
+            },
+        )
+        await self.qdrant_client.upsert(
+            collection_name=self.memory_config.summaries_collection_name,
+            points=[point],
+            wait=True,
+        )
+
     def _create_points_from_chunks(
         self,
         chunks: list[str],
@@ -414,6 +447,11 @@ class KnowledgeBankIngestor:
                 RAW_FILE_HASH_FIELD: raw_file_hash,
                 PROCESSED_CONTENT_HASH_FIELD: chunk_hash,
                 CHUNK_ID_FIELD: index,
+                "file_extension": file_path.suffix,
+                "ingestion_date": datetime.now(timezone.utc).isoformat(),
+                "modification_date": datetime.fromtimestamp(
+                    file_path.stat().st_mtime, tz=timezone.utc
+                ).isoformat(),
             }
 
             vector_payload: models.VectorStruct = (
@@ -464,6 +502,7 @@ class KnowledgeBankIngestor:
 
         llm_summary = await self._get_llm_summary_for_pdf(file_path)
         cleaned_summary = self.clean_text(llm_summary)
+        await self._upsert_summary(cleaned_summary, file_path)
         return f"{cleaned_summary}\n\n{cleaned_text}"
 
     async def _process_json_content(self, file_path: Path) -> str:
@@ -483,6 +522,7 @@ class KnowledgeBankIngestor:
                 cleaned_content, file_path
             )
             cleaned_summary = self.clean_text(llm_summary)
+            await self._upsert_summary(cleaned_summary, file_path)
             return f"{cleaned_summary}\n\n{cleaned_content}"
         except (OSError, json.JSONDecodeError) as error:
             logger.exception("Error processing JSON file %s.", file_path)
@@ -526,11 +566,24 @@ class KnowledgeBankIngestor:
         async with self.semaphore:
             logger.info("Processing file: %s", file_path)
 
+            # Check if the file is old
+            modification_time = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc)
+            age = datetime.now(timezone.utc) - modification_time
+            if age > timedelta(days=self.ingestion_config.old_file_threshold_days):
+                warning = (
+                    f"Warning: This document is from {modification_time.year} and may be outdated. "
+                    "Use for informational and research purposes only.\n\n"
+                )
+            else:
+                warning = ""
+
             # 1. Extract and clean content based on file type.
             processed_content = await self._extract_content_from_file(file_path)
             if not processed_content:
                 logger.warning("No content extracted from: %s", file_path)
                 return "skipped"
+
+            processed_content = warning + processed_content
 
             # 2. Hash content to check for duplicates.
             raw_file_hash = hashlib.sha256(
