@@ -4,22 +4,22 @@ The Agentic Tools Framework is a sophisticated system designed to automate compl
 
 ## Key Features
 
-- **Specialized Agents:** Includes dedicated agents for development (`developer`), documentation (`readme_writer`), code review (`approver`), architectural planning (`architect`), code commenting (`commentator`), knowledge retrieval (`expert`), and web content ingestion (`knowledge_base_builder`).
+- **Specialized Agents:** Includes dedicated agents for development (`developer`), documentation (`readme_writer`), code review (`linter_analyst`, `approver`), and knowledge management (`knowledge_base_builder`, `expert`).
 - **Time-Aware RAG System:** Utilizes Qdrant, FastEmbed, and Jina Reranker for high-performance vector storage and retrieval. Memory retrieval is segmented into time buckets (hourly, daily, weekly, etc.) and weighted to prioritize recent or highly relevant context.
-- **Knowledge Bank Ingestion Pipeline:** A dedicated script for processing, chunking, embedding, and deduplicating documents (PDF, JSON, Markdown) into the vector database, including LLM-enhanced summarization for complex file types via the Google Gemini API.
-- **Code Quality Enforcement:** The pre-write code validation feature has been removed from the base agent to ensure language-agnosticism. Code-modifying agents now write code directly, relying on external tools (like the `linter_analyst` agent) for post-write quality checks.
-- **Comprehensive Context:** Agents are automatically provided with project source code, Git diffs, repository metadata, design documents, and memory context during execution.
-- **Atomic File Operations:** Ensures data integrity when writing or modifying files using safe, atomic write operations.
+- **Knowledge Bank Ingestion Pipeline:** A dedicated asynchronous script for processing, chunking, embedding, and deduplicating documents (`.pdf`, `.json`, `.md`) into the vector database, including LLM-enhanced summarization via the Google Gemini API.
+- **Comprehensive Context:** Agents are automatically provided with structured context, including project source code, file tree, Git diffs, repository metadata, and design documents.
+- **Atomic File Operations:** Ensures data integrity when modifying source code or documentation using safe, atomic write operations.
+- **Configuration-Driven:** Highly configurable via `conf/agentic_tools.toml` for models, providers, memory weights, and file filtering.
 
 ## Prerequisites
 
-To run this project, you need the following installed:
+To run this project, you need the following installed and configured:
 
 - **Python 3.13+**
 - **Git** (must be accessible in your system's PATH)
 - **Qdrant Service:** A running instance of the Qdrant vector database (default URL: `http://localhost:6333`).
-- **LLM API Keys:** API keys for the configured model provider (currently Google Gemini), set as environment variables.
-- **Static Analysis Tools:** The validation service requires `black`, `ruff`, and `mypy` to be installed and accessible in your environment's PATH.
+- **LLM API Keys:** API keys for the configured model provider (currently Google Gemini), set as environment variables (e.g., `GEMINI_API_KEY_DEVELOPER`).
+- **Static Analysis Tools:** For the `linter_analyst` agent, ensure tools like `ruff`, `mypy`, `black`, and `bandit` are installed and accessible in your PATH.
 
 ## Installation
 
@@ -39,8 +39,10 @@ To run this project, you need the following installed:
 
 1. **Install Dependencies:**
 
+   Install the required libraries, including the Qdrant client, embedding models, and LLM SDKs:
+
    ```bash
-   pip install fastmcp qdrant-client fastembed google-genai mdformat tenacity pdfminer.six
+   pip install fastmcp qdrant-client fastembed google-genai mdformat tenacity pdfminer.six faker sentence-transformers httpx langchain-text-splitters beautifulsoup4
    ```
 
 1. **Start Qdrant Service:**
@@ -53,68 +55,56 @@ To run this project, you need the following installed:
 
 ## Usage
 
-The project uses a unified `main.py` entry point, supporting both FastMCP tool invocation and a manual CLI mode for running specific agents or workflows.
+The framework supports two modes: running as a FastMCP server (default) or executing a single agent task via the CLI.
 
-### 1. Running Agents (via FastMCP CLI)
+### 1. Running a Single Agent Task (CLI Mode)
 
-Agents are invoked using their registered tool names. Most agents accept a primary prompt (`--chat`) and an optional target file (`--filepath`).
+Use the `run-agent` command to execute a specific agent manually.
 
-| Tool Name | Agent Type | Required Arguments | Purpose |
-| :--- | :--- | :--- | :--- |
-| `readme_writer_tool` | `ReadmeWriterAgent` | `--chat` | Generates or updates the project's `README.md` based on project context. |
-| `developer_tool` | `DeveloperAgent` | `--chat`, `--filepath` | Writes or refactors code in a specific file, with validation. |
-| `commentator_tool` | `CommentatorAgent` | `--chat`, `--filepath` | Adds documentation, docstrings, and organizes imports in a source file. |
-| `approver_tool` | `DefaultAgent` | `--chat` | Audits recent Git changes (`git diff`) against design documents. |
-| `knowledge_base_builder_tool` | `KnowledgeBaseAgent` | `--chat` (URLs), `--filepath` | Fetches content from a comma-separated list of URLs and saves the concatenated result to a specified file. |
+| Agent Name | Purpose | Required Arguments |
+| :--- | :--- | :--- |
+| `readme_writer` | Generates or updates `README.md`. | `--chat` (prompt) |
+| `developer` | Writes or refactors code. | `--chat` (task), `--filepath` (target file) |
+| `linter_analyst` | Runs linters and analyzes the report. | `--chat` (optional focus) |
+| `knowledge_base_builder` | Fetches content from URLs and saves it. | `--chat` (comma-separated URLs), `--filepath` (output file) |
+| `ingest_knowledge_bank` | Processes documents into the vector database. | (No arguments needed) |
 
 **Example: Building a Knowledge Base File from URLs**
 
-This agent fetches content from the specified URLs and writes the concatenated text to the output file, making it available for subsequent ingestion or direct use.
-
 ```bash
-python main.py knowledge_base_builder_tool     --chat "https://docs.qdrant.tech/cloud/quickstart/, https://fastembed.ai/docs/usage/"     --filepath knowledge_bank/qdrant_and_fastembed_docs.txt
+python main.py run-agent knowledge_base_builder     --chat "https://docs.qdrant.tech/cloud/quickstart/, https://fastembed.ai/docs/usage/"     --filepath knowledge_bank/qdrant_docs.txt
 ```
 
-**Example: Generating/Updating the README**
+**Example: Running the Document Ingestion Pipeline**
+
+This processes files in the configured `source_directory` (default: `../bank`) into Qdrant.
 
 ```bash
-python main.py readme_writer_tool --chat "Generate a concise and practical README.md for the project, focusing on the Qdrant RAG system and agent orchestration."
+python main.py run-agent ingest_knowledge_bank
 ```
-
-### 2. Ingesting Knowledge Bank Documents
-
-The ingestion pipeline processes local documents into the vector database for the `expert` agent to use.
-
-1. Place documents (`.pdf`, `.md`, `.json`) into the configured source directory (default: `knowledge_bank/`).
-
-1. Run the ingestion task:
-
-   ```bash
-   python main.py run-agent ingest_knowledge_bank
-   ```
 
 ## Configuration
 
-The project is configured using the TOML file located at `conf/agentic_tools.toml`.
+The entire project is configured via the TOML file located at `conf/agentic_tools.toml`.
 
 ### Environment Variables
 
-You must set the API key environment variables specified in the agent configurations.
+You must export the API keys referenced in the agent configurations:
 
 ```bash
-export GEMINI_API_KEY_DEVELOPER="YOUR_API_KEY_HERE"
-export GEMINI_API_KEY_README_WRITER="YOUR_API_KEY_HERE"
-export GEMINI_API_KEY_KNOWLEDGE_INGESTION="YOUR_API_KEY_HERE"
+export GEMINI_API_KEY_DEVELOPER="your_developer_key"
+export GEMINI_API_KEY_README_WRITER="your_readme_key"
+export GEMINI_API_KEY_KNOWLEDGE_INGESTION="your_ingestion_key"
 # ... and others for architect, approver, expert, commentator
 ```
 
 ### `conf/agentic_tools.toml` Key Sections
 
-| Section | Key Parameters | Default Values/Details |
+| Section | Purpose | Key Parameters |
 | :--- | :--- | :--- |
-| `[agentic-tools]` | `source`, `design_docs`, `include_extensions` | Defines directories to scan (`src`), design document paths, and file filters (`.py`, `.md`, `.toml`). |
-| `[agentic-tools.memory]` | `qdrant_url`, `embedding_model`, `device` | Qdrant connection (`http://localhost:6333`), embedding model (`mixedbread-ai/mxbai-embed-large-v1`), and processing device (`cuda`/`cpu`). |
-| | `*retrieval_weight` | Weights (0.0 to 1.0) defining the proportion of memories retrieved from time buckets. Default weights are set to prioritize the knowledge bank (`knowledge_bank_retrieval_weight = 1.0`). |
-| `[knowledge_bank_ingestion]` | `source_directory`, `chunk_size`, `concurrency_limit` | Source directory (`../knowledge_bank`), chunking parameters (1024/200), and max concurrent file processing (5). This section also defines the LLM model and prompt used for PDF/JSON summarization. |
-| `[<agent_name>]` | `model_provider`, `model_name`, `api_key` | Agent-specific LLM settings (e.g., `google`, `gemini-2.5-pro`), and the environment variable name for the API key. |
-| `[agentic-tools.expert.memory]` | `knowledge_bank_retrieval_weight` | Overrides global memory weights for the `expert` agent, typically set to `1.0` to rely solely on the knowledge bank for answers. |
+| `[agentic-tools]` | Global project settings and file filtering. | `source = ["src"]`, `design_docs`, `include_extensions` |
+| `[agentic-tools.memory]` | Qdrant connection and embedding configuration. | `qdrant_url`, `embedding_model`, `device`, `total_memories_to_retrieve` |
+| | **Retrieval Weights** | `knowledge_bank_retrieval_weight = 1.0` (default to prioritize KB over time-based memory). |
+| `[agentic-tools.linters]` | Defines the shell commands for static analysis tools. | `ruff = ["ruff", "check", "src/"]`, `mypy = ["mypy", "."]` |
+| `[knowledge_bank_ingestion]` | Settings for the document ingestion pipeline. | `source_directory = "../bank"`, `chunk_size`, `concurrency_limit`, `google_api_key_name` |
+| `[agentic-tools.<agent_name>]` | Agent-specific LLM settings. | `model_provider = "google"`, `model_name`, `api_key`, `prompt` |
