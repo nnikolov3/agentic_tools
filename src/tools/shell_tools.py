@@ -1,10 +1,13 @@
-
-# src/tools/shell_tools.py
 """
-This module provides a collection of tools for interacting with the shell,
-file system, version control (Git), and web resources. It is designed to be
-used in an asynchronous environment, providing utilities for an AI agent
-to inspect and manipulate a software project.
+Module: src.tools.shell_tools
+
+Provides the ShellTools class, a comprehensive utility wrapper for asynchronous
+interaction with the local operating system, file system, and version control (Git).
+
+This module serves as the primary interface for AI agents to gather project context
+(e.g., file contents, directory structure, linter reports, Git history) and perform
+safe, atomic file modifications within the project environment. It centralizes
+configuration-driven access to external commands and file operations.
 """
 
 import asyncio
@@ -17,12 +20,11 @@ from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any
+from typing import Any, List
 
 import httpx
 from bs4 import BeautifulSoup
 
-# Configure logging for the module
 logger: logging.Logger = logging.getLogger(__name__)
 
 # --- Constants for Default Configurations ---
@@ -84,7 +86,9 @@ class ShellTools:
 
         # --- Command and Behavior Configuration ---
         self.encoding: str = self.config.get("encoding", DEFAULT_ENCODING)
-        self.commit_number: int = self.config.get("commit_number", DEFAULT_COMMIT_NUMBER)
+        self.commit_number: int = self.config.get(
+            "commit_number", DEFAULT_COMMIT_NUMBER
+        )
         self.tree_depth: int = self.config.get("tree_depth", DEFAULT_TREE_DEPTH)
         self.git_diff_command: list[str] = self.config.get(
             "git_diff_command", DEFAULT_GIT_DIFF_COMMAND
@@ -166,12 +170,61 @@ class ShellTools:
         return any(part in self.exclude_directories for part in file_path.parts)
 
     def _should_exclude_file(self, file_name: str) -> bool:
-        """Checks if a file name should be excluded based on configured patterns."""
+        """
+        Checks if a file name should be excluded based on configured patterns.
+
+        Exclusion criteria include explicit file names defined in configuration,
+        as well as common system/internal files (dotfiles starting with '.',
+        or Python internal files starting with '__').
+        """
         return (
             file_name in self.exclude_files
             or file_name.startswith(".")
             or file_name.startswith("__")
         )
+
+    async def get_files_by_extensions(
+        self,
+        directory_path: Path, supported_extensions: list[str]
+    ) -> List[Path]:
+        """
+        Retrieves a list of files within a directory that match the configured
+        extensions and exclusion rules.
+
+        This function wraps the synchronous file filtering logic in an asynchronous
+        context, ensuring non-blocking I/O for the main application loop.
+
+        Args:
+            directory_path: The starting directory path to recursively search.
+            supported_extensions: A list of file extensions to filter by.
+
+        Returns:
+            A list of Path objects for all matching files. Returns an empty list
+            if the directory is invalid or an error occurs.
+        """
+        self.include_extensions = supported_extensions
+        if not directory_path.is_dir():
+            logger.warning(
+                f"Directory does not exist or is not a directory: {directory_path}",
+            )
+            return []
+
+        try:
+            matching_files = await asyncio.to_thread(
+                list, self._get_filtered_files(directory_path)
+            )
+            logger.info(
+                f"Found {len(matching_files)} matching files in {directory_path}",
+            )
+            return matching_files
+
+        except OSError as error:
+            logger.error(
+                f"Error searching directory {directory_path}: {error}",
+                exc_info=True,
+            )
+
+            return []
 
     def _matches_extension(self, filename: str) -> bool:
         """Checks if a filename matches any of the configured included extensions."""
@@ -193,8 +246,11 @@ class ShellTools:
             ):
                 yield item
 
-    def _sync_read_file_content(self, file_path: Path) -> str:
-        """Synchronously reads and returns the content of a file."""
+    def _read_file_content(self, file_path: Path) -> str:
+        """
+        Synchronously reads and returns the content of a file, handling common
+        file system errors and decoding issues.
+        """
         try:
             with file_path.open(encoding=self.encoding, errors="ignore") as file_handle:
                 return file_handle.read()
@@ -218,12 +274,26 @@ class ShellTools:
         Returns:
             The content of the file as a string, or an empty string on error.
         """
-        return await asyncio.to_thread(self._sync_read_file_content, file_path)
+        return await asyncio.to_thread(self._read_file_content, file_path)
 
-    def _sync_write_file(
+    def _write_file(
         self, filepath: Path, payload: str, backup: bool, atomic: bool
     ) -> bool:
-        """Synchronously writes a payload to a file."""
+        """
+        Synchronously writes a payload to a file, handling directory creation,
+        optional backups, and atomic operations.
+
+        This internal method performs the actual blocking file I/O.
+
+        Args:
+            filepath: The relative path to the file to write.
+            payload: The string content to write.
+            backup: If True, creates a backup of the existing file before writing.
+            atomic: If True, uses a temporary file and move operation for atomicity.
+
+        Returns:
+            True if the write was successful, False otherwise.
+        """
         try:
             full_path = self.current_working_directory / filepath
             full_path.parent.mkdir(parents=True, exist_ok=True)
@@ -244,7 +314,9 @@ class ShellTools:
             return True
 
         except (PermissionError, OSError) as file_error:
-            logger.error("File system error writing to %s: %s", filepath.name, file_error)
+            logger.error(
+                "File system error writing to %s: %s", filepath.name, file_error
+            )
             return False
         except Exception as exception:
             logger.error(
@@ -274,8 +346,9 @@ class ShellTools:
         Returns:
             True if the write was successful, False otherwise.
         """
+
         return await asyncio.to_thread(
-            self._sync_write_file, filepath, payload, backup, atomic
+            self._write_file, filepath, payload, backup, atomic
         )
 
     def _atomic_write(self, target_path: Path, payload: str) -> None:
@@ -305,6 +378,9 @@ class ShellTools:
                 temp_file_path = Path(temp_file.name)
                 temp_file.write(payload)
                 temp_file.flush()
+                # On non-Windows systems, explicitly call 'sync' to ensure the temporary
+                # file buffer is flushed to disk before the atomic move operation.
+                # This increases robustness against system crashes during the write process.
                 if platform.system() != "Windows" and self.sync_executable:
                     try:
                         subprocess.run(
@@ -336,6 +412,12 @@ class ShellTools:
     async def get_design_docs_content(self) -> str:
         """
         Asynchronously reads and concatenates the content of all configured design documents.
+
+        It iterates through the paths defined in `self.design_docs`, reads each file
+        concurrently, and joins the contents with double newlines.
+
+        Returns:
+            A single string containing the combined content of all found design documents.
         """
         tasks = []
         for doc_path_str in self.design_docs:
@@ -349,6 +431,7 @@ class ShellTools:
 
         contents = await asyncio.gather(*tasks)
         return "\n\n".join(filter(None, contents))
+
     @staticmethod
     async def fetch_urls_content(urls: list[str]) -> str:
         """
@@ -384,7 +467,16 @@ class ShellTools:
 
     async def run_project_linters(self) -> str:
         """
-        Runs all configured linters against the project and aggregates their output.
+        Runs all configured linters (defined in the 'linters' configuration section)
+        against the project concurrently and aggregates their output into a single report.
+
+        This method handles cases where linters are missing or fail to execute.
+        It uses `_run_command` with `check=False` because linters typically use
+        non-zero exit codes to signal warnings/errors, not execution failure.
+
+        Returns:
+            A formatted string containing the combined STDOUT/STDERR output of all
+            executed linters, or a message indicating no issues were found.
         """
         linter_configs: dict[str, list[str]] = self.config.get("linters", {})
         if not linter_configs:
@@ -397,7 +489,9 @@ class ShellTools:
             if not shutil.which(executable):
                 error_msg = f"Linter '{tool_name}' not found. Please ensure '{executable}' is installed."
                 logger.error(error_msg)
-                report_parts.append(f"--- {tool_name.upper()} FAILED ---\n{error_msg}\n")
+                report_parts.append(
+                    f"--- {tool_name.upper()} FAILED ---\n{error_msg}\n"
+                )
                 continue
 
             logger.info("Running linter: %s", " ".join(command))
@@ -419,12 +513,82 @@ class ShellTools:
 
         return "\n".join(report_parts)
 
+    async def process_directory(self, directory_path: Path) -> str:
+        """
+        Recursively scans a directory, filters files based on configuration,
+        reads their content, and concatenates them into a single string.
+
+        Each file's content is prefixed with a header indicating its relative path,
+        providing clear context for agents consuming this information.
+
+        Args:
+            directory_path: The root directory to start scanning.
+
+        Returns:
+            A single string containing the concatenated, contextualized content
+            of all matching files.
+
+        Raises:
+            RuntimeError: If a critical OSError occurs during directory traversal.
+        """
+
+        if not directory_path.is_dir():
+            logger.warning(
+                "Directory does not exist or is not a directory: %s",
+                directory_path,
+            )
+
+            return ""
+
+        try:
+            filtered_files = await asyncio.to_thread(
+                list, self._get_filtered_files(directory_path)
+            )
+
+            tasks = [self.read_file_content(file_path) for file_path in filtered_files]
+            file_contents = await asyncio.gather(*tasks)
+
+            concatenated_content_parts: List[str] = []
+            for file_path, file_content in zip(filtered_files, file_contents):
+                if not file_content:
+                    continue
+
+                relative_path = file_path.relative_to(directory_path)
+                header = f"\n\n--- File: {relative_path} ---\n\n"
+                concatenated_content_parts.append(header + file_content)
+
+            if not concatenated_content_parts:
+                logger.info("No matching files found in directory: %s", directory_path)
+
+            logger.info(
+                "Concatenated %d files from %s",
+                len(concatenated_content_parts),
+                directory_path,
+            )
+            return "".join(concatenated_content_parts).strip()
+
+        except OSError as error:
+            logger.error(
+                f"Error processing directory {directory_path}: {error}",
+                exc_info=True,
+            )
+
+            raise RuntimeError(
+                f"Failed to process directory {directory_path}",
+            ) from error
+
     async def get_project_tree(self) -> str:
         """
-        Generates a file and directory tree representation of the project.
+        Generates a file and directory tree representation of the project structure.
 
-        Uses the 'tree' command if available for efficiency, otherwise falls back
-        to a Python implementation.
+        It first attempts to use the external 'tree' command for efficiency. If
+        'tree' is unavailable or fails, it falls back to a recursive Python
+        implementation (`_build_tree_lines`) executed in a separate thread to
+        avoid blocking the event loop. The depth of the tree is controlled by
+        `self.tree_depth`.
+
+        Returns:
+            A string representing the directory tree structure.
         """
         try:
             stdout, _, _ = await self._run_command(["tree", "-L", str(self.tree_depth)])
@@ -455,7 +619,9 @@ class ShellTools:
 
                     is_last = i == len(items) - 1
                     prefix = "    " * level
-                    connector = "└── " if is_last else "├── "
+                    connector = (
+                        "\u2514\u2500\u2500 " if is_last else "\u251c\u2500\u2500 "
+                    )
                     lines.append(f"{prefix}{connector}{item.name}")
 
                     if item.is_dir():
@@ -469,7 +635,14 @@ class ShellTools:
 
     async def get_detected_languages(self) -> str:
         """
-        Detects the primary programming languages by analyzing file extensions.
+        Detects the primary programming languages used in the project by counting
+        the occurrences of file extensions defined in the configuration.
+
+        The file scanning is performed synchronously in a separate thread.
+
+        Returns:
+            A formatted string listing the top 5 most common file extensions
+            and their counts.
         """
 
         def _scan_files() -> Counter[str]:
@@ -532,13 +705,19 @@ class ShellTools:
 
     async def get_git_context_for_patch(self) -> str:
         """
-        Asynchronously gets the git diff and recent log history.
+        Asynchronously executes configured Git commands to retrieve the current
+        patch (diff) and recent commit history (log).
+
+        The diff command is defined by `self.git_diff_command` and the log
+        history depth is controlled by `self.commit_number`. Both commands run
+        concurrently.
 
         Returns:
-            A string containing the git diff and log.
+            A single string containing the concatenated output of the git diff
+            followed by the git log.
 
         Raises:
-            RuntimeError: If the git commands fail.
+            RuntimeError: If either of the underlying git commands fails to execute.
         """
         diff_cmd = [self.git_executable, *self.git_diff_command]
         log_cmd = [

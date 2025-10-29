@@ -15,7 +15,9 @@ MOCK_CONFIG: dict[str, Any] = {
 def mock_agent_instance(tmp_path):
     """Mocks a KnowledgeBaseAgent instance with mocked dependencies."""
     output_file = tmp_path / "output.txt"
-    with patch("src.agents.agent.ShellTools", new_callable=MagicMock) as mock_shell_tools_class:
+    with patch(
+        "src.agents.agent.ShellTools", new_callable=MagicMock
+    ) as mock_shell_tools_class:
 
         # Configure the mocked shell tools
         mock_shell_tools = mock_shell_tools_class.return_value

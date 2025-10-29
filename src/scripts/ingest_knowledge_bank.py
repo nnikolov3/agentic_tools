@@ -11,7 +11,7 @@ The core component is the `KnowledgeBankIngestor`, which orchestrates the
 entire pipeline. It supports various file formats like PDF, JSON, and Markdown,
 employing specific content extraction strategies for each. For PDFs and JSON,
 it uses an LLM to generate a summary, which is prepended to the extracted text
-to provide richer context. The process is asynchronous and uses a semaphore to
+to provide richer context. The process is asynchronous and uses semaphore to
 limit concurrent file processing, ensuring controlled resource usage.
 """
 
@@ -25,7 +25,7 @@ import uuid
 from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Final, Optional
 
@@ -81,7 +81,7 @@ class IngestionConfig:
     """Configuration settings for the ingestion process."""
 
     source_directory: Path
-    supported_extensions: tuple[str, ...]
+    supported_extensions: list[str]
     prompt: str
     model: str
     api_key_name: str
@@ -97,13 +97,14 @@ class MemoryConfig:
     """Configuration settings for the memory/vector database."""
 
     collection_name: str
-    summaries_collection_name: str
     embedding_model_name: str
     device: str
     qdrant_config: dict[str, Any] = field(default_factory=dict)
 
 
-def create_text_chunks(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
+def create_text_chunks(
+    text: str, chunk_size: int, chunk_overlap: int
+) -> list[str]:
     """Splits a text string into overlapping chunks using a simple sliding window.
 
     This function provides a basic, non-semantic chunking mechanism suitable for
@@ -151,7 +152,6 @@ class KnowledgeBankIngestor:
 
         Raises:
             ValueError: If essential configuration sections are missing.
-            RuntimeError: If the embedding model fails to initialize.
         """
         ingestion_cfg = configuration.get("knowledge_bank_ingestion")
         memory_cfg = configuration.get("memory")
@@ -167,7 +167,8 @@ class KnowledgeBankIngestor:
             model_name=self.memory_config.embedding_model_name,
             device=self.memory_config.device,
         )
-        self.embedding_size = self._get_embedding_size()
+        # Lazily initialize embedding_size to avoid blocking call in constructor.
+        self.embedding_size: Optional[int] = None
 
         self.qdrant_manager = QdrantClientManager(self.memory_config.qdrant_config)
         self.qdrant_client = self.qdrant_manager.get_client()
@@ -177,7 +178,7 @@ class KnowledgeBankIngestor:
         self.semaphore = asyncio.Semaphore(self.ingestion_config.concurrency_limit)
 
         self._content_extractors: dict[str, ContentExtractor] = {
-            ".pdf": self._extract_and_summarize_pdf,
+            ".pdf":  self._extract_and_summarize_pdf,
             ".json": self._process_json_content,
             ".md": self._read_markdown_content,
         }
@@ -185,6 +186,7 @@ class KnowledgeBankIngestor:
         # These will be resolved at runtime by inspecting the Qdrant collection.
         self.kb_dense_name: Optional[str] = None
         self.kb_sparse_name: Optional[str] = None
+
     @staticmethod
     def clean_text(text: str) -> str:
         """Cleans text by removing ligatures and non-printable characters."""
@@ -198,6 +200,35 @@ class KnowledgeBankIngestor:
         text = RE_MULTI_WHITESPACE.sub(" ", text).strip()
         return text
 
+    async def _initialize_embedder(self) -> None:
+        """Initializes the embedding model and determines its vector dimension.
+
+        This method is called asynchronously to avoid blocking the event loop
+        during the potentially slow model loading process.
+
+        Raises:
+            RuntimeError: If the embedding model fails to initialize.
+        """
+        if self.embedding_size is not None:
+            return
+
+        logger.info("Initializing embedding model and determining vector size...")
+
+        def _get_size() -> int:
+            """Synchronous helper to perform the blocking embedding call."""
+            try:
+                # This is a blocking, potentially slow operation (downloads model).
+                embedding_generator = self.embedder.embed(documents=["test"])
+                vector = next(iter(embedding_generator))
+                size = len(vector)
+                logger.info("Embedder dimension successfully determined: %d", size)
+                return size
+            except (RuntimeError, ValueError, StopIteration) as error:
+                logger.exception("Failed to initialize embedding model.")
+                raise RuntimeError("Embedding generation failed") from error
+
+        self.embedding_size = await asyncio.to_thread(_get_size)
+
     async def run_ingestion(self) -> Counter[str]:
         """Executes the end-to-end ingestion workflow.
 
@@ -210,13 +241,15 @@ class KnowledgeBankIngestor:
         logger.info(
             "Starting ingestion from: '%s'", self.ingestion_config.source_directory
         )
+        await self._initialize_embedder()
         await self._ensure_collection_exists()
         await self._resolve_kb_vector_names()
 
-        files = self.shell_tools.get_files_by_extensions(
+        files = await self.shell_tools.get_files_by_extensions(
             self.ingestion_config.source_directory,
-            list(self.ingestion_config.supported_extensions),
+            self.ingestion_config.supported_extensions
         )
+        logger.info("Found %d files to process.", len(files))
         if not files:
             logger.warning("No files found to process. Ingestion finished.")
             return Counter()
@@ -245,18 +278,17 @@ class KnowledgeBankIngestor:
         """Loads and validates the ingestion-specific configuration."""
         return IngestionConfig(
             source_directory=Path(config.get("source_directory", "knowledge_bank")),
-            supported_extensions=tuple(
-                config.get("supported_extensions", [".json", ".md", ".pdf"])
-            ),
+            supported_extensions=config.get("supported_extensions", [".json", ".md", ".pdf"])
+            ,
             prompt=config.get("prompt", ""),
             model=config.get("model", "gemini-flash-latest"),
             api_key_name=config.get(
                 "google_api_key_name", "GEMINI_API_KEY_KNOWLEDGE_INGESTION"
             ),
             chunk_size=config.get("chunk_size", 1024),
-            chunk_overlap=config.get("chunk_overlap", 200),
+            chunk_overlap=config.get("chunk_overlap", 256),
             qdrant_batch_size=config.get("qdrant_batch_size", 128),
-            concurrency_limit=config.get("concurrency_limit", 5),
+            concurrency_limit=config.get("concurrency_limit", 2),
             old_file_threshold_days=config.get("old_file_threshold_days", 730),
         )
 
@@ -265,7 +297,6 @@ class KnowledgeBankIngestor:
         """Loads and validates the memory-specific configuration."""
         return MemoryConfig(
             collection_name=config.get("knowledge_bank", "knowledge-bank"),
-            summaries_collection_name=config.get("summaries_collection_name", "knowledge-bank-summaries"),
             embedding_model_name=config.get(
                 "embedding_model", "mixedbread-ai/mxbai-embed-large-v1"
             ),
@@ -273,23 +304,14 @@ class KnowledgeBankIngestor:
             qdrant_config=config,
         )
 
-    def _get_embedding_size(self) -> int:
-        """Determines the embedding vector dimension by running a test embed."""
-        try:
-            embedding_generator = self.embedder.embed(documents=["test"])
-            vector = next(iter(embedding_generator))
-            size = len(vector)
-            logger.info("Embedder dimension successfully determined: %d", size)
-            return size
-        except (RuntimeError, ValueError, StopIteration) as error:
-            logger.exception("Failed to initialize embedding model.")
-            raise RuntimeError("Embedding generation failed") from error
-
     async def _ensure_collection_exists(self) -> None:
         """Creates the Qdrant collections and payload indexes if they don't exist."""
+        if self.embedding_size is None:
+            raise RuntimeError(
+                "Embedding size must be initialized before creating collections."
+            )
         for collection_name in [
             self.memory_config.collection_name,
-            self.memory_config.summaries_collection_name,
         ]:
             await self.qdrant_manager.ensure_collection_exists(
                 collection_name=collection_name,
@@ -343,7 +365,7 @@ class KnowledgeBankIngestor:
     async def _exists_by_hash(self, raw_file_hash: str) -> bool:
         """Checks if a document with the given hash already exists in Qdrant."""
         try:
-            response = await self.qdrant_client.scroll(
+            response, _ = await self.qdrant_client.scroll(
                 collection_name=self.memory_config.collection_name,
                 scroll_filter=models.Filter(
                     must=[
@@ -357,9 +379,8 @@ class KnowledgeBankIngestor:
                 with_payload=False,
                 with_vectors=False,
             )
-            points = response[0]
-            logger.debug("Exists check via scroll result: %s", points)
-            return bool(points)
+            logger.debug("Exists check via scroll result: %s", response)
+            return bool(response)
         except (UnexpectedResponse, httpx.RequestError) as error:
             logger.warning(
                 "Exists check via query failed for hash '%s'. Assuming not present. Error: %s",
@@ -368,14 +389,21 @@ class KnowledgeBankIngestor:
             )
             return False
 
-    def _generate_embeddings(self, chunks: list[str]) -> list[list[float]]:
+    async def _generate_embeddings(self, chunks: list[str]) -> list[list[float]]:
         """Generates dense vector embeddings for a list of text chunks."""
-        try:
-            embedding_generator = self.embedder.embed(documents=chunks)
-            return [embedding.tolist() for embedding in embedding_generator]
-        except (RuntimeError, ValueError) as error:
-            logger.exception("Embedding generation failed.")
-            raise RuntimeError("Embedding generation failed") from error
+        if not chunks:
+            return []
+
+        def _embed() -> list[list[float]]:
+            """Synchronous helper to perform the blocking embedding call."""
+            try:
+                embedding_generator = self.embedder.embed(documents=chunks)
+                return [embedding.tolist() for embedding in embedding_generator]
+            except (RuntimeError, ValueError) as error:
+                logger.exception("Embedding generation failed.")
+                raise RuntimeError("Embedding generation failed") from error
+
+        return await asyncio.to_thread(_embed)
 
     @retry(
         reraise=True,
@@ -408,7 +436,12 @@ class KnowledgeBankIngestor:
         if not summary:
             return
 
-        embedding = self._generate_embeddings([summary])[0]
+        embeddings = await self._generate_embeddings([summary])
+        if not embeddings:
+            logger.warning("Failed to generate embedding for summary of %s", file_path)
+            return
+        embedding = embeddings[0]
+
         point = models.PointStruct(
             id=str(uuid.uuid4()),
             vector={self.kb_dense_name: embedding} if self.kb_dense_name else embedding,
@@ -422,7 +455,7 @@ class KnowledgeBankIngestor:
             },
         )
         await self.qdrant_client.upsert(
-            collection_name=self.memory_config.summaries_collection_name,
+            collection_name=self.memory_config.collection_name,
             points=[point],
             wait=True,
         )
@@ -497,32 +530,39 @@ class KnowledgeBankIngestor:
     async def _extract_and_summarize_pdf(self, file_path: Path) -> str:
         """Extracts text from a PDF and prepends an LLM-generated summary."""
         logger.info("Extracting text from PDF: %s", file_path)
-        extracted_text = extract_text(file_path)
-        cleaned_text = self.clean_text(extracted_text)
+        extracted_text = await asyncio.to_thread(extract_text, file_path)
+        cleaned_text = self.clean_text(str(extracted_text))
 
         llm_summary = await self._get_llm_summary_for_pdf(file_path)
-        cleaned_summary = self.clean_text(llm_summary)
+        cleaned_summary = self.clean_text(str(llm_summary))
         await self._upsert_summary(cleaned_summary, file_path)
         return f"{cleaned_summary}\n\n{cleaned_text}"
 
     async def _process_json_content(self, file_path: Path) -> str:
         """Reads JSON, flattens it, and prepends an LLM-generated summary."""
+
+        def _read_json_sync(path: Path) -> Any:
+            """Synchronous helper to read and parse a JSON file."""
+            with path.open(encoding="utf-8") as file_handle:
+                return json.load(file_handle)
+
         try:
-            with file_path.open(encoding="utf-8") as file_handle:
-                data = json.load(file_handle)
+            data = await asyncio.to_thread(_read_json_sync, file_path)
 
             content = (
                 ". ".join(f"{key}: {value}" for key, value in data.items())
                 if isinstance(data, dict)
                 else str(data)
             )
-            cleaned_content = self.clean_text(content)
+            cleaned_content = self.clean_text(str(content))
 
             llm_summary = await self._get_llm_summary_for_text(
                 cleaned_content, file_path
             )
-            cleaned_summary = self.clean_text(llm_summary)
+            cleaned_summary = self.clean_text(str(llm_summary))
+
             await self._upsert_summary(cleaned_summary, file_path)
+
             return f"{cleaned_summary}\n\n{cleaned_content}"
         except (OSError, json.JSONDecodeError) as error:
             logger.exception("Error processing JSON file %s.", file_path)
@@ -530,10 +570,10 @@ class KnowledgeBankIngestor:
 
     async def _read_markdown_content(self, file_path: Path) -> str:
         """Reads and cleans the raw content of a Markdown file."""
-        raw_content = self.shell_tools.read_file_content(file_path)
-        return self.clean_text(raw_content)
+        raw_content = await self.shell_tools.read_file_content(file_path)
+        return self.clean_text(str(raw_content))
 
-    def _chunk_document(self, content: str, file_extension: str) -> list[str]:
+    async def _chunk_document(self, content: str, file_extension: str) -> list[str]:
         """Selects the appropriate strategy to chunk document content."""
         if file_extension == ".md":
             headers_to_split_on = [
@@ -545,14 +585,16 @@ class KnowledgeBankIngestor:
             md_splitter = MarkdownHeaderTextSplitter(
                 headers_to_split_on=headers_to_split_on, strip_headers=False
             )
-            header_docs = md_splitter.split_text(content)
+            header_docs = await asyncio.to_thread(md_splitter.split_text, content)
 
             recursive_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=self.ingestion_config.chunk_size,
                 chunk_overlap=self.ingestion_config.chunk_overlap,
                 separators=["\n\n", "\n", " ", ""],
             )
-            sized_docs = recursive_splitter.split_documents(header_docs)
+            sized_docs = await asyncio.to_thread(
+                recursive_splitter.split_documents, header_docs
+            )
             return [doc.page_content for doc in sized_docs]
 
         return create_text_chunks(
@@ -567,7 +609,10 @@ class KnowledgeBankIngestor:
             logger.info("Processing file: %s", file_path)
 
             # Check if the file is old
-            modification_time = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc)
+            file_stat = await asyncio.to_thread(file_path.stat)
+            modification_time = datetime.fromtimestamp(
+                file_stat.st_mtime, tz=timezone.utc
+            )
             age = datetime.now(timezone.utc) - modification_time
             if age > timedelta(days=self.ingestion_config.old_file_threshold_days):
                 warning = (
@@ -594,14 +639,16 @@ class KnowledgeBankIngestor:
                 return "skipped"
 
             # 3. Chunk the content using the appropriate strategy.
-            chunks = self._chunk_document(processed_content, file_path.suffix.lower())
+            chunks = await self._chunk_document(
+                processed_content, file_path.suffix.lower()
+            )
             logger.info("Generated %d chunks for %s.", len(chunks), file_path)
             if not chunks:
                 logger.warning("No chunks generated for: %s", file_path)
                 return "skipped"
 
             # 4. Generate embeddings for the chunks.
-            embeddings = self._generate_embeddings(chunks)
+            embeddings = await self._generate_embeddings(chunks)
 
             # 5. Create Qdrant points from chunks and embeddings.
             points = self._create_points_from_chunks(

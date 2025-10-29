@@ -194,28 +194,28 @@ async def google_documents_api(model: str, api_key: str, prompt: str, file: str)
 
         # Resolve the file path to an absolute path for clarity and robustness.
         file_path = pathlib.Path(file).resolve()
-        if file_path:
-            response = await google_client.models.generate_content(
-                model = model,
-                contents = [
-                    types.Part.from_bytes(
-                        data = file_path.read_bytes(),
-                        mime_type = 'application/pdf',
-                        ),
-                    prompt
-                    ])
-        else:
-            raise ValueError("File path is None")
+        # To avoid blocking the event loop, the synchronous `generate_content` call
+        # is executed in a separate thread pool using `asyncio.to_thread`.
+        response = await asyncio.to_thread(
+            google_client.models.generate_content,
+            model=model,
+            contents=[
+                types.Part.from_bytes(
+                    data=file_path.read_bytes(),
+                    mime_type="application/pdf",
+                ),
+                prompt,
+            ],
+        )
 
         if response.text is None:
             raise ValueError("Response text is None")
 
         return response.text
 
+
 async def google_text(model: str, api_key: str, prompt: str, text: str) -> str:
-    api_key: str | None = (
-        os.getenv(api_key) if api_key else None
-    )
+    api_key: str | None = os.getenv(api_key) if api_key else None
 
     google_client = Client(api_key=api_key)
 

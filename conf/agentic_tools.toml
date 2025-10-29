@@ -51,6 +51,7 @@ tree_depth = 3
 [agentic-tools.memory]
 enabled = true
 collection_name = "agent_memory"
+knowledge_bank = "knowledge-bank"
 embedding_model = "mixedbread-ai/mxbai-embed-large-v1"
 embedding_size = 1024
 qdrant_url = "http://localhost:6333"
@@ -141,7 +142,7 @@ chunk_overlap = 256
 # The number of points (chunks) to upsert to Qdrant in a single batch.
 qdrant_batch_size = 128
 # The maximum number of files to process concurrently.
-concurrency_limit = 5
+concurrency_limit = 2
 
 # =============================================================================
 # AGENT CONFIGURATIONS
@@ -190,19 +191,21 @@ knowledge_bank_retrieval_weight = 1.0
 [agentic-tools.developer]
 name = "developer"
 description = "An expert software engineer that can write, debug, and fix code based on instructions and error messages."
-model_name = "gemini-pro-latest"
+model_name = "gemini-2.5-pro"
 model_provider = "google"
 api_key = "GEMINI_API_KEY_DEVELOPER"
-temperature = 0.0
-skills = ["expert python developer", "debugging and code analysis", "adherence to mypy, ruff, and black standards", "problem decomposition", "meticulous attention to detail"]
+temperature = 0.2
+skills = ["expert python and go developer", "debugging and code analysis", "adherence to mypy, ruff, and black standards", "problem decomposition", "meticulous attention to detail"]
 prompt = '''
 You are the 'developer', an expert software engineer.
 You are provided with a single source code file to refactor, optimize, and enhance.
 Your goal is to produce a complete, working file that strictly adheres to the provided Design Principles and Python Coding Standards.
 ALWAYS USE THE LATEST LIBRARY SPECIFICATIONS.
 '''
-
-
+hourly_retrieval_weight = 0.4
+daily_retrieval_weight = 0.3
+weekly_retrieval_weight = 0.2
+knowledge_bank_retrieval_weight = 0.1
 
 [agentic-tools.commentator]
 name = "commentator"
@@ -275,6 +278,10 @@ Return ONLY a single, valid JSON object with this exact structure:
   "commit_message_if_approved": ["A multi-line conventional commit message. (Empty if changes are requested)"]
 }
 '''
+hourly_retrieval_weight = 0.4
+daily_retrieval_weight = 0.3
+weekly_retrieval_weight = 0.2
+knowledge_bank_retrieval_weight = 0.1
 
 [agentic-tools.readme_writer]
 name = "readme_writer"

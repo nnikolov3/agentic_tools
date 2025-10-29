@@ -40,7 +40,9 @@ class Tool:
     generation.
     """
 
-    def __init__(self, agent: str, config: dict[str, Any], target_directory: Path) -> None:
+    def __init__(
+        self, agent: str, config: dict[str, Any], target_directory: Path
+    ) -> None:
         """
         Initializes Tool with agent-specific configuration and tool instances.
 
@@ -100,7 +102,9 @@ class Tool:
                 logger.info("Tool execution completed for agent '%s'.", self.agent)
                 return response
             else:
-                logger.warning("API call for agent '%s' returned no response.", self.agent)
+                logger.warning(
+                    "API call for agent '%s' returned no response.", self.agent
+                )
                 return ""
 
         except ValueError as value_error:
@@ -151,23 +155,27 @@ class Tool:
                     raise ValueError(
                         "Filepath is required for the 'commentator' agent."
                     )
-                return self._create_commentator_payload(chat, filepath)
+                return await self._create_commentator_payload(chat, filepath)
             case "developer":
                 if not filepath:
                     raise ValueError("Filepath is required for the 'developer' agent.")
-                return await self._create_developer_payload(chat, memory_context, filepath)
+                return await self._create_developer_payload(
+                    chat, memory_context, filepath
+                )
+
+
             case "readme_writer":
-                return self._create_readme_writer_payload(chat)
+                return await self._create_readme_writer_payload(chat, memory_context)
             case "approver":
-                return await self._create_approver_payload(chat)
+                return await self._create_approver_payload(chat, memory_context)
             case "linter_analyst":
                 return await self._create_linter_analyst_payload(chat, memory_context)
             case "configuration_builder":
-                return self._create_configuration_builder_payload(chat)
+                return await self._create_configuration_builder_payload()
             case _:
-                return self._create_default_payload(chat, memory_context)
+                return await self._create_default_payload(chat, memory_context)
 
-    def _get_common_project_files_context(self) -> dict[str, Any]:
+    async def _get_common_project_files_context(self) -> dict[str, Any]:
         """
         Gathers context from common, project-defining files.
 
@@ -184,10 +192,12 @@ class Tool:
         common_context = {}
         for filename in project_files_to_read:
             file_path = self.target_directory / filename
-            common_context[filename] = self.shell_tools.read_file_content(file_path)
+            common_context[filename] = await self.shell_tools.read_file_content(
+                file_path
+            )
         return common_context
 
-    def _create_commentator_payload(
+    async def _create_commentator_payload(
         self,
         chat: Optional[Any],
         filepath: str,
@@ -203,10 +213,12 @@ class Tool:
         return {
             "SYSTEM_PROMPT": self.agent_prompt,
             "SKILLS": self.agent_skills,
-            "USER_PROMPT": chat,  # For commentator, 'chat' is the full file content.
+            "USER_PROMPT": chat,
+            "DESIGN_DOCS": await self.shell_tools.get_design_docs_content(),
+            "PROJECT_TOP_FILES": await self._get_common_project_files_context(),
             "SOURCE_FILE": {
                 "path": filepath,
-                "content": self.shell_tools.read_file_content(Path(filepath)),
+                "content": await self.shell_tools.read_file_content(Path(filepath)),
             },
         }
 
@@ -226,39 +238,50 @@ class Tool:
             "DESIGN_DOCS": await self.shell_tools.get_design_docs_content(),
             "SOURCE_FILE": {
                 "path": filepath,
-                "content": self.shell_tools.read_file_content(Path(filepath)),
+                "content": await self.shell_tools.read_file_content(Path(filepath)),
             },
+            "SRC_CODE": await self.shell_tools.process_directory(self.source_directory),
+            "PROJECT_TREE": await self.shell_tools.get_project_tree(),
+            "PROJECT_TOP_FILES": await self._get_common_project_files_context(),
         }
 
-    def _create_readme_writer_payload(self, chat: Optional[Any]) -> dict[str, Any]:
+    async def _create_readme_writer_payload(
+        self, chat: Optional[Any], memory
+    ) -> dict[str, Any]:
         """Constructs a project-wide context payload for the 'readme_writer' agent."""
         logger.info("Using project context for 'readme_writer' agent.")
         payload = {
             "SYSTEM_PROMPT": self.agent_prompt,
             "SKILLS": self.agent_skills,
             "USER_PROMPT": chat,
-            "GIT_INFO": self.shell_tools.get_git_info(),
-            "SRC_CODE": self.shell_tools.process_directory(self.source_directory),
-            "PROJECT_TOP_FILES": self._get_common_project_files_context(),
+            "MEMORY_CONTEXT": memory,
+            "GIT_INFO": await self.shell_tools.get_git_info(),
+            "SRC_CODE": await self.shell_tools.process_directory(self.source_directory),
+            "PROJECT_TREE": await self.shell_tools.get_project_tree(),
+            "PROJECT_TOP_FILES": await self._get_common_project_files_context(),
         }
 
         return payload
 
-    async def _create_approver_payload(self, chat: Optional[Any]) -> dict[str, Any]:
+    async def _create_approver_payload(
+        self, chat: Optional[Any], memory
+    ) -> dict[str, Any]:
         """Constructs a payload with git diff and design docs for the 'approver' agent."""
         logger.info("Using diff and design context for 'approver' agent.")
-        
+
         git_context, design_docs = await asyncio.gather(
             self.shell_tools.get_git_context_for_patch(),
             self.shell_tools.get_design_docs_content(),
         )
-        
+
         return {
             "SYSTEM_PROMPT": self.agent_prompt,
             "SKILLS": self.agent_skills,
             "USER_PROMPT": chat,
             "GIT_DIFF_PATCH": git_context,
             "DESIGN_DOCS": design_docs,
+            "MEMORY_CONTEXT": memory,
+            "PROJECT_TREE": await self.shell_tools.get_project_tree(),
         }
 
     async def _create_linter_analyst_payload(
@@ -280,7 +303,7 @@ class Tool:
             "DESIGN_DOCS": await self.shell_tools.get_design_docs_content(),
         }
 
-    def _create_default_payload(
+    async def _create_default_payload(
         self,
         chat: Optional[Any],
         memory_context: Optional[str],
@@ -291,11 +314,19 @@ class Tool:
             "SYSTEM_PROMPT": self.agent_prompt,
             "SKILLS": self.agent_skills,
             "USER_PROMPT": chat,
-            "GIT_INFO": self.shell_tools.get_git_info(),
-            "SRC_CODE": self.shell_tools.process_directory(self.source_directory),
+            "GIT_INFO": await self.shell_tools.get_git_info(),
+            "SRC_CODE": await self.shell_tools.process_directory(self.source_directory),
             "MEMORY_CONTEXT": memory_context,
-            "PROJECT_TOP_FILES": self._get_common_project_files_context(),
+            "PROJECT_TOP_FILES": await self._get_common_project_files_context(),
         }
-        # Combine the base payload with the common project file context.
-        payload.update(self._get_common_project_files_context())
         return payload
+
+    @staticmethod
+    async def _create_configuration_builder_payload() -> dict[str, Any]:
+        """The configuration_builder agent does not require a payload.
+
+        This agent's role is to generate a configuration from scratch, so it does
+        not depend on any dynamic context from the project. Returning an empty
+        payload is intentional.
+        """
+        return {}

@@ -87,7 +87,9 @@ class Agent(abc.ABC):
         self.memory_config: dict[str, Any] = self.configuration.get("memory", {})
         self.target_directory: Optional[Path] = target_directory
 
-        logger.debug("Initialized Agent '%s' for project '%s'.", self.agent_name, project)
+        logger.debug(
+            "Initialized Agent '%s' for project '%s'.", self.agent_name, project
+        )
 
     async def run_agent(self) -> Optional[str]:
         """
@@ -119,8 +121,6 @@ class Agent(abc.ABC):
                 self.chat,
                 self.memory_context,
                 str(self.filepath) if self.filepath else None,
-
-
             )
 
             if self.response:
@@ -149,7 +149,7 @@ class Agent(abc.ABC):
             logger.warning("No Qdrant memory configured. Skipping context retrieval.")
             return ""
 
-        query = (self.chat + self.agent_name)
+        query = self.chat + self.agent_name
 
         self.memory = await QdrantMemory.create(self.configuration, self.agent_name)
         retrieved_context = await self.memory.retrieve_context(query)
@@ -229,7 +229,13 @@ class KnowledgeBaseAgent(Agent):
         """
 
         super().__init__(
-            configuration, agent_name, project, chat, filepath, target_directory, **kwargs
+            configuration,
+            agent_name,
+            project,
+            chat,
+            filepath,
+            target_directory,
+            **kwargs,
         )
 
         if not self.filepath:
@@ -385,13 +391,13 @@ class ReadmeWriterAgent(Agent):
             options={"wrap": "preserve"},
         )
 
-        # File I/O is blocking; run it in a thread pool.
-        await asyncio.to_thread(
-            self.shell_tools.write_file,
+        is_success = await self.shell_tools.write_file(
             readme_filepath,
             formatted_readme,
         )
-
+        if not is_success:
+            logger.error("Failed to write formatted README to '%s'.", readme_filepath)
+            return
         # Update self.response so the clean, formatted version is stored in memory.
         self.response = formatted_readme
         logger.info("Successfully formatted and wrote '%s'.", readme_filepath)
@@ -428,7 +434,13 @@ class CodeModifyingAgent(Agent):
                         for this agent's operation.
         """
         super().__init__(
-            configuration, agent_name, project, chat, filepath, target_directory, **kwargs
+            configuration,
+            agent_name,
+            project,
+            chat,
+            filepath,
+            target_directory,
+            **kwargs,
         )
         if not self.filepath:
             raise ValueError(
@@ -461,11 +473,11 @@ class CodeModifyingAgent(Agent):
 
         return content
 
-    async def _post_process(self) -> None:
+    async def _post_process(self) -> bool:
         """
         Validates the generated code and writes it to the source file.
 
-        This method first cleans the LLM response, then uses the ValidationService
+        This method first cleans the LLM response, then uses the Val idationService
         to check for errors. If valid, the code is written to the specified
         filepath. If invalid, an error is raised to halt execution.
 
@@ -474,16 +486,19 @@ class CodeModifyingAgent(Agent):
         """
         cleaned_code = self._clean_response_for_code()
         if cleaned_code and self.filepath:
-            is_success = await asyncio.to_thread(
-                self.shell_tools.write_file, Path(self.filepath), cleaned_code
+            is_success = await self.shell_tools.write_file(
+                Path(self.filepath), cleaned_code
             )
+
             if is_success:
                 logger.info(
                     "Successfully validated and updated source file: %s", self.filepath
                 )
+                return True
             else:
                 logger.error("Failed to write to source file: %s", self.filepath)
-                return
+                return False
+        return False
 
     async def _assess_context_quality(self) -> float:
         """Returns a default quality score of 1.0."""
@@ -528,7 +543,13 @@ class ConfigurationBuilderAgent(Agent):
         **kwargs,
     ) -> None:
         super().__init__(
-            configuration, agent_name, project, chat, filepath, target_directory, **kwargs
+            configuration,
+            agent_name,
+            project,
+            chat,
+            filepath,
+            target_directory,
+            **kwargs,
         )
         self.dependency_file = kwargs.get("dependency_file", "pyproject.toml")
 
@@ -544,10 +565,12 @@ class ConfigurationBuilderAgent(Agent):
 
         dependency_file = self.dependency_file
         try:
-            project_dependencies = await asyncio.to_thread(self.shell_tools.read_file_content, Path(dependency_file))
+            project_dependencies = await self.shell_tools.read_file_content(
+                Path(dependency_file)
+            )
+
         except FileNotFoundError:
             project_dependencies = f"{dependency_file} not found."
-
 
         # 2. Structure the context for the LLM
         structured_context = f"""
@@ -561,7 +584,9 @@ class ConfigurationBuilderAgent(Agent):
         """
 
         # New, detailed prompt
-        prompt_path = Path(__file__).parent / "prompts" / "configuration_builder_prompt.txt"
+        prompt_path = (
+            Path(__file__).parent / "prompts" / "configuration_builder_prompt.txt"
+        )
         with open(prompt_path, "r") as f:
             detailed_prompt = f.read().format(structured_context=structured_context)
 
@@ -584,10 +609,12 @@ class ConfigurationBuilderAgent(Agent):
         if not self.response:
             return
 
-        output_path = Path(self.filepath) if self.filepath else Path("generated_config.toml")
-        await asyncio.to_thread(
-            lambda: self.shell_tools.write_file(output_path, self.response)
+        output_path = (
+            Path(self.filepath) if self.filepath else Path("generated_config.toml")
         )
+
+        await self.shell_tools.write_file(output_path, self.response)
+
         logger.info("Successfully wrote configuration to '%s'.", output_path)
 
     async def _assess_context_quality(self) -> float:
