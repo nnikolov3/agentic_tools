@@ -112,7 +112,7 @@ sparse = {}
 
 [agentic-tools.knowledge_bank_ingestion]
 # The directory containing documents to be ingested into the vector database.
-source_directory = "../knowledge_bank"
+source_directory = "../bank"
 # The LLM model used for summarizing document content.
 model = "gemini-flash-latest"
 # The name of the environment variable holding the API key for the summarization LLM.
@@ -124,12 +124,12 @@ prompt = '''
 You are an expert technical writer. Your task is to process the following document content.
 Create a detailed, comprehensive, and high-quality text that captures the key information, purpose, and main topics of the document.
 The output should be suitable for providing high-level context in a vector database search.
-
+Focus on examples. Describe everything in the form of an example.
 Your response must be a single JSON object with the following structure:
 {
   "title": "<A concise and accurate title for the document>",
   "short_summary": "<A one or two sentence summary of the document's purpose>",
-  "content": "<A detailed and comprehensive write-up of the document's key information>",
+  "content": "<A detailed and comprehensive write-up with a lot of examples and of the document's key information>",
   "tags": ["<A list of relevant keywords or tags>"]
   "practical-examples": ["A list of relevant examples"]
 }
@@ -137,7 +137,7 @@ Your response must be a single JSON object with the following structure:
 # The target size for text chunks before embedding.
 chunk_size = 1024
 # The number of characters to overlap between consecutive chunks.
-chunk_overlap = 200
+chunk_overlap = 256
 # The number of points (chunks) to upsert to Qdrant in a single batch.
 qdrant_batch_size = 128
 # The maximum number of files to process concurrently.

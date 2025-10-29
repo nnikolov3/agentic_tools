@@ -1,4 +1,12 @@
+
 # src/tools/shell_tools.py
+"""
+This module provides a collection of tools for interacting with the shell,
+file system, version control (Git), and web resources. It is designed to be
+used in an asynchronous environment, providing utilities for an AI agent
+to inspect and manipulate a software project.
+"""
+
 import asyncio
 import codecs
 import logging
@@ -6,264 +14,285 @@ import platform
 import shutil
 import subprocess
 from collections import Counter
+from collections.abc import Iterator
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
 
+# Configure logging for the module
 logger: logging.Logger = logging.getLogger(__name__)
+
+# --- Constants for Default Configurations ---
+
+DEFAULT_GIT_DIFF_COMMAND: list[str] = [
+    "diff",
+    "HEAD",
+    "--patch-with-raw",
+    "--minimal",
+    "--patience",
+    ":!uv.lock",
+    ":!MANIFEST.in",
+]
+DEFAULT_GIT_LOG_COMMAND: list[str] = ["log", "-p"]
+DEFAULT_ENCODING: str = "utf-8"
+DEFAULT_COMMIT_NUMBER: int = 3
+DEFAULT_TREE_DEPTH: int = 3
+SUBPROCESS_TIMEOUT: int = 15
 
 
 class ShellTools:
-    def __init__(self, agent: str, config: Dict[str, Any], target_directory: Optional[Path]) -> None:
-        self.config: Dict[str, Any] = config
-        self.agent_config: Dict[str, Any] = self.config.get(agent, {})
+    """
+    A class that encapsulates tools for shell and file system operations.
 
-        self.git_diff_command: List[str] = self.config.get(
-            "git_diff_command",
-            [
-                "diff",
-                "HEAD",
-                "--patch-with-raw",
-                "--minimal",
-                "--patience",
-                ":!uv.lock",
-                ":!MANIFEST.in",
-            ],
+    This class provides an asynchronous interface for common tasks such as
+    reading/writing files, running linters, fetching web content, and
+    interacting with a Git repository. It is configured via a dictionary,
+    typically loaded from a project's configuration file.
+    """
+
+    def __init__(
+        self,
+        agent: str,
+        config: dict[str, Any],
+        target_directory: Path | None = None,
+    ) -> None:
+        """
+        Initializes the ShellTools instance.
+
+        Args:
+            agent: The name of the agent using the tools.
+            config: A configuration dictionary for the tools.
+            target_directory: The working directory for all operations.
+                              If None, the current working directory is used.
+        """
+        self.config: dict[str, Any] = config
+        self.agent_config: dict[str, Any] = self.config.get(agent, {})
+
+        # --- Directory and File Matching Configuration ---
+        self.design_docs: list[str] = self.config.get("design_docs", [])
+        self.project_directories: list[str] = self.config.get("project_directories", [])
+        self.include_extensions: set[str] = set(
+            self.config.get("include_extensions", [])
         )
-        self.git_log_command: List[str] = self.config.get(
-            "git_log_command",
-            ["log", "-p"],
+        self.exclude_directories: set[str] = set(
+            self.config.get("exclude_directories", [])
         )
-        git_executable_path: Optional[str] = shutil.which("git")
+        self.exclude_files: set[str] = set(self.config.get("exclude_files", []))
+
+        # --- Command and Behavior Configuration ---
+        self.encoding: str = self.config.get("encoding", DEFAULT_ENCODING)
+        self.commit_number: int = self.config.get("commit_number", DEFAULT_COMMIT_NUMBER)
+        self.tree_depth: int = self.config.get("tree_depth", DEFAULT_TREE_DEPTH)
+        self.git_diff_command: list[str] = self.config.get(
+            "git_diff_command", DEFAULT_GIT_DIFF_COMMAND
+        )
+        self.git_log_command: list[str] = self.config.get(
+            "git_log_command", DEFAULT_GIT_LOG_COMMAND
+        )
+
+        # --- Executable Path Verification ---
+        git_executable_path: str | None = shutil.which("git")
         if not git_executable_path:
             logger.error(
-                "Git command not found. Please ensure git is installed and in your PATH.",
+                "Git command not found. Please ensure git is installed and in your PATH."
             )
             raise FileNotFoundError("Git executable not found.")
         self.git_executable: str = git_executable_path
 
-        self.sync_executable: Optional[str] = shutil.which("sync")
+        self.sync_executable: str | None = shutil.which("sync")
         if not self.sync_executable:
             logger.warning("'sync' command not found. File system sync may be skipped.")
 
-        self.design_docs: List[str] = config.get("design_docs", [])
-        self.project_directories: List[str] = config.get("project_directories", [])
-        self.include_extensions: List[str] = config.get("include_extensions", [])
-        self.exclude_directories: List[str] = config.get("exclude_directories", [])
-        self.exclude_files: List[str] = config.get("exclude_files", [])
-        self.encoding: str = "utf-8"
-        self.commit_number: int = config.get("commit_number", 3)
-        self.tree_depth: int = config.get("tree_depth", 3)
+        # --- Set Working Directory ---
+        self.current_working_directory: Path = target_directory or Path.cwd()
 
-        if target_directory is not None:
-            self.current_working_directory = target_directory
-        else :
-            self.current_working_directory = Path.cwd()
+    async def _run_command(
+        self,
+        command: list[str],
+        check: bool = True,
+        timeout: int = SUBPROCESS_TIMEOUT,
+    ) -> tuple[str, str, int | None]:
+        """
+        Asynchronously runs a shell command and returns its output.
 
+        Args:
+            command: The command to run as a list of strings.
+            check: If True, raises an exception if the command returns a non-zero exit code.
+            timeout: The timeout in seconds for the command.
 
-    def get_project_file_tree(self) -> Dict[str, Any]:
-        project_tree: Dict[str, Any] = {}
-        for directory_str in self.project_directories:
-            directory_path = Path(directory_str)
-            logger.info("Processing project directory: %s", directory_path)
+        Returns:
+            A tuple containing (stdout, stderr, return_code).
 
-            if not directory_path.is_dir():
-                logger.warning(
-                    "Project directory does not exist or is not a directory: %s",
-                    directory_path,
-                )
-                continue
+        Raises:
+            RuntimeError: If the command fails and `check` is True, or if it times out.
+        """
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(self.current_working_directory),
+        )
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                process.communicate(), timeout=timeout
+            )
+        except asyncio.TimeoutError as error:
+            logger.error("Command '%s' timed out.", " ".join(command))
+            try:
+                process.kill()
+                await process.wait()
+            except ProcessLookupError:
+                pass  # Process already terminated
+            raise RuntimeError(f"Command '{' '.join(command)}' timed out.") from error
 
-            project_tree.update(self._build_directory_tree(directory_path))
+        stdout = stdout_bytes.decode(self.encoding, errors="ignore")
+        stderr = stderr_bytes.decode(self.encoding, errors="ignore")
 
-        return project_tree
+        if check and process.returncode != 0:
+            error_message = (
+                f"Command '{' '.join(command)}' failed with exit code "
+                f"{process.returncode}:\nSTDOUT: {stdout}\nSTDERR: {stderr}"
+            )
+            logger.error(error_message)
+            raise RuntimeError(error_message)
 
-    def _build_directory_tree(self, root_path: Path) -> Dict[str, Any]:
-        directory_tree: Dict[str, Any] = {}
-        for file_path in self._get_filtered_files(root_path, self.include_extensions):
-            relative_path = file_path.relative_to(root_path)
+        return stdout, stderr, process.returncode
 
-            current_level = directory_tree
-            for part in relative_path.parts[:-1]:
-                current_level = current_level.setdefault(part, {})
-
-            file_name = relative_path.name
-            logger.info("Reading file: %s", file_path)
-            file_content = self.read_file_content(file_path)
-            if file_content:
-                current_level[file_name] = file_content
-
-        return directory_tree
+    def _is_in_excluded_directory(self, file_path: Path) -> bool:
+        """Checks if a file path is within any of the configured excluded directories."""
+        return any(part in self.exclude_directories for part in file_path.parts)
 
     def _should_exclude_file(self, file_name: str) -> bool:
+        """Checks if a file name should be excluded based on configured patterns."""
         return (
             file_name in self.exclude_files
             or file_name.startswith(".")
             or file_name.startswith("__")
         )
 
-    def process_directory(self, directory_path: Path) -> str:
-        if not directory_path.is_dir():
-            logger.warning(
-                "Directory does not exist or is not a directory: %s",
-                directory_path,
-            )
-            return ""
-
-        concatenated_content_parts: List[str] = []
-        file_count = 0
-
-        try:
-            for file_path in self._get_filtered_files(
-                directory_path,
-                self.include_extensions,
-            ):
-                file_content = self.read_file_content(file_path)
-                logger.info("Reading file: %s", file_path)
-
-                if not file_content or file_content.strip().startswith("<"):
-                    continue
-
-                relative_path = file_path.relative_to(directory_path)
-                header = f"\n\n--- File: {relative_path} ---\n\n"
-                concatenated_content_parts.append(header + file_content)
-                file_count += 1
-
-            if file_count == 0:
-                logger.info("No matching files found in directory: %s", directory_path)
-
-            logger.info("Concatenated %d files from %s", file_count, directory_path)
-            return "".join(concatenated_content_parts).strip()
-
-        except OSError as error:
-            logger.error(
-                f"Error processing directory {directory_path}: {error}",
-                exc_info=True,
-            )
-            raise RuntimeError(
-                f"Failed to process directory {directory_path}",
-            ) from error
-
-    async def get_design_docs_content(self) -> str:
-        design_docs_content_parts: List[str] = []
-        for doc_path_str in self.design_docs:
-            full_path = self.current_working_directory / doc_path_str
-            if full_path.is_file():
-                content = await asyncio.to_thread(self.read_file_content, full_path)
-                if content:
-                    design_docs_content_parts.append(content)
-            else:
-                logger.warning(
-                    f"Design document not found or is not a file: {full_path}",
-                )
-
-        return "\n\n".join(design_docs_content_parts)
-
     def _matches_extension(self, filename: str) -> bool:
+        """Checks if a filename matches any of the configured included extensions."""
         if not self.include_extensions:
             return True
         return any(filename.endswith(ext) for ext in self.include_extensions)
 
-    def _is_in_excluded_directory(self, file_path: Path) -> bool:
-        return any(
-            ((excluded in file_path.parts) for excluded in self.exclude_directories),
-        )
-
-    def _get_filtered_files(
-        self,
-        directory_path: Path,
-        extensions: List[str],
-    ) -> Generator[Path, None, None]:
+    def _get_filtered_files(self, directory_path: Path) -> Iterator[Path]:
+        """
+        Yields files in a directory that match the configured criteria.
+        This is a synchronous generator that performs file system I/O.
+        """
         for item in directory_path.rglob("*"):
             if (
                 item.is_file()
-                and (
-                    not extensions or any(item.name.endswith(ext) for ext in extensions)
-                )
+                and self._matches_extension(item.name)
                 and not self._is_in_excluded_directory(item)
                 and not self._should_exclude_file(item.name)
             ):
                 yield item
 
-    def get_files_by_extensions(
-        self,
-        directory_path: Path,
-        extensions: List[str],
-    ) -> List[Path]:
-        if not directory_path.is_dir():
-            logger.warning(
-                f"Directory does not exist or is not a directory: {directory_path}",
-            )
-            return []
-
+    def _sync_read_file_content(self, file_path: Path) -> str:
+        """Synchronously reads and returns the content of a file."""
         try:
-            matching_files = list(self._get_filtered_files(directory_path, extensions))
-            logger.info(
-                f"Found {len(matching_files)} matching files in {directory_path}",
-            )
-            return matching_files
-        except OSError as error:
-            logger.error(
-                f"Error searching directory {directory_path}: {error}",
-                exc_info=True,
-            )
-            return []
-
-    def read_file_content(self, file_path: Path) -> str:
-        try:
-            file_path = self.current_working_directory / file_path
-            with file_path.open(encoding=self.encoding) as file_handle:
+            with file_path.open(encoding=self.encoding, errors="ignore") as file_handle:
                 return file_handle.read()
         except UnicodeDecodeError:
-            logger.warning(f"Skipping binary file (UnicodeDecodeError): {file_path}")
+            logger.warning("Skipping binary file (UnicodeDecodeError): %s", file_path)
+            return ""
+        except FileNotFoundError:
+            logger.error("File not found: %s", file_path)
             return ""
         except Exception as reading_error:
-            logger.error(f"Error reading file {file_path}: {reading_error}")
+            logger.error("Error reading file %s: %s", file_path, reading_error)
             return ""
 
-    def write_file(
+    async def read_file_content(self, file_path: Path) -> str:
+        """
+        Asynchronously reads and returns the content of a file.
+
+        Args:
+            file_path: The path to the file to read.
+
+        Returns:
+            The content of the file as a string, or an empty string on error.
+        """
+        return await asyncio.to_thread(self._sync_read_file_content, file_path)
+
+    def _sync_write_file(
+        self, filepath: Path, payload: str, backup: bool, atomic: bool
+    ) -> bool:
+        """Synchronously writes a payload to a file."""
+        try:
+            full_path = self.current_working_directory / filepath
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+
+            if backup and full_path.exists():
+                backup_path = full_path.with_suffix(full_path.suffix + ".bak")
+                shutil.copy2(full_path, backup_path)
+                logger.info("Created backup: %s", backup_path)
+
+            if atomic:
+                self._atomic_write(full_path, payload)
+            else:
+                full_path.write_text(payload, encoding=self.encoding)
+
+            logger.info(
+                "Successfully wrote %d characters to %s", len(payload), full_path.name
+            )
+            return True
+
+        except (PermissionError, OSError) as file_error:
+            logger.error("File system error writing to %s: %s", filepath.name, file_error)
+            return False
+        except Exception as exception:
+            logger.error(
+                "Unexpected error writing to %s: %s",
+                filepath.name,
+                exception,
+                exc_info=True,
+            )
+            return False
+
+    async def write_file(
         self,
         filepath: Path,
         payload: str,
         backup: bool = False,
         atomic: bool = True,
     ) -> bool:
-        try:
-            filepath = Path(filepath)
-            filepath.parent.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Ensured directory exists: {filepath.parent}")
+        """
+        Asynchronously writes a payload to a file.
 
-            if backup and filepath.exists():
-                backup_path = filepath.with_suffix(filepath.suffix + ".bak")
-                shutil.copy2(filepath, backup_path)
-                logger.info(f"Created backup: {backup_path}")
+        Args:
+            filepath: The path to the file to write.
+            payload: The string content to write to the file.
+            backup: If True, creates a backup of the existing file.
+            atomic: If True, performs an atomic write operation.
 
-            if atomic:
-                self._atomic_write(filepath, payload)
-            else:
-                with filepath.open("w", encoding=self.encoding) as file_handle:
-                    file_handle.write(payload)
-
-            logger.info(
-                f"Successfully wrote {len(payload)} characters to {filepath.name}",
-            )
-            return True
-
-        except (PermissionError, OSError) as file_error:
-            logger.error(f"File system error writing to {filepath.name}: {file_error}")
-            return False
-        except Exception as exception:
-            logger.error(
-                f"Unexpected error writing to {filepath.name}: {exception}",
-                exc_info=True,
-            )
-            return False
+        Returns:
+            True if the write was successful, False otherwise.
+        """
+        return await asyncio.to_thread(
+            self._sync_write_file, filepath, payload, backup, atomic
+        )
 
     def _atomic_write(self, target_path: Path, payload: str) -> None:
-        temp_file_path: Optional[Path] = None
+        """
+        Performs an atomic write operation to a target path.
+
+        This is achieved by writing to a temporary file in the same directory
+        and then moving it to the target path.
+
+        Args:
+            target_path: The final destination path for the file.
+            payload: The content to write.
+
+        Raises:
+            IOError: If the atomic write fails.
+        """
+        temp_file_path: Path | None = None
         try:
             with NamedTemporaryFile(
                 mode="w",
@@ -278,28 +307,50 @@ class ShellTools:
                 temp_file.flush()
                 if platform.system() != "Windows" and self.sync_executable:
                     try:
-                        subprocess.run([self.sync_executable], check=True, capture_output=True)
+                        subprocess.run(
+                            [self.sync_executable], check=True, capture_output=True
+                        )
                     except (
                         subprocess.CalledProcessError,
                         FileNotFoundError,
                     ) as sync_error:
                         logger.warning(
-                            f"Failed to execute '{self.sync_executable}' command: {sync_error}",
+                            "Failed to execute '%s' command: %s",
+                            self.sync_executable,
+                            sync_error,
                         )
-                elif platform.system() != "Windows":
-                    logger.warning("'sync' executable not found, skipping file system sync.")
 
             if target_path.exists():
                 shutil.copymode(target_path, temp_file_path)
 
-            temp_file_path.rename(target_path)
+            shutil.move(str(temp_file_path), str(target_path))
 
         except OSError as error:
             if temp_file_path and temp_file_path.exists():
                 temp_file_path.unlink(missing_ok=True)
             raise IOError(f"Atomic write to {target_path} failed") from error
+        finally:
+            if temp_file_path and temp_file_path.exists():
+                temp_file_path.unlink(missing_ok=True)
 
-    async def fetch_urls_content(self, urls: List[str]) -> str:
+    async def get_design_docs_content(self) -> str:
+        """
+        Asynchronously reads and concatenates the content of all configured design documents.
+        """
+        tasks = []
+        for doc_path_str in self.design_docs:
+            full_path = self.current_working_directory / doc_path_str
+            if full_path.is_file():
+                tasks.append(self.read_file_content(full_path))
+            else:
+                logger.warning(
+                    "Design document not found or is not a file: %s", full_path
+                )
+
+        contents = await asyncio.gather(*tasks)
+        return "\n\n".join(filter(None, contents))
+    @staticmethod
+    async def fetch_urls_content(urls: list[str]) -> str:
         """
         Fetches content from a list of URLs concurrently and extracts clean text.
 
@@ -309,24 +360,21 @@ class ShellTools:
         Returns:
             A single string concatenating the clean text from all successfully fetched URLs.
         """
-        async with httpx.AsyncClient(follow_redirects=True) as client:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
             tasks = [client.get(url) for url in urls]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        content_parts: List[str] = []
-        for i, result in enumerate(results):
-            url = urls[i]
+        content_parts: list[str] = []
+        for url, result in zip(urls, results):
             if isinstance(result, httpx.Response) and result.status_code == 200:
                 header = f"\n\n--- Content from: {url} ---\n\n"
-
-                # Parse HTML and extract text
                 soup = BeautifulSoup(result.text, "html.parser")
-                clean_text = soup.get_text(strip=True)
+                clean_text = soup.get_text()
                 content_parts.append(header + clean_text)
                 logger.info("Successfully fetched and parsed content from %s", url)
             else:
                 error_msg = (
-                    result
+                    str(result)
                     if isinstance(result, Exception)
                     else f"Status code: {getattr(result, 'status_code', 'N/A')}"
                 )
@@ -340,9 +388,7 @@ class ShellTools:
         """
         linter_configs: dict[str, list[str]] = self.config.get("linters", {})
         if not linter_configs:
-            logger.warning(
-                "No linters configured in agentic_tools.toml under [agentic-tools.linters]",
-            )
+            logger.warning("No linters configured.")
             return "No linters configured."
 
         report_parts: list[str] = []
@@ -351,33 +397,22 @@ class ShellTools:
             if not shutil.which(executable):
                 error_msg = f"Linter '{tool_name}' not found. Please ensure '{executable}' is installed."
                 logger.error(error_msg)
-                report_parts.append(
-                    f"--- {tool_name.upper()} FAILED ---\n{error_msg}\n"
-                )
+                report_parts.append(f"--- {tool_name.upper()} FAILED ---\n{error_msg}\n")
                 continue
 
-            logger.info("Running linter: %s", ' '.join(command))
+            logger.info("Running linter: %s", " ".join(command))
             try:
                 # Linters often use non-zero exit codes to indicate issues, so we don't check for success.
-                process = await asyncio.create_subprocess_exec(
-                    *command,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout, stderr = await process.communicate()
-                output = stdout.decode(self.encoding, errors="ignore") + stderr.decode(
-                    self.encoding,
-                    errors="ignore",
-                )
+                stdout, stderr, _ = await self._run_command(command, check=False)
+                output = (stdout + stderr).strip()
 
-                if output.strip():
+                if output:
                     report_parts.append(
-                        f"--- Linter Report: {tool_name.upper()} ---\n{output.strip()}\n",
+                        f"--- Linter Report: {tool_name.upper()} ---\n{output}\n"
                     )
-
-            except Exception as e:
-                logger.error("Error running linter '%s': %s", tool_name, e)
-                report_parts.append(f"--- {tool_name.upper()} FAILED ---\n{e}\n")
+            except Exception as error:
+                logger.error("Error running linter '%s': %s", tool_name, error)
+                report_parts.append(f"--- {tool_name.upper()} FAILED ---\n{error}\n")
 
         if not report_parts:
             return "All linters passed successfully. No issues found."
@@ -386,168 +421,142 @@ class ShellTools:
 
     async def get_project_tree(self) -> str:
         """
-        Generates a file and directory tree.
-        Uses the 'tree' command if available, otherwise falls back to a Python implementation.
+        Generates a file and directory tree representation of the project.
+
+        Uses the 'tree' command if available for efficiency, otherwise falls back
+        to a Python implementation.
         """
         try:
-            process = await asyncio.create_subprocess_exec(
-                "tree",
-                "-L",
-                "3",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            stdout, _, _ = await self._run_command(["tree", "-L", str(self.tree_depth)])
+            return stdout.strip()
+        except (FileNotFoundError, RuntimeError):
+            logger.warning(
+                "'tree' command not found or failed. Falling back to Python implementation."
             )
-            stdout, stderr = await process.communicate()
-            if process.returncode == 0:
-                output = stdout.decode(self.encoding, errors="ignore") + stderr.decode(
-                    self.encoding,
-                    errors="ignore",
-                )
-                return output.strip()
-            else:
-                raise FileNotFoundError
 
-        except FileNotFoundError:
-            logger.warning("'tree' command not found. Falling back to Python implementation.")
-            
-            def _build_tree(dir_path: Path, level: int = 0, limit: int = self.tree_depth):
-                if level >= limit:
+            def _build_tree_lines(dir_path: Path, level: int = 0) -> list[str]:
+                if level >= self.tree_depth:
                     return []
-                
-                tree = []
-                items = sorted(list(dir_path.iterdir()), key=lambda p: (p.is_file(), p.name.lower()))
-                
+
+                lines: list[str] = []
+                try:
+                    items = sorted(
+                        list(dir_path.iterdir()),
+                        key=lambda p: (p.is_file(), p.name.lower()),
+                    )
+                except OSError:
+                    return []
+
                 for i, item in enumerate(items):
-                    if self._is_in_excluded_directory(item) or self._should_exclude_file(item.name):
+                    if self._is_in_excluded_directory(
+                        item
+                    ) or self._should_exclude_file(item.name):
                         continue
 
                     is_last = i == len(items) - 1
                     prefix = "    " * level
-                    tree.append(f"{prefix}{'└── ' if is_last else '├── '}{item.name}")
-                    
-                    if item.is_dir():
-                        tree.extend(_build_tree(item, level + 1, limit))
-                return tree
+                    connector = "└── " if is_last else "├── "
+                    lines.append(f"{prefix}{connector}{item.name}")
 
-            loop = asyncio.get_running_loop()
-            tree_lines = await loop.run_in_executor(None, _build_tree, self.current_working_directory)
+                    if item.is_dir():
+                        lines.extend(_build_tree_lines(item, level + 1))
+                return lines
+
+            tree_lines = await asyncio.to_thread(
+                _build_tree_lines, self.current_working_directory
+            )
             return "\n".join(tree_lines)
-        except Exception as e:
-            logger.error("Error running 'tree' command: %s", e)
-            return f"Error running 'tree' command: {e}"
 
     async def get_detected_languages(self) -> str:
         """
         Detects the primary programming languages by analyzing file extensions.
-        This method is implemented in Python for portability.
         """
-        from collections import Counter
 
-        loop = asyncio.get_running_loop()
-        
-        def _scan_files():
-            extensions = []
-            for item in self.current_working_directory.rglob("*"):
-                if item.is_file() and not self._is_in_excluded_directory(item) and not self._should_exclude_file(item.name):
+        def _scan_files() -> Counter[str]:
+            extensions: list[str] = []
+            for item in self._get_filtered_files(self.current_working_directory):
+                if item.suffix:
                     extensions.append(item.suffix)
             return Counter(extensions)
 
-        extension_counts = await loop.run_in_executor(None, _scan_files)
+        extension_counts = await asyncio.to_thread(_scan_files)
 
         if not extension_counts:
-            return "No files with extensions found."
+            return "No files with extensions found to analyze."
 
-        # Get the 5 most common extensions
         most_common_extensions = extension_counts.most_common(5)
-        
-        # Format the output string
-        output = "\n".join([f"{count} {ext}" for ext, count in most_common_extensions])
-        return output
+        return "\n".join(
+            [
+                f"{count} files with '{ext}' extension"
+                for ext, count in most_common_extensions
+            ]
+        )
 
-
-    def get_git_info(self) -> Dict[str, Optional[str]]:
-        git_info: Dict[str, Optional[str]] = {"username": None, "url": None}
+    async def get_git_info(self) -> dict[str, str | None]:
+        """Asynchronously retrieves the git username and remote URL."""
+        git_info: dict[str, str | None] = {"username": None, "url": None}
         try:
-            username_result = subprocess.run(
-                [self.git_executable, "config", "user.name"],
-                cwd=str(self.current_working_directory),
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if username_result.returncode == 0:
-                git_info["username"] = username_result.stdout.strip()
+            username_cmd = [self.git_executable, "config", "user.name"]
+            stdout, _, returncode = await self._run_command(username_cmd, check=False)
+            if returncode == 0:
+                git_info["username"] = stdout.strip()
 
-            url_result = subprocess.run(
-                [self.git_executable, "config", "--get", "remote.origin.url"],
-                cwd=str(self.current_working_directory),
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if url_result.returncode == 0:
-                git_info["url"] = url_result.stdout.strip()
+            url_cmd = [self.git_executable, "config", "--get", "remote.origin.url"]
+            stdout, _, returncode = await self._run_command(url_cmd, check=False)
+            if returncode == 0:
+                git_info["url"] = stdout.strip()
 
-            return git_info
-
-        except subprocess.TimeoutExpired:
-            logger.error("Git command timed out while getting repository info.")
-            return git_info
-        except Exception as error:
+        except (RuntimeError, FileNotFoundError) as error:
             logger.error("Error getting git info: %s", error, exc_info=True)
-            return git_info
+
+        return git_info
 
     @staticmethod
     def cleanup_escapes(input_string: str) -> str:
+        """
+        Decodes unicode escape sequences in a string.
+
+        Args:
+            input_string: The string to decode.
+
+        Returns:
+            The decoded string, or the original string if decoding fails.
+        """
         try:
             return codecs.decode(input_string, "unicode_escape")
         except UnicodeDecodeError:
             logger.warning(
-                "Could not decode unicode escapes in string: %s...",
-                input_string[:100],
+                "Could not decode unicode escapes in string: %s...", input_string[:100]
             )
             return input_string
 
     async def get_git_context_for_patch(self) -> str:
+        """
+        Asynchronously gets the git diff and recent log history.
+
+        Returns:
+            A string containing the git diff and log.
+
+        Raises:
+            RuntimeError: If the git commands fail.
+        """
         diff_cmd = [self.git_executable, *self.git_diff_command]
-        logger.debug("Running git diff command: %s", ' '.join(diff_cmd))
-        
-        log_cmd = [self.git_executable, *self.git_log_command, "-n", str(self.commit_number)]
-        logger.debug("Running git log command: %s", ' '.join(log_cmd))
-        
+        log_cmd = [
+            self.git_executable,
+            *self.git_log_command,
+            "-n",
+            str(self.commit_number),
+        ]
+
+        logger.debug("Running git diff command: %s", " ".join(diff_cmd))
+        logger.debug("Running git log command: %s", " ".join(log_cmd))
+
         try:
-            diff_process = await asyncio.create_subprocess_exec(
-                *diff_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=str(self.current_working_directory),
-            )
-            diff_stdout, diff_stderr = await asyncio.wait_for(diff_process.communicate(), timeout=15)
-
-            log_process = await asyncio.create_subprocess_exec(
-                *log_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=str(self.current_working_directory),
-            )
-            log_stdout, log_stderr = await asyncio.wait_for(log_process.communicate(), timeout=15)
-
-            if diff_process.returncode != 0:
-                raise subprocess.CalledProcessError(diff_process.returncode, diff_cmd, diff_stdout, diff_stderr)
-            
-            if log_process.returncode != 0:
-                raise subprocess.CalledProcessError(log_process.returncode, log_cmd, log_stdout, log_stderr)
-
-            return f"{diff_stdout.decode(self.encoding)}\n{log_stdout.decode(self.encoding)}"
-        
-        except subprocess.CalledProcessError as error:
-            logger.error(
-                "Git command failed with exit code %d:\nSTDOUT: %s\nSTDERR: %s",
-                error.returncode,
-                error.stdout,
-                error.stderr,
-            )
-            raise RuntimeError("Failed to create git patch") from error
-        except asyncio.TimeoutError as error:
-            logger.error("Git command timed out: %s", error)
-            raise RuntimeError("Git command timed out") from error
+            diff_task = self._run_command(diff_cmd)
+            log_task = self._run_command(log_cmd)
+            diff_result, log_result = await asyncio.gather(diff_task, log_task)
+            diff_stdout, _, _ = diff_result
+            log_stdout, _, _ = log_result
+            return f"{diff_stdout}\n{log_stdout}"
+        except (RuntimeError, FileNotFoundError) as error:
+            raise RuntimeError("Failed to create git patch context") from error

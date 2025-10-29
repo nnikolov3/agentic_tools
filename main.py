@@ -51,18 +51,24 @@ EXPERT: str = "expert"
 KNOWLEDGE_BASE_BUILDER: str = "knowledge_base_builder"
 LINTER_ANALYST: str = "linter_analyst"
 CONFIGURATION_BUILDER: str = "configuration_builder"
-VALID_AGENTS: Tuple[str, ...] = (
-    COMMENTATOR,
-    DEVELOPER,
-    ARCHITECT,
-    APPROVER,
-    README_WRITER,
-    INGEST_KNOWLEDGE_BANK,
-    EXPERT,
-    KNOWLEDGE_BASE_BUILDER,
-    LINTER_ANALYST,
-    CONFIGURATION_BUILDER,
-)
+
+# Centralized agent metadata to act as a single source of truth for descriptions.
+# This adheres to the DRY (Don't Repeat Yourself) principle.
+AGENT_METADATA: Dict[str, str] = {
+    APPROVER: "Audits recent code changes and approves or rejects them.",
+    ARCHITECT: "Creates a high-quality architecture based on design guidelines.",
+    COMMENTATOR: "Updates a source code file with comments and documentation.",
+    CONFIGURATION_BUILDER: "Automatically generates a TOML configuration file for a project.",
+    DEVELOPER: "Writes high-quality code based on design guidelines and standards.",
+    EXPERT: "Provides expert-level answers and solutions based on a given context.",
+    INGEST_KNOWLEDGE_BANK: "Processes and ingests data into the knowledge bank.",
+    KNOWLEDGE_BASE_BUILDER: "Fetches content from URLs and saves it to a file for knowledge base creation.",
+    LINTER_ANALYST: "Runs project linters and generates a prioritized analysis report.",
+    README_WRITER: "Walks the project directories, gets git information, and updates the README.md file.",
+}
+
+# The list of valid agents is derived directly from the metadata dictionary.
+VALID_AGENTS: Tuple[str, ...] = tuple(AGENT_METADATA.keys())
 
 
 # Initialize the configurator and load the configuration dictionary.
@@ -70,21 +76,22 @@ VALID_AGENTS: Tuple[str, ...] = (
 def _load_configuration(config_path: Path) -> dict[str, Any]:
     """Loads the application configuration from the specified path."""
     try:
-        _configuration: dict[str, Any] = get_config_dictionary(config_path)
-        return _configuration
+        configuration_data: dict[str, Any] = get_config_dictionary(config_path)
+        return configuration_data
     except FileNotFoundError:
         logger.error("Configuration file not found at '%s'.", config_path)
         sys.exit(1)
-    except Exception as e:
-        logger.error("Failed to load or parse configuration: %s", e)
-        sys.exit(1)
+    except Exception as error:
+        logger.error("Failed to load or parse configuration: %s", error)
+        raise RuntimeError("Configuration loading failed.") from error
 
 
 # Initialize the FastMCP instance, which serves as the tool runner.
 mcp = FastMCP(MCP_NAME)
 
-# Global configuration variable, initialized later based on mode.
+# Global configuration variable, initialized based on the execution mode.
 configuration: dict[str, Any] = {}
+
 
 # --- Core Logic ---
 
@@ -96,26 +103,27 @@ async def _execute_agent_task(
     chat: Optional[str],
     filepath: Optional[str | PathLike[str]],
     target_directory: Optional[Path],
-    **kwargs,
+    **kwargs: Any,
 ) -> Any:
     """
     Initializes and runs a single agent task.
 
     This function encapsulates the logic for creating an agent instance and
     invoking its primary execution method. It includes error handling to
+
     log failures during the agent's run.
 
     Args:
         config: The application configuration dictionary.
         agent_name: The name of the agent to execute.
+        project: The name of the project context.
         chat: The input prompt or context for the agent.
         filepath: The path to a file or directory for the agent to process.
         target_directory: The root directory of the project the agent will operate on.
         **kwargs: Additional keyword arguments to pass to the agent.
 
     Returns:
-        The result produced by the agent's execution. The type is 'Any' as
-        different agents may return different types of data.
+        The result produced by the agent's execution.
 
     Raises:
         RuntimeError: If the agent's execution fails, wrapping the original exception.
@@ -123,7 +131,8 @@ async def _execute_agent_task(
     logger.info("Executing '%s' tool.", agent_name)
 
     if agent_name == INGEST_KNOWLEDGE_BANK:
-        return await KnowledgeBankIngestor(config["agentic-tools"]).run_ingestion()
+        ingestor = KnowledgeBankIngestor(config["agentic-tools"])
+        return await ingestor.run_ingestion()
 
     try:
         agent_class = AGENT_CLASSES.get(agent_name, DefaultAgent)
@@ -139,8 +148,7 @@ async def _execute_agent_task(
         return await agent.run_agent()
     except Exception as error:
         logger.error(
-            f"An error occurred while running the '{agent_name}' tool.",
-            exc_info=True,
+            "An error occurred while running the '%s' tool.", agent_name, exc_info=True
         )
         # Re-raising after logging ensures the failure is visible to the caller
         # and preserves the original exception context.
@@ -152,7 +160,7 @@ async def _run_agent_tool(
     chat: Optional[str],
     filepath: Optional[str | PathLike[str]],
     target_directory: Path,
-    **kwargs,
+    **kwargs: Any,
 ) -> Any:
     """
     A generic factory function to instantiate and run a specified agent.
@@ -170,22 +178,16 @@ async def _run_agent_tool(
 
     Returns:
         The result of the agent's operation.
-
-    Raises:
-        RuntimeError: If the agent execution fails for any reason.
     """
     return await _execute_agent_task(
         configuration, agent_name, MCP_NAME, chat, filepath, target_directory, **kwargs
     )
 
+
 # --- Tool Definitions ---
 
 
-@mcp.tool(
-    description=(
-        "Walks the project directories, gets git information, and updates the README.md file."
-    ),
-)
+@mcp.tool(description=AGENT_METADATA[README_WRITER])
 async def readme_writer_tool(
     chat: Optional[str] = None,
     filepath: Optional[str | PathLike[str]] = None,
@@ -202,10 +204,10 @@ async def readme_writer_tool(
     Returns:
         The result of the agent's operation.
     """
-    return await _run_agent_tool("readme_writer", chat, filepath, target_directory)
+    return await _run_agent_tool(README_WRITER, chat, filepath, target_directory)
 
 
-@mcp.tool(description="Audits recent code changes and approves or rejects them.")
+@mcp.tool(description=AGENT_METADATA[APPROVER])
 async def approver_tool(
     chat: Optional[str] = None,
     filepath: Optional[str | PathLike[str]] = None,
@@ -222,12 +224,10 @@ async def approver_tool(
     Returns:
         The result of the agent's audit.
     """
-    return await _run_agent_tool("approver", chat, filepath, target_directory)
+    return await _run_agent_tool(APPROVER, chat, filepath, target_directory)
 
 
-@mcp.tool(
-    description="Writes high-quality code based on design guidelines and standards.",
-)
+@mcp.tool(description=AGENT_METADATA[DEVELOPER])
 async def developer_tool(
     chat: Optional[str] = None,
     filepath: Optional[str | PathLike[str]] = None,
@@ -244,12 +244,10 @@ async def developer_tool(
     Returns:
         The result of the agent's operation, such as the modified code.
     """
-    return await _run_agent_tool("developer", chat, filepath, target_directory)
+    return await _run_agent_tool(DEVELOPER, chat, filepath, target_directory)
 
 
-@mcp.tool(
-    description="Creates a high-quality architecture based on design guidelines.",
-)
+@mcp.tool(description=AGENT_METADATA[ARCHITECT])
 async def architect_tool(
     chat: Optional[str] = None,
     filepath: Optional[str | PathLike[str]] = None,
@@ -266,10 +264,10 @@ async def architect_tool(
     Returns:
         The result of the agent's operation, such as a design document.
     """
-    return await _run_agent_tool("architect", chat, filepath, target_directory)
+    return await _run_agent_tool(ARCHITECT, chat, filepath, target_directory)
 
 
-@mcp.tool(description="Updates a source code file with comments and documentation.")
+@mcp.tool(description=AGENT_METADATA[COMMENTATOR])
 async def commentator_tool(
     chat: Optional[str] = None,
     filepath: Optional[str | PathLike[str]] = None,
@@ -286,12 +284,10 @@ async def commentator_tool(
     Returns:
         The result of the agent's operation.
     """
-    return await _run_agent_tool("commentator", chat, filepath, target_directory)
+    return await _run_agent_tool(COMMENTATOR, chat, filepath, target_directory)
 
 
-@mcp.tool(
-    description="Fetches content from URLs and saves it to a file for knowledge base creation."
-)
+@mcp.tool(description=AGENT_METADATA[KNOWLEDGE_BASE_BUILDER])
 async def knowledge_base_builder_tool(
     chat: Optional[str] = None,
     filepath: Optional[str | PathLike[str]] = None,
@@ -308,12 +304,12 @@ async def knowledge_base_builder_tool(
     Returns:
         The result of the agent's operation.
     """
-    return await _run_agent_tool(KNOWLEDGE_BASE_BUILDER, chat, filepath, target_directory)
+    return await _run_agent_tool(
+        KNOWLEDGE_BASE_BUILDER, chat, filepath, target_directory
+    )
 
 
-@mcp.tool(
-    description="Runs project linters and generates a prioritized analysis report."
-)
+@mcp.tool(description=AGENT_METADATA[LINTER_ANALYST])
 async def linter_analyst_tool(
     chat: Optional[str] = None,
     filepath: Optional[str | PathLike[str]] = None,
@@ -333,7 +329,7 @@ async def linter_analyst_tool(
     return await _run_agent_tool(LINTER_ANALYST, chat, filepath, target_directory)
 
 
-@mcp.tool(description="Automatically generates a TOML configuration file for a project.")
+@mcp.tool(description=AGENT_METADATA[CONFIGURATION_BUILDER])
 async def configuration_builder_tool(
     chat: Optional[str] = None,
     output_filename: str = "generated_config.toml",
@@ -369,21 +365,34 @@ def _setup_cli_parser() -> argparse.ArgumentParser:
         An `argparse.ArgumentParser` instance configured with the script's
         command-line arguments.
     """
-    _parser = argparse.ArgumentParser(
-        description="A command-line tool to manually trigger AI agents or run the FastMCP server.",
+    description = (
+        "Agentic Tools: A command-line tool for AI-driven software development.\n\n"
+        "This tool operates in two primary modes:\n"
+        "1. Server Mode (default): Runs the FastMCP server, exposing agents as tools.\n"
+        "   To run: python main.py\n\n"
+        "2. CLI Mode ('run-agent'): Manually executes a single agent task.\n"
+        "   To run: python main.py run-agent <AGENT_NAME> [options]"
+    )
+    parser = argparse.ArgumentParser(
+        description=description,
         formatter_class=argparse.RawTextHelpFormatter,
     )
 
-    # Top-level arguments for configuration
-    _parser.add_argument(
+    parser.add_argument(
         "--config",
         type=str,
-        default=CONFIG_FILE_PATH,
-        help="Path to the configuration file (e.g., conf/agentic_tools.toml).",
+        default=str(CONFIG_FILE_PATH),
+        help=f"Path to the configuration file (default: {CONFIG_FILE_PATH}).",
     )
 
-    # Subparser for the 'run-agent' command
-    subparsers = _parser.add_subparsers(dest="command", required=False)
+    subparsers = parser.add_subparsers(dest="command", required=False)
+
+    # Build the detailed help text for the agent_name argument.
+    agent_help_lines = ["The name of the agent to run. Available agents are:\n"]
+    max_len = max(len(name) for name in AGENT_METADATA) if AGENT_METADATA else 0
+    for name, desc in AGENT_METADATA.items():
+        agent_help_lines.append(f"  {name:<{max_len}} : {desc}")
+    agent_help_text = "\n".join(agent_help_lines)
 
     run_agent_parser = subparsers.add_parser(
         "run-agent",
@@ -394,7 +403,7 @@ def _setup_cli_parser() -> argparse.ArgumentParser:
         "agent_name",
         type=str,
         choices=VALID_AGENTS,
-        help=f"The name of the agent to run. Choices: {', '.join(VALID_AGENTS)}",
+        help=agent_help_text,
         metavar="AGENT_NAME",
     )
     run_agent_parser.add_argument(
@@ -419,72 +428,82 @@ def _setup_cli_parser() -> argparse.ArgumentParser:
         "--target-directory",
         type=str,
         default=str(Path.cwd()),
-        help="The root directory of the project the agent will operate on. Defaults to the current working directory.",
+        help="The root directory of the project. Defaults to the current working directory.",
     )
 
-    return _parser
+    return parser
 
 
 async def _run_cli_mode(args: argparse.Namespace) -> None:
-    """
-    Executes the selected agent task in CLI mode.
-    """
+    """Executes the selected agent task in CLI mode."""
+    global configuration
     try:
-        # Load configuration based on the --config argument
         config_path = Path(args.config)
         configuration = _load_configuration(config_path)
         logger.info("Configuration loaded successfully from %s.", config_path)
     except RuntimeError:
-        return
+        return  # Error is already logged in _load_configuration
 
     chat_prompt = args.chat
     if args.prompt_file:
         try:
-            with open(args.prompt_file, "r") as f:
-                chat_prompt = f.read()
+            with open(args.prompt_file, "r", encoding="utf-8") as prompt_file:
+                chat_prompt = prompt_file.read()
         except FileNotFoundError:
             logger.error("Prompt file not found at '%s'.", args.prompt_file)
+            return
+        except OSError as error:
+            logger.error("Error reading prompt file: %s", error)
             return
 
     try:
         target_directory = Path(args.target_directory).resolve()
         result = await _execute_agent_task(
-            configuration, args.agent_name, MCP_NAME, chat_prompt, args.filepath,
-            target_directory
-            )
+            configuration,
+            args.agent_name,
+            MCP_NAME,
+            chat_prompt,
+            args.filepath,
+            target_directory,
+        )
         logger.info("--- Agent Result ---")
         # The result can be any data type, so printing it directly provides the
         # clearest output for a developer using this manual tool.
         print(result)
         logger.info("--------------------")
-    except Exception as e:
-        # The specific error is already logged within execute_agent_task.
+    except RuntimeError as error:
+        # The specific error is already logged within _execute_agent_task.
         # This catch prevents a top-level traceback, providing a cleaner exit.
         logger.critical(
-            f"Script execution failed. Please review the logs for details. Error: {e}",
+            "Script execution failed. Please review the logs for details. Error: %s",
+            error,
         )
 
 
 # --- Main Execution Block ---
 
 
-def main_cli():
+def main_cli() -> None:
     """Main function for the command-line interface."""
     parser = _setup_cli_parser()
     args = parser.parse_args()
 
     if args.command == "run-agent":
-        # Run in CLI mode
         asyncio.run(_run_cli_mode(args))
     else:
-        # Run in FastMCP server mode (default)
-        # Load default configuration for server mode
-        # NOTE: The global configuration is required here because FastMCP's tool
+        # Run in FastMCP server mode (default).
+        # The global configuration is required here because FastMCP's tool
         # functions are registered globally and need access to the configuration
         # without explicit passing.
         global configuration
-        configuration = _load_configuration(CONFIG_FILE_PATH)
-        mcp.run()
+        try:
+            config_path = Path(args.config)
+            configuration = _load_configuration(config_path)
+            mcp.run()
+        except RuntimeError:
+            # Exit gracefully if configuration fails to load.
+            # The error is already logged in _load_configuration.
+            sys.exit(1)
 
 
 if __name__ == "__main__":
