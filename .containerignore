@@ -1,0 +1,26 @@
+# Git and version control
+.git
+.gitignore
+
+# Podman/Docker specific
+.containerignore
+Dockerfile
+Containerfile
+
+# Python virtual environment and caches
+.venv
+venv
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# IDE and OS files
+.idea/
+.vscode/
+*.DS_Store

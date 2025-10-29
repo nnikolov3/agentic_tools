@@ -320,6 +320,7 @@ class Tool:
             "SRC_CODE": await self.shell_tools.process_directory(self.source_directory),
             "MEMORY_CONTEXT": memory_context,
             "PROJECT_TOP_FILES": await self._get_common_project_files_context(),
+            "PROJECT_TREE": await self.shell_tools.get_project_tree(),
         }
         return payload
 
