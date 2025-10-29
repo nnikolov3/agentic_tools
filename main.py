@@ -14,6 +14,7 @@ particular aspect of the software development lifecycle.
 
 import argparse
 import asyncio
+import collections.abc
 import logging
 import sys
 from os import PathLike
@@ -71,19 +72,65 @@ AGENT_METADATA: Dict[str, str] = {
 VALID_AGENTS: Tuple[str, ...] = tuple(AGENT_METADATA.keys())
 
 
+def deep_merge(base_dict: Dict[str, Any], override_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Recursively merges override_dict into a copy of base_dict.
+    The base_dict is not modified in place.
+    """
+    merged = base_dict.copy()
+    for key, value in override_dict.items():
+        if (
+            key in merged
+            and isinstance(merged[key], dict)
+            and isinstance(value, collections.abc.Mapping)
+        ):
+            merged[key] = deep_merge(merged[key], value)
+        else:
+            # This will replace lists and other values, which is the
+            # most predictable behavior for configuration.
+            merged[key] = value
+    return merged
+
+
 # Initialize the configurator and load the configuration dictionary.
 # This approach centralizes configuration loading and error handling.
-def _load_configuration(config_path: Path) -> dict[str, Any]:
-    """Loads the application configuration from the specified path."""
+def _load_and_merge_configurations(user_config_path: Path) -> dict[str, Any]:
+    """
+    Loads the default configuration, then loads a user-specific configuration
+    and deep-merges it on top of the default.
+    """
+    # 1. Load default configuration from its standard location within the package.
+    # This path is relative to main.py, ensuring it works in both development
+    # and when installed via pip.
+    default_config_path = Path(__file__).parent / "conf" / "agentic_tools.toml"
+    default_config = {}
+    if default_config_path.is_file():
+        try:
+            default_config = get_config_dictionary(default_config_path)
+        except (ValueError, OSError) as e:
+            logger.error("FATAL: Could not load or parse the default configuration at '%s': %s", default_config_path, e)
+            raise RuntimeError("Default configuration is corrupted or unreadable.") from e
+    else:
+        logger.warning("Default configuration file not found at '%s'. The tool may not function correctly.", default_config_path)
+
+    # 2. If the user_config_path doesn't exist, return the default.
+    if not user_config_path.is_file():
+        logger.info("No user configuration found at '%s'. Using default settings.", user_config_path)
+        return default_config
+
+    # 3. Load user override configuration.
     try:
-        configuration_data: dict[str, Any] = get_config_dictionary(config_path)
-        return configuration_data
-    except FileNotFoundError:
-        logger.error("Configuration file not found at '%s'.", config_path)
-        sys.exit(1)
-    except Exception as error:
-        logger.error("Failed to load or parse configuration: %s", error)
-        raise RuntimeError("Configuration loading failed.") from error
+        logger.info("Loading user override configuration from '%s'.", user_config_path)
+        user_config = get_config_dictionary(user_config_path)
+    except (FileNotFoundError, ValueError, OSError) as e:
+        logger.error("Failed to load or parse user configuration at '%s': %s", user_config_path, e)
+        logger.warning("Proceeding with default configuration only.")
+        return default_config
+
+    # 4. Deep merge user config over default config and return.
+    logger.info("Merging user configuration over default settings.")
+    merged_config = deep_merge(default_config, user_config)
+    return merged_config
 
 
 # Initialize the FastMCP instance, which serves as the tool runner.
@@ -373,16 +420,25 @@ def _setup_cli_parser() -> argparse.ArgumentParser:
         "2. CLI Mode ('run-agent'): Manually executes a single agent task.\n"
         "   To run: python main.py run-agent <AGENT_NAME> [options]"
     )
+    
+    # Parent parser for global arguments
+    parent_parser = argparse.ArgumentParser(add_help=False)
+    parent_parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to a specific configuration file. Overrides all other settings.",
+    )
+    parent_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Run in debug mode, using 'conf/agentic_tools.toml' as the configuration.",
+    )
+
     parser = argparse.ArgumentParser(
         description=description,
         formatter_class=argparse.RawTextHelpFormatter,
-    )
-
-    parser.add_argument(
-        "--config",
-        type=str,
-        default=str(CONFIG_FILE_PATH),
-        help=f"Path to the configuration file (default: {CONFIG_FILE_PATH}).",
+        parents=[parent_parser],
     )
 
     subparsers = parser.add_subparsers(dest="command", required=False)
@@ -398,6 +454,7 @@ def _setup_cli_parser() -> argparse.ArgumentParser:
         "run-agent",
         help="Manually execute a single agent task.",
         formatter_class=argparse.RawTextHelpFormatter,
+        parents=[parent_parser],
     )
     run_agent_parser.add_argument(
         "agent_name",
@@ -436,13 +493,8 @@ def _setup_cli_parser() -> argparse.ArgumentParser:
 
 async def _run_cli_mode(args: argparse.Namespace) -> None:
     """Executes the selected agent task in CLI mode."""
-    global configuration
-    try:
-        config_path = Path(args.config)
-        configuration = _load_configuration(config_path)
-        logger.info("Configuration loaded successfully from %s.", config_path)
-    except RuntimeError:
-        return  # Error is already logged in _load_configuration
+    # The global 'configuration' is already loaded and merged by main_cli.
+    # The previous logic to load config here is no longer needed.
 
     chat_prompt = args.chat
     if args.prompt_file:
@@ -467,13 +519,9 @@ async def _run_cli_mode(args: argparse.Namespace) -> None:
             target_directory,
         )
         logger.info("--- Agent Result ---")
-        # The result can be any data type, so printing it directly provides the
-        # clearest output for a developer using this manual tool.
         print(result)
         logger.info("--------------------")
     except RuntimeError as error:
-        # The specific error is already logged within _execute_agent_task.
-        # This catch prevents a top-level traceback, providing a cleaner exit.
         logger.critical(
             "Script execution failed. Please review the logs for details. Error: %s",
             error,
@@ -483,27 +531,45 @@ async def _run_cli_mode(args: argparse.Namespace) -> None:
 # --- Main Execution Block ---
 
 
+def _determine_config_path(args: argparse.Namespace) -> Path:
+    """Determines the configuration file path based on CLI arguments."""
+    # 1. User-specified path via --config has the highest precedence.
+    if args.config:
+        logger.info("Using user-specified configuration: %s", args.config)
+        return Path(args.config)
+    # 2. --debug flag uses the local development path.
+    if args.debug:
+        logger.info("Debug mode enabled. Using configuration: conf/agentic_tools.toml")
+        return Path("conf/agentic_tools.toml")
+    # 3. Default behavior for container/production use.
+    logger.info("Using default root configuration: agentic_tools.toml")
+    return Path("agentic_tools.toml")
+
+
 def main_cli() -> None:
     """Main function for the command-line interface."""
     parser = _setup_cli_parser()
     args = parser.parse_args()
 
-    if args.command == "run-agent":
-        asyncio.run(_run_cli_mode(args))
-    else:
-        # Run in FastMCP server mode (default).
-        # The global configuration is required here because FastMCP's tool
-        # functions are registered globally and need access to the configuration
-        # without explicit passing.
-        global configuration
-        try:
-            config_path = Path(args.config)
-            configuration = _load_configuration(config_path)
+    # This path is now correctly identified as the *user override* path.
+    user_config_path = _determine_config_path(args)
+
+    global configuration
+    try:
+        # The new loading and merging logic is called here.
+        configuration = _load_and_merge_configurations(user_config_path)
+        if not configuration:
+            raise RuntimeError("Configuration could not be loaded.")
+
+        if args.command == "run-agent":
+            # We no longer need to pass the config path to the CLI runner.
+            asyncio.run(_run_cli_mode(args))
+        else:
+            # Run in FastMCP server mode (default).
             mcp.run()
-        except RuntimeError:
-            # Exit gracefully if configuration fails to load.
-            # The error is already logged in _load_configuration.
-            sys.exit(1)
+    except RuntimeError as e:
+        logger.critical("Failed to initialize: %s", e)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -172,6 +172,8 @@ class Tool:
                 return await self._create_linter_analyst_payload(chat, memory_context)
             case "configuration_builder":
                 return await self._create_configuration_builder_payload()
+            case "expert":
+                return await self._create_default_payload(chat, memory_context)
             case _:
                 return await self._create_default_payload(chat, memory_context)
 

@@ -114,9 +114,6 @@ class Agent(abc.ABC):
             self.context_quality_score = await self._assess_context_quality()
             await self._update_memory_weights()
 
-            if self.context_quality_score < 0.5:
-                self.memory_context = await self._retrieve_context()
-
             self.response = await self.tool.run_tool(
                 self.chat,
                 self.memory_context,

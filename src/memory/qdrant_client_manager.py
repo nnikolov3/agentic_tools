@@ -20,7 +20,10 @@ class QdrantClientManager:
         memory_config: Dict[str, Any] = config.get("memory", config)
 
         # Connection and transport
-        self.qdrant_url: str = memory_config.get("qdrant_url", "http://localhost:6333")
+        # Check for an environment variable first, then fall back to the config file.
+        self.qdrant_url: str = os.getenv(
+            "QDRANT_URL", memory_config.get("qdrant_url", "http://localhost:6333")
+        )
         self.timeout: int = int(memory_config.get("timeout", 60))
         self.prefer_grpc: bool = bool(memory_config.get("prefer_grpc", True))
         self.api_key: Optional[str] = memory_config.get("api_key")
