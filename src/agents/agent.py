@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import datetime
 import logging
 from os import PathLike
 from pathlib import Path
@@ -73,6 +74,7 @@ class Agent(abc.ABC):
             logger.warning("No configuration found for project '%s'.", project)
 
         self.configuration: dict[str, Any] = project_config
+        self.responses_dir: str = self.configuration.get("responses_dir", "agent_responses")
         self.agent_name: str = agent_name
         self.chat: Optional[str] = chat
         self.filepath: Optional[str | PathLike[str]] = filepath
@@ -91,10 +93,32 @@ class Agent(abc.ABC):
             "Initialized Agent '%s' for project '%s'.", self.agent_name, project
         )
 
+    def _write_sync(self, output_path: Path, content: str) -> None:
+        """Synchronously writes content to a file."""
+        try:
+            with open(output_path, "w") as f:
+                f.write(content)
+            logger.info("Successfully wrote agent response to '%s'.", output_path)
+        except IOError as e:
+            logger.error("Failed to write agent response to '%s': %s", output_path, e)
+            raise IOError(f"Failed to write agent response to '{output_path}'") from e
+
+    async def _write_response_to_file(self) -> None:
+        """Writes the agent's response to a file asynchronously."""
+        if not self.response:
+            return
+
+        output_dir = Path(self.responses_dir)
+        output_dir.mkdir(exist_ok=True)
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{self.agent_name}_{timestamp}.md"
+        output_path = output_dir / filename
+
+        await asyncio.to_thread(self._write_sync, output_path, self.response)
+
     async def run_agent(self) -> Optional[str]:
         """
-        Executes the full agent lifecycle.
-
         This template method orchestrates the agent's operation:
         1. Retrieves context from memory (RAG).
         2. Executes the primary tool to generate a response.
@@ -122,6 +146,7 @@ class Agent(abc.ABC):
 
             if self.response:
                 await self._post_process()
+                await self._write_response_to_file()
                 await self._store_memory()
 
             return self.response

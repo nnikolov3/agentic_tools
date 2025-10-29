@@ -6,7 +6,8 @@
 # MASTER CONFIGURATION
 # =============================================================================
 [agentic-tools]
-project_name = "Agentic Tools"
+project_name = "agentic-tools"
+responses_dir = "agent_responses"
 project_description = "An agentic toolchain for architecting, designing, validating, and approving code via chained, specialized AI agents."
 
 # Source code and documentation paths used for context gathering.

@@ -17,3 +17,4 @@ dist/
 
 # Local files
 approver_report_original.json
+/agent_responses/
