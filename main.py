@@ -96,6 +96,7 @@ async def _execute_agent_task(
     chat: Optional[str],
     filepath: Optional[str | PathLike[str]],
     target_directory: Optional[Path],
+    **kwargs,
 ) -> Any:
     """
     Initializes and runs a single agent task.
@@ -110,6 +111,7 @@ async def _execute_agent_task(
         chat: The input prompt or context for the agent.
         filepath: The path to a file or directory for the agent to process.
         target_directory: The root directory of the project the agent will operate on.
+        **kwargs: Additional keyword arguments to pass to the agent.
 
     Returns:
         The result produced by the agent's execution. The type is 'Any' as
@@ -132,6 +134,7 @@ async def _execute_agent_task(
             chat=chat,
             filepath=filepath,
             target_directory=target_directory,
+            **kwargs,
         )
         return await agent.run_agent()
     except Exception as error:
@@ -149,6 +152,7 @@ async def _run_agent_tool(
     chat: Optional[str],
     filepath: Optional[str | PathLike[str]],
     target_directory: Path,
+    **kwargs,
 ) -> Any:
     """
     A generic factory function to instantiate and run a specified agent.
@@ -162,6 +166,7 @@ async def _run_agent_tool(
         chat: The optional chat context or prompt for the agent.
         filepath: The optional path to a file or directory for the agent to process.
         target_directory: The root directory of the project the agent will operate on.
+        **kwargs: Additional keyword arguments to pass to the agent.
 
     Returns:
         The result of the agent's operation.
@@ -170,9 +175,8 @@ async def _run_agent_tool(
         RuntimeError: If the agent execution fails for any reason.
     """
     return await _execute_agent_task(
-        configuration, agent_name, MCP_NAME, chat, filepath, target_directory
-        )
-
+        configuration, agent_name, MCP_NAME, chat, filepath, target_directory, **kwargs
+    )
 
 # --- Tool Definitions ---
 
@@ -332,21 +336,26 @@ async def linter_analyst_tool(
 @mcp.tool(description="Automatically generates a TOML configuration file for a project.")
 async def configuration_builder_tool(
     chat: Optional[str] = None,
-    filepath: Optional[str | PathLike[str]] = None,
+    output_filename: str = "generated_config.toml",
     target_directory: Path = Path.cwd(),
+    dependency_file: str = "pyproject.toml",
 ) -> Any:
     """
     Invokes the 'configuration_builder' agent to generate a project configuration file.
 
     Args:
         chat: An optional prompt to guide the configuration generation.
-        filepath: The path to the output file where the configuration will be saved.
+        output_filename: The path to the output file where the configuration will be saved.
         target_directory: The root directory of the project to analyze.
-
-    Returns:
-        The result of the agent's operation.
+        dependency_file: The name of the dependency file to inspect.
     """
-    return await _run_agent_tool(CONFIGURATION_BUILDER, chat, filepath, target_directory)
+    return await _run_agent_tool(
+        CONFIGURATION_BUILDER,
+        chat,
+        filepath=output_filename,
+        target_directory=target_directory,
+        dependency_file=dependency_file,
+    )
 
 
 # --- CLI Execution Logic ---
@@ -395,6 +404,12 @@ def _setup_cli_parser() -> argparse.ArgumentParser:
         help="The chat prompt or context for the agent.",
     )
     run_agent_parser.add_argument(
+        "--prompt-file",
+        type=str,
+        default=None,
+        help="The path to a file containing the prompt for the agent.",
+    )
+    run_agent_parser.add_argument(
         "--filepath",
         type=str,
         default=None,
@@ -422,10 +437,19 @@ async def _run_cli_mode(args: argparse.Namespace) -> None:
     except RuntimeError:
         return
 
+    chat_prompt = args.chat
+    if args.prompt_file:
+        try:
+            with open(args.prompt_file, "r") as f:
+                chat_prompt = f.read()
+        except FileNotFoundError:
+            logger.error("Prompt file not found at '%s'.", args.prompt_file)
+            return
+
     try:
         target_directory = Path(args.target_directory).resolve()
         result = await _execute_agent_task(
-            configuration, args.agent_name, MCP_NAME, args.chat, args.filepath,
+            configuration, args.agent_name, MCP_NAME, chat_prompt, args.filepath,
             target_directory
             )
         logger.info("--- Agent Result ---")

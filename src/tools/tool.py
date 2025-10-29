@@ -18,6 +18,7 @@ factory pattern for different agents.
 """
 
 # Standard Library imports
+import asyncio
 import logging
 from pathlib import Path
 from typing import Any, Optional
@@ -154,13 +155,13 @@ class Tool:
             case "developer":
                 if not filepath:
                     raise ValueError("Filepath is required for the 'developer' agent.")
-                return self._create_developer_payload(chat, memory_context, filepath)
+                return await self._create_developer_payload(chat, memory_context, filepath)
             case "readme_writer":
                 return self._create_readme_writer_payload(chat)
             case "approver":
-                return self._create_approver_payload(chat)
+                return await self._create_approver_payload(chat)
             case "linter_analyst":
-                return self._create_linter_analyst_payload(chat, memory_context)
+                return await self._create_linter_analyst_payload(chat, memory_context)
             case "configuration_builder":
                 return self._create_configuration_builder_payload(chat)
             case _:
@@ -209,7 +210,7 @@ class Tool:
             },
         }
 
-    def _create_developer_payload(
+    async def _create_developer_payload(
         self,
         chat: Optional[Any],
         memory_context: Optional[str],
@@ -222,7 +223,7 @@ class Tool:
             "SKILLS": self.agent_skills,
             "USER_PROMPT": chat,
             "MEMORY_CONTEXT": memory_context,
-            "DESIGN_DOCS": self.shell_tools.get_design_docs_content(),
+            "DESIGN_DOCS": await self.shell_tools.get_design_docs_content(),
             "SOURCE_FILE": {
                 "path": filepath,
                 "content": self.shell_tools.read_file_content(Path(filepath)),
@@ -243,18 +244,24 @@ class Tool:
 
         return payload
 
-    def _create_approver_payload(self, chat: Optional[Any]) -> dict[str, Any]:
+    async def _create_approver_payload(self, chat: Optional[Any]) -> dict[str, Any]:
         """Constructs a payload with git diff and design docs for the 'approver' agent."""
         logger.info("Using diff and design context for 'approver' agent.")
+        
+        git_context, design_docs = await asyncio.gather(
+            self.shell_tools.get_git_context_for_patch(),
+            self.shell_tools.get_design_docs_content(),
+        )
+        
         return {
             "SYSTEM_PROMPT": self.agent_prompt,
             "SKILLS": self.agent_skills,
             "USER_PROMPT": chat,
-            "GIT_DIFF_PATCH": self.shell_tools.create_patch(),
-            "DESIGN_DOCS": self.shell_tools.get_design_docs_content(),
+            "GIT_DIFF_PATCH": git_context,
+            "DESIGN_DOCS": design_docs,
         }
 
-    def _create_linter_analyst_payload(
+    async def _create_linter_analyst_payload(
         self,
         chat: Optional[
             str
@@ -270,7 +277,7 @@ class Tool:
             "SKILLS": self.agent_skills,
             "USER_PROMPT": chat,
             "MEMORY_CONTEXT": memory_context,
-            "DESIGN_DOCS": self.shell_tools.get_design_docs_content(),
+            "DESIGN_DOCS": await self.shell_tools.get_design_docs_content(),
         }
 
     def _create_default_payload(

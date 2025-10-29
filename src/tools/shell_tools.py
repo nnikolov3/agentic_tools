@@ -5,6 +5,7 @@ import logging
 import platform
 import shutil
 import subprocess
+from collections import Counter
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, Dict, Generator, List, Optional
@@ -32,6 +33,10 @@ class ShellTools:
                 ":!MANIFEST.in",
             ],
         )
+        self.git_log_command: List[str] = self.config.get(
+            "git_log_command",
+            ["log", "-p"],
+        )
         git_executable_path: Optional[str] = shutil.which("git")
         if not git_executable_path:
             logger.error(
@@ -50,6 +55,8 @@ class ShellTools:
         self.exclude_directories: List[str] = config.get("exclude_directories", [])
         self.exclude_files: List[str] = config.get("exclude_files", [])
         self.encoding: str = "utf-8"
+        self.commit_number: int = config.get("commit_number", 3)
+        self.tree_depth: int = config.get("tree_depth", 3)
 
         if target_directory is not None:
             self.current_working_directory = target_directory
@@ -140,12 +147,12 @@ class ShellTools:
                 f"Failed to process directory {directory_path}",
             ) from error
 
-    def get_design_docs_content(self) -> str:
+    async def get_design_docs_content(self) -> str:
         design_docs_content_parts: List[str] = []
         for doc_path_str in self.design_docs:
             full_path = self.current_working_directory / doc_path_str
             if full_path.is_file():
-                content = self.read_file_content(full_path)
+                content = await asyncio.to_thread(self.read_file_content, full_path)
                 if content:
                     design_docs_content_parts.append(content)
             else:
@@ -380,6 +387,7 @@ class ShellTools:
     async def get_project_tree(self) -> str:
         """
         Generates a file and directory tree.
+        Uses the 'tree' command if available, otherwise falls back to a Python implementation.
         """
         try:
             process = await asyncio.create_subprocess_exec(
@@ -390,38 +398,72 @@ class ShellTools:
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await process.communicate()
-            output = stdout.decode(self.encoding, errors="ignore") + stderr.decode(
-                self.encoding,
-                errors="ignore",
-            )
-            return output.strip()
+            if process.returncode == 0:
+                output = stdout.decode(self.encoding, errors="ignore") + stderr.decode(
+                    self.encoding,
+                    errors="ignore",
+                )
+                return output.strip()
+            else:
+                raise FileNotFoundError
+
         except FileNotFoundError:
-            logger.warning("'tree' command not found. Please install it.")
-            return "tree command not found"
+            logger.warning("'tree' command not found. Falling back to Python implementation.")
+            
+            def _build_tree(dir_path: Path, level: int = 0, limit: int = self.tree_depth):
+                if level >= limit:
+                    return []
+                
+                tree = []
+                items = sorted(list(dir_path.iterdir()), key=lambda p: (p.is_file(), p.name.lower()))
+                
+                for i, item in enumerate(items):
+                    if self._is_in_excluded_directory(item) or self._should_exclude_file(item.name):
+                        continue
+
+                    is_last = i == len(items) - 1
+                    prefix = "    " * level
+                    tree.append(f"{prefix}{'└── ' if is_last else '├── '}{item.name}")
+                    
+                    if item.is_dir():
+                        tree.extend(_build_tree(item, level + 1, limit))
+                return tree
+
+            loop = asyncio.get_running_loop()
+            tree_lines = await loop.run_in_executor(None, _build_tree, self.current_working_directory)
+            return "\n".join(tree_lines)
         except Exception as e:
             logger.error("Error running 'tree' command: %s", e)
             return f"Error running 'tree' command: {e}"
 
     async def get_detected_languages(self) -> str:
         """
-        Detects the primary programming language by analyzing file extensions.
+        Detects the primary programming languages by analyzing file extensions.
+        This method is implemented in Python for portability.
         """
-        try:
-            cmd = "find . -type f -name '*.*' | sed 's/.*\\.//' | sort | uniq -c | sort -nr | head -n 5"
-            process = await asyncio.create_subprocess_shell(
-                cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await process.communicate()
-            output = stdout.decode(self.encoding, errors="ignore") + stderr.decode(
-                self.encoding,
-                errors="ignore",
-            )
-            return output.strip()
-        except Exception as e:
-            logger.error("Error detecting languages: %s", e)
-            return f"Error detecting languages: {e}"
+        from collections import Counter
+
+        loop = asyncio.get_running_loop()
+        
+        def _scan_files():
+            extensions = []
+            for item in self.current_working_directory.rglob("*"):
+                if item.is_file() and not self._is_in_excluded_directory(item) and not self._should_exclude_file(item.name):
+                    extensions.append(item.suffix)
+            return Counter(extensions)
+
+        extension_counts = await loop.run_in_executor(None, _scan_files)
+
+        if not extension_counts:
+            return "No files with extensions found."
+
+        # Get the 5 most common extensions
+        most_common_extensions = extension_counts.most_common(5)
+        
+        # Format the output string
+        output = "\n".join([f"{count} {ext}" for ext, count in most_common_extensions])
+        return output
+
 
     def get_git_info(self) -> Dict[str, Optional[str]]:
         git_info: Dict[str, Optional[str]] = {"username": None, "url": None}
@@ -466,27 +508,46 @@ class ShellTools:
             )
             return input_string
 
-    def create_patch(self) -> str:
-        command = [self.git_executable, *self.git_diff_command]
-        logger.debug("Running git diff command: %s", ' '.join(command))
+    async def get_git_context_for_patch(self) -> str:
+        diff_cmd = [self.git_executable, *self.git_diff_command]
+        logger.debug("Running git diff command: %s", ' '.join(diff_cmd))
+        
+        log_cmd = [self.git_executable, *self.git_log_command, "-n", str(self.commit_number)]
+        logger.debug("Running git log command: %s", ' '.join(log_cmd))
+        
         try:
-            result = subprocess.run(
-                command,
+            diff_process = await asyncio.create_subprocess_exec(
+                *diff_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
                 cwd=str(self.current_working_directory),
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=15,
             )
-            return result.stdout
+            diff_stdout, diff_stderr = await asyncio.wait_for(diff_process.communicate(), timeout=15)
+
+            log_process = await asyncio.create_subprocess_exec(
+                *log_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(self.current_working_directory),
+            )
+            log_stdout, log_stderr = await asyncio.wait_for(log_process.communicate(), timeout=15)
+
+            if diff_process.returncode != 0:
+                raise subprocess.CalledProcessError(diff_process.returncode, diff_cmd, diff_stdout, diff_stderr)
+            
+            if log_process.returncode != 0:
+                raise subprocess.CalledProcessError(log_process.returncode, log_cmd, log_stdout, log_stderr)
+
+            return f"{diff_stdout.decode(self.encoding)}\n{log_stdout.decode(self.encoding)}"
+        
         except subprocess.CalledProcessError as error:
             logger.error(
-                "Git diff command failed with exit code %d:\nSTDOUT: %s\nSTDERR: %s",
+                "Git command failed with exit code %d:\nSTDOUT: %s\nSTDERR: %s",
                 error.returncode,
                 error.stdout,
                 error.stderr,
             )
             raise RuntimeError("Failed to create git patch") from error
-        except subprocess.TimeoutExpired as error:
-            logger.error("Git diff command timed out: %s", error)
-            raise RuntimeError("Git diff command timed out") from error
+        except asyncio.TimeoutError as error:
+            logger.error("Git command timed out: %s", error)
+            raise RuntimeError("Git command timed out") from error

@@ -42,6 +42,9 @@ max_file_bytes = 26214400 # 25 MiB limit per file to avoid excessive memory usag
 
 git_diff_command = ["diff", "HEAD", "--patch-with-raw", "--minimal", "--patience", ":!uv.lock", ":!MANIFEST.in"]
 
+git_log_command = ["log" ,"--pretty"]
+commit_number = 3
+tree_depth = 3
 # =============================================================================
 # MEMORY & VECTOR DATABASE CONFIGURATION
 # =============================================================================
