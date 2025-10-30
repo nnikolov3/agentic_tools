@@ -211,7 +211,7 @@ async def google_documents_api(model: str, api_key: str, prompt: str, file: str)
                 ),
                 # mypy incorrectly flags this as 'Too many positional arguments'
                 # due to an issue in the google-genai stubs.
-                types.Part.from_text(prompt),  # type: ignore[misc]
+                types.Part.from_text(text=prompt),  # type: ignore[misc]
             ],  # type: ignore[arg-type]
         )
         response = await asyncio.to_thread(func)

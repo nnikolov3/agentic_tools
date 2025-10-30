@@ -20,6 +20,7 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+from dotenv import load_dotenv  # Added for .env file support
 from fastmcp import FastMCP
 
 from src.agents.agent import AGENT_CLASSES, DefaultAgent
@@ -561,6 +562,9 @@ def _determine_config_path(args: argparse.Namespace) -> Path:
 
 def main_cli() -> None:
     """Main function for the command-line interface."""
+    # Load environment variables from .env file if present.
+    load_dotenv()
+
     parser = _setup_cli_parser()
     args = parser.parse_args()
 

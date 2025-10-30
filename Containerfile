@@ -1,46 +1,69 @@
-# --- Stage 1: Builder ---
-# Use a full Python image that includes build tools to compile dependencies.
-FROM python:3.13-bookworm AS builder
+# Stage 1: Builder - Install dependencies in a temporary environment
+# This stage keeps the final image clean and caches the dependency layer.
+FROM python:3.13-slim AS builder
 
-# Set the working directory
+# Install system-level dependencies required by the application's shell tools.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+git \
+tree \
+&& rm -rf /var/lib/apt/lists/*
+
+# Set the working directory for the application.
 WORKDIR /app
 
-# Create a virtual environment for clean dependency management
+# Create a virtual environment to isolate dependencies.
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy only the files needed to install dependencies
-# This leverages Podman's layer caching. Dependencies are only re-installed
-# if these files change.
-COPY pyproject.toml README.md MANIFEST.in ./
+# Copy only the necessary files to install dependencies. This optimizes caching.
+COPY pyproject.toml .
+COPY README.md .
+COPY src/ src/
 
-# Install the project dependencies. This also installs the project in editable
-# mode, making the `agentic-tools` script available.
+# Install Python dependencies into the virtual environment.
+# The '.' installs the project itself, including the 'agentic-tools' script.
 RUN pip install --no-cache-dir .
 
-# --- Stage 2: Final Image ---
-# Use a slim base image for the final application to reduce size.
-FROM python:3.13-slim-bookworm
 
-# Create a non-root user and group for security
-RUN groupadd --system app && useradd --system --gid app app
-USER app
-WORKDIR /home/app
+# Stage 2: Final Image - Create the lean, production-ready image
+FROM python:3.13-slim
 
-# Copy the virtual environment with installed dependencies from the builder stage
+# Set the working directory.
+WORKDIR /app
+
+# Create a non-root user for security. Running as a dedicated user is a critical
+# security best practice, adhering to the principle of least privilege.
+RUN useradd --system --create-home appuser
+
+# Install only the necessary runtime system dependencies.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+git \
+tree \
+&& rm -rf /var/lib/apt/lists/*
+
+# Copy the virtual environment with installed dependencies from the builder stage.
 COPY --from=builder /opt/venv /opt/venv
 
-# Copy the application source code
-COPY --chown=app:app src/ ./src
-COPY --chown=app:app main.py ./
+# Copy the entire application source code into the final image.
+COPY . .
 
-# Set the PATH to include the virtual environment's binaries
+# Set correct ownership for the application files.
+RUN chown -R appuser:appuser /app
+
+# Switch to the non-root user.
+USER appuser
+
+# Add the mounted volume to Git's safe directories to prevent 'dubious ownership' errors.
+# This must be run as the non-root user.
+RUN git config --global --add safe.directory /app
+
+# Add the virtual environment's bin directory to the PATH.
 ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONPATH="/app"
 
-# The entrypoint is the script defined in pyproject.toml.
-# This makes the container behave like the command-line tool.
+# Set the entry point to the installed script. This makes the container
+# behave like a standalone executable.
 ENTRYPOINT ["agentic-tools"]
 
-# Default command if no arguments are provided to `podman run`.
-# By default, it will show the help message.
+# Set a default command to display help, making the container self-documenting.
 CMD ["--help"]
