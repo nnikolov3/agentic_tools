@@ -143,13 +143,15 @@ class QdrantMemory:
         )
 
         # Resolve actual vector names from each collection
-        instance.agent_dense_name, instance.agent_sparse_name = (
-            await instance._resolve_vector_names(instance.collection_name)
-        )
-        instance.kb_dense_name, instance.kb_sparse_name = (
-            await instance._resolve_vector_names(
-                instance.knowledge_bank_collection_name
-            )
+        (
+            instance.agent_dense_name,
+            instance.agent_sparse_name,
+        ) = await instance._resolve_vector_names(instance.collection_name)
+        (
+            instance.kb_dense_name,
+            instance.kb_sparse_name,
+        ) = await instance._resolve_vector_names(
+            instance.knowledge_bank_collection_name
         )
 
         logger.info(

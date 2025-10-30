@@ -1,3 +1,4 @@
+# src/tools/tool.py
 """
 Module: src/tools/tool.py
 
@@ -101,11 +102,9 @@ class Tool:
             if response:
                 logger.info("Tool execution completed for agent '%s'.", self.agent)
                 return response
-            else:
-                logger.warning(
-                    "API call for agent '%s' returned no response.", self.agent
-                )
-                return ""
+
+            logger.warning("API call for agent '%s' returned no response.", self.agent)
+            return ""
 
         except ValueError as value_error:
             logger.error(
@@ -170,7 +169,9 @@ class Tool:
             case "linter_analyst":
                 return await self._create_linter_analyst_payload(chat, memory_context)
             case "configuration_builder":
-                return await self._create_configuration_builder_payload()
+                return await self._create_configuration_builder_payload(
+                    chat, memory_context
+                )
             case "expert":
                 return await self._create_default_payload(chat, memory_context)
             case _:
@@ -188,9 +189,9 @@ class Tool:
         """
         # This list explicitly defines which files constitute the common project context.
         # Adding or removing a file requires changing only this single location.
-        project_files_to_read = self.config.get("common_project_files", [])
+        project_files_to_read: list[str] = self.config.get("common_project_files", [])
 
-        common_context = {}
+        common_context: dict[str, str | None] = {}
         for filename in project_files_to_read:
             file_path = self.target_directory / filename
             common_context[filename] = await self.shell_tools.read_file_content(
@@ -247,7 +248,7 @@ class Tool:
         }
 
     async def _create_readme_writer_payload(
-        self, chat: Optional[Any], memory
+        self, chat: Optional[Any], memory_context: Optional[str]
     ) -> dict[str, Any]:
         """Constructs a project-wide context payload for the 'readme_writer' agent."""
         logger.info("Using project context for 'readme_writer' agent.")
@@ -255,7 +256,7 @@ class Tool:
             "SYSTEM_PROMPT": self.agent_prompt,
             "SKILLS": self.agent_skills,
             "USER_PROMPT": chat,
-            "MEMORY_CONTEXT": memory,
+            "MEMORY_CONTEXT": memory_context,
             "GIT_INFO": await self.shell_tools.get_git_info(),
             "SRC_CODE": await self.shell_tools.process_directory(self.source_directory),
             "PROJECT_TREE": await self.shell_tools.get_project_tree(),
@@ -265,7 +266,7 @@ class Tool:
         return payload
 
     async def _create_approver_payload(
-        self, chat: Optional[Any], memory
+        self, chat: Optional[Any], memory_context: Optional[str]
     ) -> dict[str, Any]:
         """Constructs a payload with git diff and design docs for the 'approver' agent."""
         logger.info("Using diff and design context for 'approver' agent.")
@@ -281,7 +282,7 @@ class Tool:
             "USER_PROMPT": chat,
             "GIT_DIFF_PATCH": git_context,
             "DESIGN_DOCS": design_docs,
-            "MEMORY_CONTEXT": memory,
+            "MEMORY_CONTEXT": memory_context,
             "PROJECT_TREE": await self.shell_tools.get_project_tree(),
         }
 
@@ -304,6 +305,46 @@ class Tool:
             "DESIGN_DOCS": await self.shell_tools.get_design_docs_content(),
         }
 
+    async def _create_configuration_builder_payload(
+        self,
+        chat: Optional[Any],
+        memory_context: Optional[str],
+    ) -> dict[str, Any]:
+        """
+        Constructs a project-wide context payload for the 'configuration_builder' agent.
+
+        This agent inspects the entire project to generate a configuration file.
+        It requires comprehensive context including the project's file structure,
+        source code, and key definition files to make an informed best-effort
+        configuration.
+        """
+        logger.info("Using project-wide context for 'configuration_builder' agent.")
+
+        # Gather comprehensive project context concurrently to provide the LLM
+        # with as much information as possible for a high-quality configuration.
+        (
+            src_code,
+            project_tree,
+            project_top_files,
+            design_docs,
+        ) = await asyncio.gather(
+            self.shell_tools.process_directory(self.source_directory),
+            self.shell_tools.get_project_tree(),
+            self._get_common_project_files_context(),
+            self.shell_tools.get_design_docs_content(),
+        )
+
+        return {
+            "SYSTEM_PROMPT": self.agent_prompt,
+            "SKILLS": self.agent_skills,
+            "USER_PROMPT": chat,
+            "MEMORY_CONTEXT": memory_context,
+            "SRC_CODE": src_code,
+            "PROJECT_TREE": project_tree,
+            "PROJECT_TOP_FILES": project_top_files,
+            "DESIGN_DOCS": design_docs,
+        }
+
     async def _create_default_payload(
         self,
         chat: Optional[Any],
@@ -322,13 +363,3 @@ class Tool:
             "PROJECT_TREE": await self.shell_tools.get_project_tree(),
         }
         return payload
-
-    @staticmethod
-    async def _create_configuration_builder_payload() -> dict[str, Any]:
-        """The configuration_builder agent does not require a payload.
-
-        This agent's role is to generate a configuration from scratch, so it does
-        not depend on any dynamic context from the project. Returning an empty
-        payload is intentional.
-        """
-        return {}

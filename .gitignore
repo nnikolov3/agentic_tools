@@ -9,6 +9,8 @@ __pycache__/
 megalinter-reports/
 .mypy_cache/
 /knowledge_bank/.env
+*.env*
+/.cache/
 
 # Added by agent for cleanup
 # Python build/packaging artifacts

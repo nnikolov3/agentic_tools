@@ -275,7 +275,6 @@ class KnowledgeBaseAgent(Agent):
         )
 
         if not self.filepath:
-
             raise ValueError(
                 "%s requires a valid output filepath, but None was provided."
                 % self.__class__.__name__,
@@ -289,7 +288,6 @@ class KnowledgeBaseAgent(Agent):
         """
 
         if not self.chat or not isinstance(self.chat, str):
-
             raise ValueError(
                 "A comma-separated string of URLs is required for the 'knowledge_base_builder' agent."
             )
@@ -324,7 +322,6 @@ class KnowledgeBaseAgent(Agent):
         """
 
         if self.response:
-
             logger.info("Storing fetched content in knowledge_bank memory.")
 
             # Explicitly create a memory instance targeting the knowledge_bank
@@ -336,7 +333,6 @@ class KnowledgeBaseAgent(Agent):
             await knowledge_bank_memory.add_memory(text_content=self.response)
 
         else:
-
             logger.debug("Skipping memory storage: no response available.")
 
     async def _assess_context_quality(self) -> float:

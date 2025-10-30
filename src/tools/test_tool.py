@@ -19,7 +19,6 @@ def mock_tool_instance():
         patch("src.tools.tool.ShellTools", new_callable=MagicMock) as MockShellTools,
         patch("src.tools.tool.ApiTools", new_callable=MagicMock) as MockApiTools,
     ):
-
         # Configure the mocked shell tools
         mock_shell_tools = MockShellTools.return_value
         mock_shell_tools.fetch_urls_content = AsyncMock(return_value="Fetched Content")

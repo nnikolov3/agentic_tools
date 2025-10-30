@@ -18,7 +18,6 @@ def mock_agent_instance(tmp_path):
     with patch(
         "src.agents.agent.ShellTools", new_callable=MagicMock
     ) as mock_shell_tools_class:
-
         # Configure the mocked shell tools
         mock_shell_tools = mock_shell_tools_class.return_value
         mock_shell_tools.fetch_urls_content = AsyncMock(return_value="Fetched Content")
