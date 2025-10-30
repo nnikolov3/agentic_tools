@@ -1,3 +1,4 @@
+# src/tools/shell_tools.py
 """
 Module: src.tools.shell_tools
 
@@ -10,18 +11,22 @@ safe, atomic file modifications within the project environment. It centralizes
 configuration-driven access to external commands and file operations.
 """
 
+# Standard Library Imports
 import asyncio
 import codecs
 import logging
+import os
 import platform
+import shlex
 import shutil
 import subprocess
 from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any, List
+from typing import Any
 
+# Third-Party Library Imports
 import httpx
 from bs4 import BeautifulSoup
 
@@ -42,7 +47,7 @@ DEFAULT_GIT_LOG_COMMAND: list[str] = ["log", "-p"]
 DEFAULT_ENCODING: str = "utf-8"
 DEFAULT_COMMIT_NUMBER: int = 3
 DEFAULT_TREE_DEPTH: int = 3
-SUBPROCESS_TIMEOUT: int = 15
+SUBPROCESS_TIMEOUT: int = 60
 
 
 class ShellTools:
@@ -70,35 +75,37 @@ class ShellTools:
             target_directory: The working directory for all operations.
                               If None, the current working directory is used.
         """
-        self.config: dict[str, Any] = config
-        self.agent_config: dict[str, Any] = self.config.get(agent, {})
+        self.configuration: dict[str, Any] = config
+        self.agent_configuration: dict[str, Any] = self.configuration.get(agent, {})
 
         # --- Directory and File Matching Configuration ---
-        self.design_docs: list[str] = self.config.get("design_docs", [])
-        self.project_directories: list[str] = self.config.get("project_directories", [])
+        self.design_docs: list[str] = self.configuration.get("design_docs", [])
+        self.project_directories: list[str] = self.configuration.get(
+            "project_directories", []
+        )
         self.include_extensions: set[str] = set(
-            self.config.get("include_extensions", [])
+            self.configuration.get("include_extensions", [])
         )
         self.exclude_directories: set[str] = set(
-            self.config.get("exclude_directories", [])
+            self.configuration.get("exclude_directories", [])
         )
-        self.exclude_files: set[str] = set(self.config.get("exclude_files", []))
+        self.exclude_files: set[str] = set(self.configuration.get("exclude_files", []))
 
         # --- Command and Behavior Configuration ---
-        self.encoding: str = self.config.get("encoding", DEFAULT_ENCODING)
-        self.commit_number: int = self.config.get(
+        self.encoding: str = self.configuration.get("encoding", DEFAULT_ENCODING)
+        self.commit_number: int = self.configuration.get(
             "commit_number", DEFAULT_COMMIT_NUMBER
         )
-        self.tree_depth: int = self.config.get("tree_depth", DEFAULT_TREE_DEPTH)
-        self.git_diff_command: list[str] = self.config.get(
+        self.tree_depth: int = self.configuration.get("tree_depth", DEFAULT_TREE_DEPTH)
+        self.git_diff_command: list[str] = self.configuration.get(
             "git_diff_command", DEFAULT_GIT_DIFF_COMMAND
         )
-        self.git_log_command: list[str] = self.config.get(
+        self.git_log_command: list[str] = self.configuration.get(
             "git_log_command", DEFAULT_GIT_LOG_COMMAND
         )
 
         # --- Executable Path Verification ---
-        git_executable_path: str | None = shutil.which("git")
+        git_executable_path: str | None = self._validate_executable("git")
         if not git_executable_path:
             logger.error(
                 "Git command not found. Please ensure git is installed and in your PATH."
@@ -106,12 +113,34 @@ class ShellTools:
             raise FileNotFoundError("Git executable not found.")
         self.git_executable: str = git_executable_path
 
-        self.sync_executable: str | None = shutil.which("sync")
+        self.sync_executable: str | None = self._validate_executable("sync")
         if not self.sync_executable:
             logger.warning("'sync' command not found. File system sync may be skipped.")
 
         # --- Set Working Directory ---
         self.current_working_directory: Path = target_directory or Path.cwd()
+
+    def _validate_executable(self, command: str) -> str | None:
+        """
+        Validates that the command is a known, safe executable and returns its path.
+        This prevents B603 false positives by ensuring the executable is not user-controlled.
+        """
+        # Explicit allow-list of safe executables used in subprocess.run
+        SAFE_EXECUTABLES = {"sync", "git", "tree"}
+        if command not in SAFE_EXECUTABLES:
+            logger.error("Attempted to use an unsafe executable: %s", command)
+            return None
+
+        executable_path = shutil.which(command)
+        if not executable_path:
+            return None
+
+        # Ensure the path is absolute and points to a file
+        path = Path(executable_path)
+        if not path.is_absolute() or not path.is_file():
+            return None
+
+        return executable_path
 
     async def _run_command(
         self,
@@ -133,36 +162,55 @@ class ShellTools:
         Raises:
             RuntimeError: If the command fails and `check` is True, or if it times out.
         """
+        environment = os.environ.copy()
+        venv_bin_path = self.current_working_directory / ".venv" / "bin"
+        if venv_bin_path.is_dir():
+            environment["PATH"] = str(venv_bin_path) + os.pathsep + environment["PATH"]
+
         process = await asyncio.create_subprocess_exec(
             *command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(self.current_working_directory),
+            env=environment,
         )
         try:
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
                 process.communicate(), timeout=timeout
             )
         except asyncio.TimeoutError as error:
-            logger.error("Command '%s' timed out.", " ".join(command))
+            command_str = shlex.join(command)
+            logger.error("Command '%s' timed out.", command_str)
             try:
                 process.kill()
                 await process.wait()
             except ProcessLookupError:
                 pass  # Process already terminated
-            raise RuntimeError(f"Command '{' '.join(command)}' timed out.") from error
+            raise RuntimeError("Command '%s' timed out." % command_str) from error
 
         stdout = stdout_bytes.decode(self.encoding, errors="ignore")
         stderr = stderr_bytes.decode(self.encoding, errors="ignore")
 
         if check and process.returncode != 0:
-            error_message = (
-                f"Command '{' '.join(command)}' failed with exit code "
-                f"{process.returncode}:\nSTDOUT: {stdout}\nSTDERR: {stderr}"
+            command_str = shlex.join(command)
+            error_message_template = (
+                "Command '%s' failed with exit code %s:\nSTDOUT: %s\nSTDERR: %s"
             )
-            logger.error(error_message)
-            raise RuntimeError(error_message)
-
+            logger.error(
+                error_message_template,
+                command_str,
+                process.returncode,
+                stdout,
+                stderr,
+            )
+            # Format the message for the exception
+            formatted_message = error_message_template % (
+                command_str,
+                process.returncode,
+                stdout,
+                stderr,
+            )
+            raise RuntimeError(formatted_message)
         return stdout, stderr, process.returncode
 
     def _is_in_excluded_directory(self, file_path: Path) -> bool:
@@ -184,9 +232,8 @@ class ShellTools:
         )
 
     async def get_files_by_extensions(
-        self,
-        directory_path: Path, supported_extensions: list[str]
-    ) -> List[Path]:
+        self, directory_path: Path, supported_extensions: list[str]
+    ) -> list[Path]:
         """
         Retrieves a list of files within a directory that match the configured
         extensions and exclusion rules.
@@ -202,10 +249,11 @@ class ShellTools:
             A list of Path objects for all matching files. Returns an empty list
             if the directory is invalid or an error occurs.
         """
-        self.include_extensions = supported_extensions
+        self.include_extensions = set(supported_extensions)
         if not directory_path.is_dir():
             logger.warning(
-                f"Directory does not exist or is not a directory: {directory_path}",
+                "Directory does not exist or is not a directory: %s",
+                directory_path,
             )
             return []
 
@@ -214,16 +262,19 @@ class ShellTools:
                 list, self._get_filtered_files(directory_path)
             )
             logger.info(
-                f"Found {len(matching_files)} matching files in {directory_path}",
+                "Found %d matching files in %s",
+                len(matching_files),
+                directory_path,
             )
             return matching_files
 
         except OSError as error:
             logger.error(
-                f"Error searching directory {directory_path}: {error}",
+                "Error searching directory %s: %s",
+                directory_path,
+                error,
                 exc_info=True,
             )
-
             return []
 
     def _matches_extension(self, filename: str) -> bool:
@@ -260,7 +311,7 @@ class ShellTools:
         except FileNotFoundError:
             logger.error("File not found: %s", file_path)
             return ""
-        except Exception as reading_error:
+        except OSError as reading_error:
             logger.error("Error reading file %s: %s", file_path, reading_error)
             return ""
 
@@ -346,7 +397,6 @@ class ShellTools:
         Returns:
             True if the write was successful, False otherwise.
         """
-
         return await asyncio.to_thread(
             self._write_file, filepath, payload, backup, atomic
         )
@@ -399,7 +449,7 @@ class ShellTools:
             if target_path.exists():
                 shutil.copymode(target_path, temp_file_path)
 
-            shutil.move(str(temp_file_path), str(target_path))
+            shutil.move(temp_file_path, target_path)
 
         except OSError as error:
             if temp_file_path and temp_file_path.exists():
@@ -467,51 +517,79 @@ class ShellTools:
 
     async def run_project_linters(self) -> str:
         """
-        Runs all configured linters (defined in the 'linters' configuration section)
-        against the project concurrently and aggregates their output into a single report.
+        Runs all configured linters against the project concurrently and aggregates their output.
 
         This method handles cases where linters are missing or fail to execute.
         It uses `_run_command` with `check=False` because linters typically use
         non-zero exit codes to signal warnings/errors, not execution failure.
 
         Returns:
-            A formatted string containing the combined STDOUT/STDERR output of all
-            executed linters, or a message indicating no issues were found.
+            A formatted string containing the combined output of all
+            executed linters that reported issues, or a message indicating no issues were found.
         """
-        linter_configs: dict[str, list[str]] = self.config.get("linters", {})
+        linter_configs = self.configuration.get("linters", {})
         if not linter_configs:
-            logger.warning("No linters configured.")
+            logger.info("No linters configured.")
             return "No linters configured."
 
-        report_parts: list[str] = []
-        for tool_name, command in linter_configs.items():
-            executable = command[0]
-            if not shutil.which(executable):
-                error_msg = f"Linter '{tool_name}' not found. Please ensure '{executable}' is installed."
-                logger.error(error_msg)
-                report_parts.append(
-                    f"--- {tool_name.upper()} FAILED ---\n{error_msg}\n"
+        tasks = []
+        for linter_name, linter_command_parts in linter_configs.items():
+            command_str = shlex.join(linter_command_parts)
+            logger.info("Running linter: %s with command: %s", linter_name, command_str)
+            tasks.append(self._run_command(linter_command_parts, check=False))
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        report_lines = []
+        has_issues = False
+        for linter_name, result in zip(linter_configs.keys(), results):
+            report_section = []
+            if isinstance(result, Exception):
+                has_issues = True
+                logger.error(
+                    "Linter '%s' failed with an exception: %s", linter_name, result
                 )
-                continue
-
-            logger.info("Running linter: %s", " ".join(command))
-            try:
-                # Linters often use non-zero exit codes to indicate issues, so we don't check for success.
-                stdout, stderr, _ = await self._run_command(command, check=False)
-                output = (stdout + stderr).strip()
-
-                if output:
-                    report_parts.append(
-                        f"--- Linter Report: {tool_name.upper()} ---\n{output}\n"
+                report_section.append(
+                    f"--- Linter: {linter_name} (Execution Error) ---"
+                )
+                report_section.append(
+                    f"An exception occurred during execution: {result}"
+                )
+            else:
+                # Result is a tuple: (stdout, stderr, return_code)
+                if not isinstance(result, tuple):
+                    raise TypeError(
+                        f"Expected a tuple for linter result, but got {type(result).__name__}"
                     )
-            except Exception as error:
-                logger.error("Error running linter '%s': %s", tool_name, error)
-                report_parts.append(f"--- {tool_name.upper()} FAILED ---\n{error}\n")
+                standard_output, standard_error, exit_code = result
 
-        if not report_parts:
-            return "All linters passed successfully. No issues found."
+                output_parts = []
+                if standard_output.strip():
+                    output_parts.append(standard_output.strip())
+                if standard_error.strip():
+                    output_parts.append(standard_error.strip())
+                combined_output = "\n".join(output_parts)
 
-        return "\n".join(report_parts)
+                if combined_output or exit_code != 0:
+                    has_issues = True
+                    report_section.append(
+                        f"--- Linter: {linter_name} (Exit Code: {exit_code}) ---"
+                    )
+                    if combined_output:
+                        report_section.append(combined_output)
+                    else:
+                        report_section.append(
+                            "Linter finished with a non-zero exit code but produced no output."
+                        )
+
+            if report_section:
+                report_lines.extend(report_section)
+                report_lines.append("")  # Add a blank line for separation
+
+        if not has_issues:
+            return "No issues found by linters."
+
+        return "\n".join(report_lines).strip()
 
     async def process_directory(self, directory_path: Path) -> str:
         """
@@ -531,13 +609,11 @@ class ShellTools:
         Raises:
             RuntimeError: If a critical OSError occurs during directory traversal.
         """
-
         if not directory_path.is_dir():
             logger.warning(
                 "Directory does not exist or is not a directory: %s",
                 directory_path,
             )
-
             return ""
 
         try:
@@ -548,12 +624,12 @@ class ShellTools:
             tasks = [self.read_file_content(file_path) for file_path in filtered_files]
             file_contents = await asyncio.gather(*tasks)
 
-            concatenated_content_parts: List[str] = []
+            concatenated_content_parts: list[str] = []
             for file_path, file_content in zip(filtered_files, file_contents):
                 if not file_content:
                     continue
 
-                relative_path = file_path.relative_to(directory_path)
+                relative_path = file_path.relative_to(self.current_working_directory)
                 header = f"\n\n--- File: {relative_path} ---\n\n"
                 concatenated_content_parts.append(header + file_content)
 
@@ -569,12 +645,13 @@ class ShellTools:
 
         except OSError as error:
             logger.error(
-                f"Error processing directory {directory_path}: {error}",
+                "Error processing directory %s: %s",
+                directory_path,
+                error,
                 exc_info=True,
             )
-
             raise RuntimeError(
-                f"Failed to process directory {directory_path}",
+                "Failed to process directory %s" % directory_path
             ) from error
 
     async def get_project_tree(self) -> str:
@@ -727,8 +804,8 @@ class ShellTools:
             str(self.commit_number),
         ]
 
-        logger.debug("Running git diff command: %s", " ".join(diff_cmd))
-        logger.debug("Running git log command: %s", " ".join(log_cmd))
+        logger.debug("Running git diff command: %s", shlex.join(diff_cmd))
+        logger.debug("Running git log command: %s", shlex.join(log_cmd))
 
         try:
             diff_task = self._run_command(diff_cmd)

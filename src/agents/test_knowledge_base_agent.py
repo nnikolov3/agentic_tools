@@ -29,6 +29,7 @@ def mock_agent_instance(tmp_path):
             project="agentic-tools",
             chat="url1,url2",
             filepath=str(output_file),
+            target_directory=tmp_path,
         )
 
         # Attach mocks to the instance for easy access
@@ -38,7 +39,7 @@ def mock_agent_instance(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_knowledge_base_agent_init_failure():
+async def test_knowledge_base_agent_init_failure(tmp_path):
     """Tests initialization failure when filepath is missing."""
     with pytest.raises(ValueError, match="requires a valid output filepath"):
         KnowledgeBaseAgent(
@@ -47,6 +48,7 @@ async def test_knowledge_base_agent_init_failure():
             project="agentic-tools",
             chat="url1,url2",
             filepath=None,
+            target_directory=tmp_path,
         )
 
 

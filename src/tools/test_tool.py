@@ -2,6 +2,7 @@ import pytest
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from src.tools.tool import Tool
+from pathlib import Path
 
 # Mock configuration
 MOCK_CONFIG: dict[str, Any] = {
@@ -28,7 +29,7 @@ def mock_tool_instance():
         mock_api_tools.run_api = AsyncMock(return_value="API Response")
 
         # Create the Tool instance
-        tool = Tool("test_agent", MOCK_CONFIG)
+        tool = Tool("test_agent", MOCK_CONFIG, Path.cwd())
 
         # Manually set the mocked instances for easy access in tests
         tool.shell_tools = mock_shell_tools

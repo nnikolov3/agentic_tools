@@ -74,7 +74,9 @@ class Agent(abc.ABC):
             logger.warning("No configuration found for project '%s'.", project)
 
         self.configuration: dict[str, Any] = project_config
-        self.responses_dir: str = self.configuration.get("responses_dir", "agent_responses")
+        self.responses_dir: str = self.configuration.get(
+            "responses_dir", "agent_responses"
+        )
         self.agent_name: str = agent_name
         self.chat: Optional[str] = chat
         self.filepath: Optional[str | PathLike[str]] = filepath
@@ -84,8 +86,14 @@ class Agent(abc.ABC):
         self.response: Optional[str] = None
         self.context_quality_score: float = 1.0
 
-        self.shell_tools = ShellTools(agent_name, self.configuration, target_directory)
-        self.tool = Tool(agent_name, self.configuration, target_directory)
+        effective_target_directory = (
+            target_directory if target_directory is not None else Path.cwd()
+        )
+
+        self.shell_tools = ShellTools(
+            agent_name, self.configuration, effective_target_directory
+        )
+        self.tool = Tool(agent_name, self.configuration, effective_target_directory)
         self.memory_config: dict[str, Any] = self.configuration.get("memory", {})
         self.target_directory: Optional[Path] = target_directory
 
@@ -145,16 +153,23 @@ class Agent(abc.ABC):
             )
 
             if self.response:
-                await self._post_process()
-                await self._write_response_to_file()
+                post_process_result = await self._post_process()
+                if post_process_result is not False:
+                    await self._write_response_to_file()
                 await self._store_memory()
 
             return self.response
 
         except Exception as agent_error:
-            error_message = f"Agent '{self.agent_name}' failed to run: {agent_error}"
-            logger.error(error_message, exc_info=True)
-            raise RuntimeError(error_message) from agent_error
+            error_message_template = "Agent '%s' failed to run: %s"
+            logger.error(
+                error_message_template, self.agent_name, agent_error, exc_info=True
+            )
+            formatted_message = error_message_template % (
+                self.agent_name,
+                agent_error,
+            )
+            raise RuntimeError(formatted_message) from agent_error
 
     async def _retrieve_context(self) -> str:
         """
@@ -171,7 +186,7 @@ class Agent(abc.ABC):
             logger.warning("No Qdrant memory configured. Skipping context retrieval.")
             return ""
 
-        query = self.chat + self.agent_name
+        query = (self.chat or "") + self.agent_name
 
         self.memory = await QdrantMemory.create(self.configuration, self.agent_name)
         retrieved_context = await self.memory.retrieve_context(query)
@@ -203,8 +218,7 @@ class Agent(abc.ABC):
             logger.info("Context quality is low. Updating memory weights.")
             # For now, we do nothing. This will be implemented in the future.
 
-    @abc.abstractmethod
-    async def _post_process(self) -> None:
+    async def _post_process(self) -> None | bool:
         """
         Performs agent-specific post-processing on the generated response.
 
@@ -263,7 +277,8 @@ class KnowledgeBaseAgent(Agent):
         if not self.filepath:
 
             raise ValueError(
-                f"{self.__class__.__name__} requires a valid output filepath, but None was provided.",
+                "%s requires a valid output filepath, but None was provided."
+                % self.__class__.__name__,
             )
 
     async def run_agent(self) -> Optional[str]:
@@ -291,13 +306,17 @@ class KnowledgeBaseAgent(Agent):
 
     async def _post_process(self) -> None:
         """Writes the fetched content to the specified file path."""
-        if not self.response:
+        if not self.response or not self.filepath:
+            logger.warning("No response or filepath available to write.")
             return
+
         output_path = Path(self.filepath)
-        await asyncio.to_thread(
-            lambda: self.shell_tools.write_file(output_path, self.response)
-        )
-        logger.info("Successfully wrote fetched content to '%s'.", output_path)
+        is_success = await self.shell_tools.write_file(output_path, self.response)
+
+        if is_success:
+            logger.info("Successfully wrote fetched content to '%s'.", output_path)
+        else:
+            logger.error("Failed to write fetched content to '%s'.", output_path)
 
     async def _store_memory(self) -> None:
         """
@@ -347,16 +366,24 @@ class LinterAnalystAgent(Agent):
             logger.info(self.response)
             return self.response
 
+        # Prepend the user's chat message to the linter report if it exists
+        final_input = linter_report
+        if self.chat:
+            final_input = (
+                f"User provided the following message:\n{self.chat}\n\n{linter_report}"
+            )
+
         # 2. Use the report as input for the LLM tool
         # The 'chat' here is the raw linter output for the LLM to analyze
         self.response = await self.tool.run_tool(
-            chat=linter_report,
+            chat=final_input,
             memory_context=self.memory_context,
         )
 
         # 3. Post-process the response (e.g., print or save it)
         if self.response:
             await self._post_process()
+            await self._write_response_to_file()
             # Storing the analysis in memory could be useful for future context
             await self._store_memory()
 
@@ -466,7 +493,8 @@ class CodeModifyingAgent(Agent):
         )
         if not self.filepath:
             raise ValueError(
-                f"{self.__class__.__name__} requires a valid filepath, but None was provided.",
+                "%s requires a valid filepath, but None was provided."
+                % self.__class__.__name__,
             )
 
     def _clean_response_for_code(self) -> str:
@@ -620,6 +648,7 @@ class ConfigurationBuilderAgent(Agent):
         # 4. Post-process the response (e.g., save it)
         if self.response:
             await self._post_process()
+            await self._write_response_to_file()
             await self._store_memory()
 
         return self.response

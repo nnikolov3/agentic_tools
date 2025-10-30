@@ -163,7 +163,6 @@ class Tool:
                     chat, memory_context, filepath
                 )
 
-
             case "readme_writer":
                 return await self._create_readme_writer_payload(chat, memory_context)
             case "approver":

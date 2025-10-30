@@ -14,7 +14,6 @@ particular aspect of the software development lifecycle.
 
 import argparse
 import asyncio
-import collections.abc
 import logging
 import sys
 from os import PathLike
@@ -72,18 +71,16 @@ AGENT_METADATA: Dict[str, str] = {
 VALID_AGENTS: Tuple[str, ...] = tuple(AGENT_METADATA.keys())
 
 
-def deep_merge(base_dict: Dict[str, Any], override_dict: Dict[str, Any]) -> Dict[str, Any]:
+def deep_merge(
+    base_dict: Dict[str, Any], override_dict: Dict[str, Any]
+) -> Dict[str, Any]:
     """
     Recursively merges override_dict into a copy of base_dict.
     The base_dict is not modified in place.
     """
     merged = base_dict.copy()
     for key, value in override_dict.items():
-        if (
-            key in merged
-            and isinstance(merged[key], dict)
-            and isinstance(value, collections.abc.Mapping)
-        ):
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
             merged[key] = deep_merge(merged[key], value)
         else:
             # This will replace lists and other values, which is the
@@ -108,14 +105,26 @@ def _load_and_merge_configurations(user_config_path: Path) -> dict[str, Any]:
         try:
             default_config = get_config_dictionary(default_config_path)
         except (ValueError, OSError) as e:
-            logger.error("FATAL: Could not load or parse the default configuration at '%s': %s", default_config_path, e)
-            raise RuntimeError("Default configuration is corrupted or unreadable.") from e
+            logger.error(
+                "FATAL: Could not load or parse the default configuration at '%s': %s",
+                default_config_path,
+                e,
+            )
+            raise RuntimeError(
+                "Default configuration is corrupted or unreadable."
+            ) from e
     else:
-        logger.warning("Default configuration file not found at '%s'. The tool may not function correctly.", default_config_path)
+        logger.warning(
+            "Default configuration file not found at '%s'. The tool may not function correctly.",
+            default_config_path,
+        )
 
     # 2. If the user_config_path doesn't exist, return the default.
     if not user_config_path.is_file():
-        logger.info("No user configuration found at '%s'. Using default settings.", user_config_path)
+        logger.info(
+            "No user configuration found at '%s'. Using default settings.",
+            user_config_path,
+        )
         return default_config
 
     # 3. Load user override configuration.
@@ -123,7 +132,11 @@ def _load_and_merge_configurations(user_config_path: Path) -> dict[str, Any]:
         logger.info("Loading user override configuration from '%s'.", user_config_path)
         user_config = get_config_dictionary(user_config_path)
     except (FileNotFoundError, ValueError, OSError) as e:
-        logger.error("Failed to load or parse user configuration at '%s': %s", user_config_path, e)
+        logger.error(
+            "Failed to load or parse user configuration at '%s': %s",
+            user_config_path,
+            e,
+        )
         logger.warning("Proceeding with default configuration only.")
         return default_config
 
@@ -420,7 +433,7 @@ def _setup_cli_parser() -> argparse.ArgumentParser:
         "2. CLI Mode ('run-agent'): Manually executes a single agent task.\n"
         "   To run: python main.py run-agent <AGENT_NAME> [options]"
     )
-    
+
     # Parent parser for global arguments
     parent_parser = argparse.ArgumentParser(add_help=False)
     parent_parser.add_argument(
@@ -542,8 +555,8 @@ def _determine_config_path(args: argparse.Namespace) -> Path:
         logger.info("Debug mode enabled. Using configuration: conf/agentic_tools.toml")
         return Path("conf/agentic_tools.toml")
     # 3. Default behavior for container/production use.
-    logger.info("Using default root configuration: agentic_tools.toml")
-    return Path("agentic_tools.toml")
+    logger.info("Using default root configuration: conf/agentic_tools.toml")
+    return Path("conf/agentic_tools.toml")
 
 
 def main_cli() -> None:

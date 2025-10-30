@@ -325,6 +325,7 @@ mypy = ["mypy", "."]
 black = ["black", "--check", "."]
 bandit = ["bandit", "-r", "src/"]
 pylint = ["pylint", "src/"]
+
 [agentic-tools.linter_analyst]
 name = "linter_analyst"
 description = "Runs project linters and provides a comprehensive, step-by-step analysis of necessary fixes based on project standards."

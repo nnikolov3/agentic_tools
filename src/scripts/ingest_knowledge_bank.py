@@ -102,9 +102,7 @@ class MemoryConfig:
     qdrant_config: dict[str, Any] = field(default_factory=dict)
 
 
-def create_text_chunks(
-    text: str, chunk_size: int, chunk_overlap: int
-) -> list[str]:
+def create_text_chunks(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
     """Splits a text string into overlapping chunks using a simple sliding window.
 
     This function provides a basic, non-semantic chunking mechanism suitable for
@@ -178,7 +176,7 @@ class KnowledgeBankIngestor:
         self.semaphore = asyncio.Semaphore(self.ingestion_config.concurrency_limit)
 
         self._content_extractors: dict[str, ContentExtractor] = {
-            ".pdf":  self._extract_and_summarize_pdf,
+            ".pdf": self._extract_and_summarize_pdf,
             ".json": self._process_json_content,
             ".md": self._read_markdown_content,
         }
@@ -247,7 +245,7 @@ class KnowledgeBankIngestor:
 
         files = await self.shell_tools.get_files_by_extensions(
             self.ingestion_config.source_directory,
-            self.ingestion_config.supported_extensions
+            self.ingestion_config.supported_extensions,
         )
         logger.info("Found %d files to process.", len(files))
         if not files:
@@ -278,8 +276,9 @@ class KnowledgeBankIngestor:
         """Loads and validates the ingestion-specific configuration."""
         return IngestionConfig(
             source_directory=Path(config.get("source_directory", "knowledge_bank")),
-            supported_extensions=config.get("supported_extensions", [".json", ".md", ".pdf"])
-            ,
+            supported_extensions=config.get(
+                "supported_extensions", [".json", ".md", ".pdf"]
+            ),
             prompt=config.get("prompt", ""),
             model=config.get("model", "gemini-flash-latest"),
             api_key_name=config.get(

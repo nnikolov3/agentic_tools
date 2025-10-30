@@ -12,6 +12,7 @@ It also includes utility functions for specialized LLM tasks, like
 
 # Standard Library
 import asyncio
+import functools
 import json
 import os
 import pathlib
@@ -141,7 +142,10 @@ class ApiTools:
 
             response = await a_client.models.generate_content(
                 model=self.agent_model_name,
-                contents=contents,
+                # mypy is unable to resolve the complex union type for 'contents'
+                # in the google-genai stubs, despite 'contents' being a list[Part]
+                # which is a valid runtime type.
+                contents=contents,  # type: ignore[arg-type]
                 config=config,
             )
 
@@ -196,7 +200,8 @@ async def google_documents_api(model: str, api_key: str, prompt: str, file: str)
         file_path = pathlib.Path(file).resolve()
         # To avoid blocking the event loop, the synchronous `generate_content` call
         # is executed in a separate thread pool using `asyncio.to_thread`.
-        response = await asyncio.to_thread(
+        # Use functools.partial to pass keyword arguments to the synchronous function.
+        func = functools.partial(
             google_client.models.generate_content,
             model=model,
             contents=[
@@ -204,9 +209,12 @@ async def google_documents_api(model: str, api_key: str, prompt: str, file: str)
                     data=file_path.read_bytes(),
                     mime_type="application/pdf",
                 ),
-                prompt,
-            ],
+                # mypy incorrectly flags this as 'Too many positional arguments'
+                # due to an issue in the google-genai stubs.
+                types.Part.from_text(prompt),  # type: ignore[misc]
+            ],  # type: ignore[arg-type]
         )
+        response = await asyncio.to_thread(func)
 
         if response.text is None:
             raise ValueError("Response text is None")
@@ -215,9 +223,9 @@ async def google_documents_api(model: str, api_key: str, prompt: str, file: str)
 
 
 async def google_text(model: str, api_key: str, prompt: str, text: str) -> str:
-    api_key: str | None = os.getenv(api_key) if api_key else None
+    api_key_value: str | None = os.getenv(api_key) if api_key else None
 
-    google_client = Client(api_key=api_key)
+    google_client = Client(api_key=api_key_value)
 
     async with google_client.aio as a_client:
         system_instruction: str | None = prompt

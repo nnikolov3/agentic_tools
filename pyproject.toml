@@ -62,7 +62,6 @@ targets = ["./"]
 
 # Skip common false positives (adjust per project)
 skips = [
-  "B101",   # assert_used
   "B601",   # paramiko calls (often in tooling)
 ]
 
