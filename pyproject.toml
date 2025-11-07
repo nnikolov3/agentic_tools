@@ -26,48 +26,157 @@ dependencies = [
     "beautifulsoup4"
 ]
 
-[project.scripts]
-agentic-tools = "main:main_cli"
+[tool.ruff]
+# Select specific rules to enable
+select = [
+    "E",  # pycodestyle errors
+    "F",  # pyflakes errors
+    "B",  # flake8-bugbear errors
+    "C4", # flake8-comprehensions errors
+    "S",  # flake8-bandit security errors
+    "I",  # isort errors
+    "T20", # flake8-print errors
+    "UP", # pyupgrade errors
+    "RUF", # ruff-specific errors
+]
 
-[tool.setuptools]
-package-dir = {"" = "src"}
-include-package-data = true
+# Ignore specific rules
+ignore = [
+    "E501",  # line too long (handled by black)
+    "D",     # pydocstyle (docstring issues)
+    "ANN",   # flake8-annotations (type hints)
+    "COM",   # flake8-commas (trailing commas)
+    "Q",     # flake8-quotes (quote style)
+    "W",     # pycodestyle warnings (stylistic)
+    "B905",  # zip strict (can be ignored if not critical)
+]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+# Exclude directories and files
+exclude = [
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    "__pycache__",
+    "site-packages",
+    "node_modules",
+    "migrations",
+    "tests/fixtures",
+]
+
+# Line length (should match black)
+line-length = 88
+
+# Target Python version
+target-version = "py313"
+
+[tool.mypy]
+# Exclude directories and files
+exclude = [
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    "__pycache__",
+    "site-packages",
+    "node_modules",
+    "migrations",
+    "tests/fixtures",
+]
+
+# Ignore missing imports
+ignore_missing_imports = true
+
+# Disallow dynamic typing
+disallow_any_unimported = true
+disallow_any_expr = false
+disallow_any_decorated = false
+disallow_any_explicit = false
+disallow_any_generics = false
+disallow_subclassing_any = false
+
+# Disallow untyped definitions and calls
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+# Warn on redundant casts
+warn_redundant_casts = true
+
+# Warn on unused ignores
+warn_unused_ignores = true
+
+# Warn on unused config
+warn_unused_configs = true
+
+# Warn on unused variables
+warn_unused_vars = true
+
+# Follow imports for type checking
+follow_imports = "silent"
+
+# Show error codes
+show_error_codes = true
+
+# Show column numbers
+show_column_numbers = true
+
+# Show error contexts
+show_error_context = true
+
+# Show source code snippets
+show_source = true
+
+# Check untyped function definitions
+check_untyped_defs = true
+
+# Strict optional checks
+strict_optional = true
+
+# Strict equality checks
+strict_equality = true
+
+# Disallow implicit optional checks
+implicit_reexport = false
+implicit_optional = false
+implicit_protocol = false
 
 [tool.bandit]
 # Recursively scan repo; exclude typical non-source dirs and generated code
 exclude_dirs = [
-  ".git",
-  ".hg",
-  ".mypy_cache",
-  ".pytest_cache",
-  ".venv",
-  "venv",
-  "build",
-  "dist",
-  "__pycache__",
-  "site-packages",
-  "node_modules",
-  "migrations",
-  "tests/fixtures",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    "__pycache__",
+    "site-packages",
+    "node_modules",
+    "migrations",
+    "tests/fixtures",
 ]
 
 # Only include these file extensions
 targets = ["./"]
 
-# Optional: limit which tests to run (uncomment to pin)
-# tests = ["B201","B301"]
-
 # Skip common false positives (adjust per project)
 skips = [
-  "B601",   # paramiko calls (often in tooling)
+    "B601",  # paramiko calls (often in tooling)
 ]
 
-# Gatekeeping
-severity = "LOW"        # LOW|MEDIUM|HIGH threshold shown
-confidence = "MEDIUM"   # LOW|MEDIUM|HIGH threshold shown
+# Gatekeeping severity
+severity = "LOW"  # LOW|MEDIUM|HIGH threshold shown confidence = "MEDIUM"  # LOW|MEDIUM|HIGH threshold shown
 
 # Fail build if any finding at/above thresholds (set to true to fail CI)
 # exit_zero = false
@@ -87,6 +196,7 @@ bad_imports = ["pickle", "telnetlib"]
 [tool.bandit.blacklist_calls]
 # Flag dangerous calls by fully qualified name (example)
 bad_name_sets = [
-  # e.g., use yaml.safe_load instead of yaml.load
-  {qualnames = ["yaml.load"], message = "Use yaml.safe_load instead of yaml.load"},
+    # e.g., use yaml.safe_load instead of yaml.load
+    {qualnames = ["yaml.load"], message = "Use yaml.safe_load instead of yaml.load"},
 ]
+

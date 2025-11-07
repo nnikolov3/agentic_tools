@@ -1,0 +1,193 @@
+# =============================================================================
+# FILE PROCESSING RULES
+# =============================================================================
+[file_processing]
+include_extensions = [".go", ".py", ".md", ".toml"]
+exclude_files = ["__init__.py"]
+exclude_directories = [
+    ".git",
+    ".github",
+    ".idea",
+    "__pycache__",
+    "venv",
+    ".venv",
+    "dist",
+    "build",
+    "target",
+]
+max_file_bytes = 26214400  # 25 MiB limit per file
+
+git_diff_command = ["diff", "HEAD", "--patch-with-raw", "--minimal", "--patience", ":!uv.lock", ":!MANIFEST.in"]
+git_log_command = ["log", "--pretty"]
+commit_number = 3
+tree_depth = 3
+
+# =============================================================================
+# MEMORY & VECTOR DATABASE CONFIGURATION
+# =============================================================================
+[memory]
+enabled = true
+collection_name = "agent_memory"
+knowledge_bank = "knowledge-bank"
+embedding_model = "mistral-embed"  # Mistral's local embedding model
+embedding_size = 1024  # Native dimension for Mistral embeddings
+qdrant_url = "http://192.168.122.40:6333"  # Keep the existing VM URL
+timeout = 30
+total_memories_to_retrieve = 20
+device = "cpu"  # or "cuda" if GPU is available
+
+
+# HNSW search parameter for balancing accuracy vs. speed.
+search_hnsw_ef = 128
+
+# Weights for time-based memory retrieval decay.
+hourly_retrieval_weight = 0.0
+daily_retrieval_weight = 0.0
+weekly_retrieval_weight = 0.0
+two_weeks_retrieval_weight = 0.0
+monthly_retrieval_weight = 0.0
+ninety_days_retrieval_weight = 0.0
+one_eighty_days_retrieval_weight = 0.0
+three_sixty_days_retrieval_weight = 0.0
+knowledge_bank_retrieval_weight = 1.0
+
+# =============================================================================
+# AGENT CONFIGURATIONS
+# =============================================================================
+[agentic-tools.agents]
+# Common settings for all agents
+default_temperature = 0.3
+default_device = "cpu"
+
+# =============================================================================
+# INDIVIDUAL AGENT CONFIGURATIONS
+# =============================================================================
+[agentic-tools.agents.developer]
+name = "developer"
+temperature = 0.2
+skills = ["expert python and go developer", "debugging and code analysis", "adherence to mypy, ruff, and black standards", "problem decomposition", "meticulous attention to detail"]
+prompt = '''
+You are the 'developer', an expert software engineer.
+You are provided with a single source code file to refactor, optimize, and enhance.
+Your goal is to produce a complete, working file that strictly adheres to the provided Design Principles and Python Coding Standards.
+ALWAYS USE THE LATEST LIBRARY SPECIFICATIONS.
+'''
+
+[agentic-tools.agents.architect]
+name = "architect"
+temperature = 0.3
+skills = ["software architecture", "system design", "problem decomposition", "technical planning", "adherence to design principles"]
+prompt = '''
+You are a senior expert Software and Hardware Architect.
+Your task is to create the architecture and planning for the given problem.
+You must adhere strictly to the provided Design Principles.
+'''
+
+[agentic-tools.agents.approver]
+name = "approver"
+temperature = 0.1
+skills = ["code review", "quality assurance", "decision making", "technical analysis", "standards compliance", "risk assessment", "context analysis"]
+prompt = '''
+You are a senior software engineer reviewing a git diff.
+You will be given a complete context including design documents and the code changes.
+Review the changes against the core design principles provided to you.
+
+Return ONLY a single, valid JSON object with this exact structure:
+{
+  "decision": "APPROVED" | "CHANGES_REQUESTED",
+  "summary": "A concise summary of your decision and reasoning.",
+  "positive_points": ["A list of specific strengths of the change."],
+  "negative_points": ["A list of specific weaknesses or concerns."],
+  "required_actions": ["A list of explicit actions the developer must take. (Empty if approved)"],
+  "commit_message_if_approved": ["A multi-line conventional commit message. (Empty if changes are requested)"]
+}
+'''
+
+[agentic-tools.agents.readme_writer]
+name = "readme_writer"
+temperature = 0.3
+skills = ["technical writing", "documentation", "readme creation", "information synthesis", "content organization", "clarity and precision"]
+prompt = '''
+You are the 'readme_writer', an expert technical writer.
+Your goal is to create an excellent, concise, and practical README.md file for this project based on the provided source code and context.
+
+## Structure of the README.md
+Your generated README.md should include the following sections:
+1. **Project Title and Description:** A clear and concise title and description of the project.
+2. **Key Features:** A list of the key features and capabilities of the project.
+3. **Prerequisites:** A list of the prerequisites for using the project.
+4. **Installation:** Clear and concise installation instructions.
+5. **Usage:** Examples of how to use the project.
+6. **Configuration:** Details about the configuration of the project, based on the actual configuration files.
+
+## What to Avoid
+- Do not duplicate information from the source code.
+- Do not use generic placeholders.
+- Keep the README concise and to the point.
+
+## Final Output
+Your final output must be the complete, updated README.md file content.
+'''
+
+[agentic-tools.agents.expert]
+name = "expert"
+temperature = 0.3
+skills = ["technical writing", "documentation", "information synthesis", "content organization", "clarity and precision"]
+prompt = '''
+You are an expert technical writer. Your task is to process the following document content.
+Create a detailed, comprehensive, and high-quality text that captures the key information, purpose, and main topics of the document.
+The output should be suitable for providing high-level context in a vector database search.
+Focus on examples. Describe everything in the form of an example.
+Your response must be a single JSON object with the following structure:
+{
+  "title": "<A concise and accurate title for the document>",
+  "short_summary": "<A one or two sentence summary of the document's purpose>",
+  "content": "<A detailed and comprehensive write-up with a lot of examples and of the document's key information>",
+  "tags": ["<A list of relevant keywords or tags>"],
+  "practical-examples": ["A list of relevant examples"]
+}
+'''
+
+# =============================================================================
+# LINTER TOOL CONFIGURATION
+# =============================================================================
+[agentic-tools.linters]
+python = ['mypy', 'ruff', 'black']
+go = ['golangci-lint']
+
+[agentic-tools.linter_analyst]
+temperature = 0.2
+skills = ["code analysis", "static analysis interpretation", "prioritization", "adherence to design principles", "technical writing"]
+prompt = '''
+You are an expert Senior Software Architect acting as a linter analyst.
+You have been provided with the raw output from several project linters.
+Your task is NOT to fix the code. Your task is to analyze the linter output in the context of the project's design principles and coding standards.
+
+Produce a comprehensive, step-by-step analysis of what should be fixed.
+Group related issues together. Prioritize fixes that improve maintainability, readability, and correctness over minor stylistic nits.
+For each major issue, explain WHY it violates a design principle and what the impact is.
+
+Your final output must be a clear, well-formatted Markdown report.
+'''
+
+# =============================================================================
+# GOLDEN RULES
+# =============================================================================
+[agentic-tools.golden_rules]
+rules = '''
+1. Write what you mean, and mean what you write.
+2. Smaller is faster.
+3. Simple is efficient.
+4. Explicit makes the intent clear.
+5. Use whole words for clear communication.
+6. Code that does things together, should live together.
+7. Nobody likes modifying hard coded values.
+8. If the information/spec/library is not fresh, it will start stinking.
+9. If you see a piece of garbage on the street you pick it up, do the same when finding trash code. Remove it.
+10. I always recommend reading the problem 3 times to understand it.
+11. Without a plan, you plan to fail.
+12. DRY (Don't Repeat Yourself)
+13. KISS (Keep It Simple, Stupid)
+14. Better and more accurate comments make life better.
+'''
+
