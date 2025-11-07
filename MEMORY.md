@@ -1,353 +1,1336 @@
+### Project : Agentic Tools MCP
 
-# Advanced Cognitive Memory Architecture for AI Agents: A Research-Validated Deep Dive
+### Target : MEMORY.md Implementation
 
-This refined architecture represents a paradigm shift from conventional Retrieval-Augmented Generation (RAG) systems toward **biologically-inspired, multi-layered memory systems** that mirror human cognitive processes. Drawing from cutting-edge research in neuroscience, machine learning, and distributed systems, this framework delivers measurable performance improvements while maintaining engineering rigor through type safety, modularity, and observability.[1][2][3]
+### Goal : Enable writing to Qdrant VM by end of today
 
-## Core Architectural Innovations
+### Date : November 7, 2025, 2:36 PM PST
 
-### System 1 and System 2 Dual-Process Integration
+### Qdrant VM : http://192.168.122.40:
 
-The architecture's foundation rests on **dual-process theory**, which distinguishes between fast, automatic (System 1) and slow, deliberate (System 2) processing. This cognitive framework, popularized by Daniel Kahneman and formalized by Keith Stanovich and Richard West, provides a computational blueprint for agent design that dramatically outperforms single-system approaches.[2][4][5][6]
+### Your project has basic Qdrant connectivity and can perform simple memory operations, but is
 
-**System 1** operates as a subconscious layer utilizing lightweight models such as **Mistral 7B** (demonstrating strong CPU performance with ~0.5W energy consumption and 50 tokens/second throughput) or **Phi-3 Mini** (optimized for edge devices with only 3 billion parameters and 0.9GB footprint). These models perform rapid classification, memory enrichment, and automated pattern matching before storage occurs. Research demonstrates that System 1 components can achieve **sub-100ms latency** for simple queries while maintaining accuracy through specialized, high-frequency task optimization.[7][8][9][1]
+### missing critical components specified in MEMORY.md:
 
-**System 2** employs specialist agents conducting complex reasoning using only pre-filtered, contextually relevant memories delivered by System 1. This hierarchical separation mirrors the brain's **default mode network** (System 1) versus **executive control network** (System 2), where lateral prefrontal cortex activation corresponds to effortful, goal-directed tasks. Studies show that agents implementing proper System 1/System 2 separation achieve **twice the success rate** of baseline approaches while reducing average steps required by 3.8 across long-horizon tasks.[5][10][1][2]
+### Working :
 
-The **Talker-Reasoner framework** developed by DeepMind exemplifies this architecture in production systems, where the Talker manages real-time interactions through in-context learning while the Reasoner engages in planning and tool collaboration. Similarly, the **DPT-Agent framework** validates dual-process necessity in real-time simultaneous human-AI collaboration, demonstrating significant improvements over mainstream LLM-based systems.[4][5]
+### Missing :
 
-### Multi-Vector Embedding Storage and Late Interaction
+### The current add_memory() WILL write to Qdrant but stores only minimal metadata (text_content,
 
-The architecture leverages **Qdrant's multi-vector support** to store simultaneous embeddings from multiple providers (Google, Mistral, or other models) for each memory entry. This approach capitalizes on **late interaction retrieval**, specifically the ColBERT architecture, which preserves token-level granularity through a MaxSim operator.[11][12][13][14][1]
+### timestamp, day_of_week). To align with MEMORY.md architecture, you need to implement
 
-**Late interaction** fundamentally differs from traditional single-vector approaches by encoding queries and documents separately, then comparing at the token level using the formula:
+### comprehensive payload fields with RFM priority scoring.
 
-$$
-S(q,d) = \sum_{i \in |E_q|} \max_{j \in |E_d|} (E_{qi} \cdot E_{dj}^T)
-$$
+### One blocking bug exists : Async client initialization in qdrant_memory.py line 102 needs fixing.
 
-where $$E_q$$ and $$E_d$$ represent query and document embeddings respectively. This methodology delivers **12-28% improvements in retrieval accuracy** compared to single-vector pooling approaches while maintaining computational efficiency through offline document encoding.[12][13][15][1]
+# Cognitive Memory System: Complete Audit &
 
-Benchmarks on the BeIR nfcorpus dataset using ColBERTv2 demonstrate that combining MUVERA embeddings for initial retrieval followed by multi-vector reranking achieves **nearly identical performance** (NDCG@10 of 0.343 versus 0.347 for full multi-vector) while providing **7x speed improvements** (0.18 seconds versus 1.27 seconds). The MaxSim calculation enables precise matching between specific query tokens and relevant document sections, outperforming approaches relying on pooled document vectors by capturing fine-grained semantic relationships.[13][16][1][12]
+# Implementation Plan
 
-However, implementation requires careful consideration of storage overhead, as token-level embeddings dramatically increase memory requirements. ColBERTv2 addresses this through aggressive quantization, reducing vector size from 256 bytes to 20-36 bytes (1-2 bit compression) while maintaining acceptable accuracy. When deployed at scale (50 million embeddings), **Qdrant achieves 41.47 QPS at 99% recall** with sub-20ms p95 latency for 90% recall scenarios.[17][18][13]
+## Executive Summary
 
-### Episodic, Semantic, and Working Memory Hierarchies
+## Current Status: 30% Complete (Phase 1 Foundation)
 
-The architecture implements **three complementary memory systems** directly inspired by human cognition:[3][19][20][21]
+### ✓ Qdrant VM connectivity (192.168.122.40:6333)
 
-**Episodic Memory** stores specific, timestamped contextual experiences encoding what happened, when it occurred, and where it took place. Implemented as structured event logs with temporal and contextual metadata, episodic memory enables agents to recall specific past interactions and learn from previous successes and failures. Research demonstrates that agents with episodic memory capabilities exhibit **superior performance in dynamic environments** requiring context-specific recall. Vector embeddings facilitate efficient similarity-based retrieval, allowing agents to query memories using semantic search rather than explicit keys.[19][22][21][3]
+### ✓ Multi-vector support (dense + sparse)
 
-**Semantic Memory** represents consolidated facts and general knowledge distilled from episodic traces. This memory type stores domain knowledge, rules, and concepts independent of specific events, providing a structured knowledge base for reasoning. The synergy between episodic and semantic memory creates **comprehensive contextual understanding**—episodic memory offers user-specific details while semantic memory provides factual grounding, enabling agents to balance personalization with accuracy. Studies confirm that agents leveraging both memory types achieve superior results in question-answering and reasoning tasks through mechanisms including memory consolidation, complementary retrieval, cross-system verification, and context-dependent switching.[21][3][19]
+### ✓ Basic add_memory() and retrieve_context()
 
-**Working Memory** functions as an "attention buffer" maintaining active state, immediate variables, and current focus. Critically, cognitive science research establishes working memory capacity at approximately **4 meaningful chunks**—a fundamental computational budget defining conscious mental processing. This limitation prevents cognitive overload and guides architectural decisions around context window management.[10][23][24][25][3][19]
+### ✓ Collection management
 
-The **HiAgent framework** demonstrates hierarchical working memory management through subgoal-based chunking, where each subgoal serves as a memory chunk reducing cognitive load. By triggering LLMs to generate subgoals before actions and proactively replacing completed subgoals with summarized observations, HiAgent achieves **double the success rate** of standard strategies, reduces context length by 35%, and decreases runtime by 19.42%. This approach mirrors human problem-solving where complex tasks decompose into manageable subproblems, with each addressed as a discrete memory chunk.[10]
+### ✓ HNSW indexing configuration
 
-### Hierarchical Memory Consolidation
+### ✗ Type-safe Pydantic models
 
-Drawing from neuroscientific models of memory formation, the architecture implements **three-tier consolidation**: short-term (circular buffer, ~10k entries), mid-term (significant event store), and long-term (semantic knowledge). This hierarchical structure parallels biological memory systems where initial encoding occurs in the hippocampus before gradual transfer to neocortical regions for long-term storage.[26][27][1][21]
+### ✗ RFM priority scoring
 
-**Consolidation frequencies** adapt based on event velocity and system load, preventing performance degradation through smart timing. The **Hierarchical Chunk Attention Memory (HCAM)** architecture exemplifies this approach by dividing past experiences into chunks and performing high-level attention over coarse summaries before detailed attention within relevant chunks. Agents with HCAM substantially outperform other memory architectures at tasks requiring long-term recall, retention, or reasoning over memory—successfully "mentally time-traveling" to remember past events in detail without attending to all intervening events.[28][29][1]
+### ✗ Episodic/semantic/working memory separation
 
-**Memory consolidation** occurs through LLM-guided synthesis where episodic memories merge into semantic generalizations. A generative model of memory construction demonstrates that as consolidation proceeds, the network supports both factual recall (semantic memory) and experience reconstruction (episodic memory), with **generative replay** preventing catastrophic forgetting. This approach differs fundamentally from simple experience buffering by actively synthesizing new knowledge rather than merely storing raw observations.[27][1][21]
+### ✗ Memory consolidation pipeline
 
-The **Hierarchical Suffix Memory (HSM)** framework for reinforcement learning validates that organizing past experience hierarchically scales better to problems with long decision sequences. Multi-level HSM agents outperform flat memory-based agents and hierarchical agents without memory by tuning traversal strategies through short-term memory at intermediate abstraction levels. These agents can look back over variable numbers of high-level decisions rather than being overwhelmed by low-level action sequences.[30][26]
+### ✗ System 1/System 2 agent integration
 
-### Memory Priority Scoring and Selective Consolidation
+### ✗ Memory pruning implementation
 
-The architecture implements an **explicit priority scoring formula** balancing recency, frequency, and importance:
+## Critical Finding
 
-$$
-\text{Priority} = (\text{Recency} \times 0.3) + (\text{Frequency} \times 0.2) + (\text{Importance} \times 0.5)
-$$
 
-where **Importance** derives from user feedback, error events, or explicit tagging. This RFM-inspired approach (Recency, Frequency, Monetary value in marketing contexts) enables agents to surface the most valuable memories rather than relying solely on similarity or temporal proximity.[31][32][33][34][1]
+### Status : Ready for production, no changes needed
 
-**Recency** captures temporal proximity to current tasks, as customers (or in this context, experiences) engaged recently remain more cognitively accessible. **Frequency** measures repeated access patterns, with higher-frequency memories indicating greater relevance across diverse contexts. **Importance weighting** (50% in the formula) dominates the score, recognizing that critical events (errors, explicit user corrections, high-impact decisions) merit prioritization regardless of age or access frequency.[32][34][1][31]
+### Capabilities :
 
-Qdrant payloads enable retrieval to natively **filter and boost based on priority** rather than pure vector similarity. This hybrid approach combines semantic search with structured metadata filtering, dramatically improving relevance in production scenarios. Research on **selective consolidation** through reinforcement learning demonstrates that replay systems can systematically prioritize originally weaker categories, resulting in their selective improvement. A reinforcement learning network approximating hippocampal replay selection learns to choose categories based on improvement in network performance, with weaker categories replayed more frequently ($$R^2 = 0.24$$, $$p < 0.001$$).[35][1]
+### Code Quality : Excellent separation of concerns, proper async patterns, comprehensive configuration
 
-## Design Principles and Engineering Best Practices
+### Recommendation : No modifications required for Phase 1 goals
 
-### Golden Rules for Implementation
+### Status : Partially functional, requires significant enhancements
 
-The architecture enforces **strict design principles** ensuring long-term maintainability and adaptability:[1]
+### What Works :
 
-**Explicit over Implicit**: All configurations, dependencies, and behaviors must be clearly declared rather than hidden in implementation details. This principle prevents "magic" behavior that becomes unmaintainable as systems scale.
+### Critical Issues Identified :
 
-**Simple over Clever**: Favor straightforward solutions that future engineers can understand over sophisticated optimizations that create cognitive overhead. This aligns with the broader software engineering principle that code is read more often than written.
+## Section 1: Detailed File Audit
 
-**Provider Agnostic**: Never hardcode specific embedding models, LLM providers, or storage backends. The architecture must support **swapping components without cascading changes** across the codebase. This approach prevents vendor lock-in and enables rapid adaptation as the AI landscape evolves.[36][37][38]
+## 1.1 qdrant_client_manager.py ✓ FULLY IMPLEMENTED
 
-**No Hardcoding—Config Everywhere**: All parameters, thresholds, model selections, and system behaviors must be externalized to configuration files. This enables A/B testing, environment-specific tuning, and rapid iteration without code changes.
+### Async AsyncQdrantClient with proper initialization
 
-**Test Everything, Type-Check Always**: Comprehensive unit and integration tests combined with static type checking through **mypy** reduce runtime errors and catch invalid states early in development. The combination of Pydantic for runtime validation and mypy for static analysis creates "bulletproof" code by protecting both boundaries (incoming external data) and interiors (internal logic).[39][40][1]
+### Multi-vector configuration (dense: text-dense, sparse: text-sparse)
 
-**Keep Related Code Together**: Follow **modular organization** with logical grouping (src/memory/ for storage, src/agents/ for reasoning components) rather than scattering related functionality across disparate locations. This principle, often called "cohesion," reduces cognitive load and makes codebases navigable.[1]
+### HNSW indexing: m=32, ef_construct=400, on_disk=true
 
-**Metrics and Structured Logging from Day One**: Implement observability infrastructure (structured logging via structlog, comprehensive metrics tracking) at project inception rather than retrofitting later. This enables debugging production issues, tuning hyperparameters based on real behavior, and demonstrating ROI to stakeholders.[1]
+### Payload index creation for timestamp, text_content, day_of_week
 
-### Type Safety Through Pydantic and Mypy
+### Quantization support (int8, quantile=0.99)
 
-The architecture mandates **Pydantic models** for runtime validation combined with **mypy static type checking** to eliminate entire classes of bugs. Pydantic protects system boundaries by validating all incoming data (API payloads, database rows, configuration files) at runtime, raising detailed ValidationErrors when data doesn't conform to expected schemas. This prevents bad data from propagating deep into the application where debugging becomes exponentially harder.[40][39][1]
+### VM connectivity: http://192.168.122.40:
 
-Mypy provides **static analysis** checking code for type consistency before execution. When combined with the Pydantic mypy plugin, the type checker fully understands model internals, catching errors like accessing non-existent attributes or passing incorrect types to functions. This dual-layer approach creates a **symbiotic relationship**: Pydantic as the on-site inspector verifying materials (raw data) meet specifications, and mypy as the architect checking blueprints (code) ensure components fit together correctly.[41][39][40]
+### gRPC enabled on port 6334
 
-Example implementation demonstrates the power of this combination:
+## 1.2 qdrant_memory.py ⚠ MAJOR FIXES NEEDED
 
-```python
-from pydantic import BaseModel
+### add_memory(text_content: str) - basic write operation
 
+### retrieve_context(query_text: str) - time-bucket weighted retrieval
+
+### Multi-vector embedding generation (dense + sparse)
+
+### Collection initialization and vector name resolution
+
+### Time-decay retrieval with 8 time buckets + knowledge bank
+
+## Issue #1: No Type Safety (HIGH PRIORITY)
+
+### Current : Accepts plain string add_memory(text_content: str)
+
+### Required : Type-safe Memory models add_memory(memory: Memory | str)
+
+### Impact : Data corruption risk, no validation, incompatible with MEMORY.md
+
+### Fix Time : 30 minutes (create models.py with Pydantic)
+
+
+### Current payload contains only 3 fields:
+
+#### {
+
+```
+"text_content": str,
+"timestamp": float,
+"day_of_week": str
+}
+```
+### Required payload must contain 20+ fields:
+
+#### {
+
+```
+# Core
+"memory_id": str,
+"memory_type": str, # episodic/semantic
+"text_content": str,
+```
+```
+# Timestamps
+"created_at": float,
+"updated_at": float,
+"last_accessed_at": float | None,
+```
+```
+# RFM Scores
+"recency_score": float,
+"frequency_score": float,
+"importance_score": float,
+"priority_score": float,
+"access_count": int,
+```
+```
+# Classification
+"tags": list[str],
+"agent_name": str | None,
+"day_of_week": str,
+```
+```
+# Type-specific
+"event_type": str | None, # episodic
+"context": dict | None, # episodic
+"parent_memory_id": str | None, # hierarchical
+"source_memory_ids": list[str] | None, # semantic
+"confidence_score": float | None, # semantic
+"domain": str | None # semantic
+}
+```
+## Issue #2: Missing RFM Priority Scoring (HIGH PRIORITY)
+
+### Current : No priority calculation or storage
+
+### Required : Priority = (Recency × 0.3) + (Frequency × 0.2) + (Importance × 0.5)
+
+### Impact : Cannot prioritize important memories, no retrieval boosting
+
+### Fix Time : 20 minutes (implement calculation methods)
+
+## Issue #3: Minimal Payload Metadata (HIGH PRIORITY)
+
+
+### Fix Time : 30 minutes (update add_memory() and to_qdrant_payload())
+
+### Status : Working, needs minor improvements
+
+### What Works :
+
+## Issue #4: Async Client Initialization Bug (CRITICAL BLOCKER)
+
+### Location : Line 102 in _init_qdrant()
+
+### Current Code : self.client = qdrant_manager.get_client()
+
+### Problem : get_client() returns a coroutine but is not awaited
+
+### Runtime Error : Will fail when add_memory() attempts to use self.client
+
+### Fix : All usages must await: client = await self.client
+
+### Fix Time : 5 minutes
+
+## Issue #5: prune_memories() Not Implemented (MEDIUM PRIORITY)
+
+### Current : Returns warning message, does nothing
+
+### Required : Scroll collection, filter by age/priority, delete batch
+
+### Impact : Memory bloat over time, no cleanup mechanism
+
+### Fix Time : 45 minutes
+
+## Issue #6: No Access Tracking (MEDIUM PRIORITY)
+
+### Current : retrieve_context() doesn't update metadata
+
+### Required : Increment access_count, update last_accessed_at, recalculate frequency_score
+
+### Impact : Frequency score remains 0, no adaptive prioritization
+
+### Fix Time : 20 minutes (implement update_memory_access())
+
+## Issue #7: No Memory Type Separation (MEDIUM PRIORITY)
+
+### Current : All memories stored identically
+
+### Required : Episodic vs Semantic distinction with type-specific fields
+
+### Impact : Cannot implement consolidation pipeline
+
+### Fix Time : Included in Issue #3 fix
+
+## 1.3 embedding_models.py ⚠ MINOR FIXES
+
+### GoogleEmbedder with Gemini API
+
+### MistralEmbedder with Mistral API
+
+### FastEmbedEmbedder with local models
+
+### Factory pattern: create_embedder(config)
+
+
+### Issues :
+
+### Status : Fully functional, minor config mismatch
+
+### Capabilities :
+
+### Issue #10: Config Section Mismatch (LOW PRIORITY)
+
+### Proper API key loading from environment
+
+## Issue #8: FastEmbed Return Type (LOW PRIORITY)
+
+### Problem : embed() returns generator, need list[float]
+
+### Fix : Add .tolist() conversion
+
+### Impact : LOW - would fail only if using FastEmbed
+
+### Fix Time : 5 minutes
+
+## Issue #9: No Multi-Provider Support (MEDIUM PRIORITY - Phase 2)
+
+### Current : Single embedder per memory instance
+
+### Required : Generate embeddings from multiple providers simultaneously (Google + Mistral)
+
+### Purpose : Late interaction retrieval with MaxSim operator
+
+### Impact : MEDIUM - cannot implement advanced retrieval
+
+### Fix Time : 1 hour (create MultiEmbedder class)
+
+### Note : Can defer to Phase 2
+
+## 1.4 ingest_knowledge_bank.py ✓ MOSTLY GOOD
+
+### PDF processing with pdfminer
+
+### JSON flattening and processing
+
+### Markdown with header-based chunking
+
+### LLM summarization via Google Gemini
+
+### Async batch processing with semaphore
+
+### Content deduplication via SHA256 hashing
+
+### Retry logic for network failures
+
+### Problem : Expects [knowledge_bank_ingestion] section in config
+
+### Current Config : Only has [memory] section
+
+### Impact : LOW - knowledge bank ingestion will fail, but memory writes work
+
+### Fix : Add config section to agentic-tools.toml
+
+### Fix Time : 2 minutes
+
+
+### What's Configured :
+
+### Missing Configuration :
+
+```
+[memory]
+prune_enabled = true
+prune_days = 365
+prune_confidence_threshold = 0.
+prune_batch_size = 100
+```
+```
+[memory]
+priority_recency_weight = 0.
+priority_frequency_weight = 0.
+priority_importance_weight = 0.
+frequency_max_accesses = 100
+recency_half_life_days = 30.
+```
+```
+[knowledge_bank_ingestion]
+source_directory = "docs/knowledge"
+output_directory = ".ingested"
+supported_extensions = [".json", ".md", ".pdf"]
+chunk_size = 1024
+chunk_overlap = 256
+qdrant_batch_size = 128
+concurrency_limit = 2
+prompt = "Summarize this document with practical examples."
+model = "gemini-2.0-flash-exp"
+google_api_key_name = "GEMINI_API_KEY"
+```
+## 1.5 agentic-tools.toml ⚠ INCOMPLETE
+
+### Qdrant connection: http://192.168.122.40:
+
+### gRPC enabled on port 6334
+
+### Embedding models: mistral-embed (1024-dim), naver/splade-v3 (sparse)
+
+### Collection names: agent_memory, knowledge-bank
+
+### HNSW parameters: m=32, ef_construct=
+
+### Retrieval weights: All 0.0 except knowledge_bank=1.
+
+### 1. Pruning Settings :
+
+### 2. Priority Scoring Parameters :
+
+### 3. Knowledge Bank Ingestion :
+
+
+### Status : Functional with minor issue
+
+### Capabilities :
+
+### Issue #11: Prune Implementation
+
+```
+Requirement Status Implementation Priority Est. Time
+```
+```
+Multi-vector storage ✓ Complete qdrant_client_manager.py DONE 0 min
+```
+```
+Type-checked metadata (Pydantic) ✗ Missing Need models.py CRITICAL 30 min
+```
+```
+Priority scoring (RFM) ✗ Missing Need in qdrant_memory.py CRITICAL 20 min
+```
+```
+Provider abstraction ⚠ Partial embedding_models.py works MEDIUM 0 min
+```
+```
+Episodic/semantic separation ✗ Missing Need memory_type field HIGH 10 min
+```
+```
+Hierarchical metadata ✗ Missing Need parent_memory_id MEDIUM 5 min
+```
+### Phase 1 Completion: 33% (2/6 requirements complete)
+
+### Blockers for 100% Phase 1 :
+
+### Estimated Time to Complete Phase 1 : 1.5-2 hours
+
+## 1.6 main.py ✓ WORKING
+
+### VM-aware config loading
+
+### Async initialization of Qdrant and memory
+
+### Multi-agent orchestration with FastMCP
+
+### Knowledge bank ingestion via --ingest flag
+
+### Memory pruning via --prune flag (but prune_memories() is stub)
+
+### Line 73 calls memory.prune_memories() which does nothing
+
+### Fix by implementing prune_memories() method first
+
+## Section 2: MEMORY.MD Compliance Gap Analysis
+
+## Phase 1: Core Multi-Vector Memory Foundation
+
+### 1. Create Pydantic models (models.py)
+
+### 2. Implement RFM priority scoring
+
+### 3. Add memory_type classification
+
+### 4. Enhance payload with all metadata fields
+
+
+```
+Requirement Status Notes
+```
+```
+Memory Analyst agent ✗ Not started Lightweight LLM for classification
+```
+```
+Memory Synthesizer agent ✗ Not started Automatic enrichment before storage
+```
+```
+Query complexity classification ✗ Not started Route to appropriate retrieval strategy
+```
+```
+Adaptive retrieval strategies ⚠ Basic Time-bucket weighting exists
+```
+### Phase 2 Completion: 10% (Basic retrieval framework exists)
+
+### Not Required for Today's Goal : Phase 2 can wait
+
+```
+Requirement Status Estimated Effort
+```
+```
+LLM-guided consolidation ✗ Not started 4-6 hours
+```
+```
+Offline batch processing ✗ Not started 2-3 hours
+```
+```
+Conflict resolution ✗ Not started 3-4 hours
+```
+```
+Selective semantic updating ✗ Not started 2-3 hours
+```
+### Phase 3 Completion: 0%
+
+### Not Required for Today's Goal : Future work
+
+### Not started (0%). Future work after Phase 3.
+
+### Not started (0%). Long-term roadmap.
+
+### Timeline : 2-2.5 hours to working system
+
+### File : src/memory/models.py
+
+### Classes to Implement :
+
+## Phase 2: System 1 Agent Implementation
+
+## Phase 3: Consolidation Pipeline
+
+## Phase 4: System 2 Integration
+
+## Phase 5: Advanced Features
+
+## Section 3: Today's Implementation Plan
+
+## Goal: Write Memories to Qdrant with Full Metadata
+
+## Step 1: Create Pydantic Models (30 minutes)
+
+### 1. MemoryType (Enum)
+
+
+```
+class MemoryType(str, Enum):
+EPISODIC = "episodic"
+SEMANTIC = "semantic"
+WORKING = "working"
+```
+```
+class EventType(str, Enum):
+USER_INTERACTION = "user_interaction"
+TOOL_EXECUTION = "tool_execution"
+ERROR_EVENT = "error_event"
+SYSTEM_EVENT = "system_event"
+AGENT_DECISION = "agent_decision"
+```
+```
+class MemoryMetadata(BaseModel):
+recency_score: float = Field(default=1.0, ge=0.0, le=1.0)
+frequency_score: float = Field(default=0.0, ge=0.0, le=1.0)
+importance_score: float = Field(default=0.5, ge=0.0, le=1.0)
+access_count: int = Field(default= 0 , ge= 0 )
+last_accessed_at: Optional[datetime] = None
+```
+```
+@property
+def priority_score(self) -&gt; float:
+return (
+self.recency_score * 0.3 +
+self.frequency_score * 0.2 +
+self.importance_score * 0.
+)
+```
+```
 class Memory(BaseModel):
-    id: int
-    content: str
-    priority_score: float
-    timestamp: datetime
-    
-def consolidate_memories(memories: List[Memory]) -> Memory:
-    """Mypy validates this function's logic statically"""
-    if not memories:
-        raise ValueError("Cannot consolidate empty memory list")
-    # Mypy knows memories[0].priority_score is float
-    avg_priority = sum(m.priority_score for m in memories) / len(memories)
-    return Memory(
-        id=generate_id(),
-        content=synthesize_content(memories),
-        priority_score=avg_priority,
-        timestamp=datetime.now()
-    )
+id: str = Field(default_factory=lambda: str(uuid4()))
+memory_type: MemoryType = Field(default=MemoryType.EPISODIC)
+text_content: str = Field(..., min_length= 1 )
+created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+metadata: MemoryMetadata = Field(default_factory=MemoryMetadata)
+tags: list[str] = Field(default_factory=list)
+agent_name: Optional[str] = None
+```
+```
+def to_qdrant_payload(self) -&gt; dict[str, Any]:
+# Returns comprehensive payload dict
+```
+```
+class EpisodicMemory(Memory):
+memory_type: MemoryType = Field(default=MemoryType.EPISODIC, frozen=True)
+event_type: EventType = Field(default=EventType.USER_INTERACTION)
+```
+### 2. EventType (Enum)
+
+### 3. MemoryMetadata (RFM Scoring)
+
+### 4. Memory (Base Model)
+
+### 5. EpisodicMemory (Extends Memory)
+
+
+```
+context: dict[str, Any] = Field(default_factory=dict)
+parent_memory_id: Optional[str] = None
+```
+```
+class SemanticMemory(Memory):
+memory_type: MemoryType = Field(default=MemoryType.SEMANTIC, frozen=True)
+source_memory_ids: list[str] = Field(default_factory=list)
+confidence_score: float = Field(default=1.0, ge=0.0, le=1.0)
+domain: Optional[str] = None
+```
+```
+class MemoryQuery(BaseModel):
+query_text: str = Field(..., min_length= 1 )
+limit: int = Field(default= 20 , ge= 1 , le= 100 )
+memory_types: list[MemoryType] = Field(default_factory=list)
+min_priority_score: Optional[float] = None
+tags: Optional[list[str]] = None
+agent_name: Optional[str] = None
+time_range_hours: Optional[int] = None
+```
+### Validation : All models include Pydantic validators for timestamps, score ranges, and required fields
+
+### Import Models :
+
+```
+from src.memory.models import (
+Memory, EpisodicMemory, SemanticMemory,
+MemoryMetadata, MemoryQuery, MemoryType
+)
+import math
+```
+### Add Priority Scoring Methods :
+
+```
+def calculate_recency_score(
+self,
+created_at: datetime,
+half_life_days: float = 30.
+) -&gt; float:
+"""Exponential decay: score = exp(-decay_rate * age_days)"""
+now = datetime.now(UTC)
+age_days = (now - created_at).total_seconds() / 86400.
+decay_rate = math.log( 2 ) / half_life_days
+return math.exp(-decay_rate * age_days)
+```
+```
+def calculate_frequency_score(
+self,
+access_count: int,
+```
+### 6. SemanticMemory (Extends Memory)
+
+### 7. MemoryQuery (Query Parameters)
+
+## Step 2: Update qdrant_memory.py (1 hour)
+
+
+```
+max_accesses: int = 100
+) -&gt; float:
+"""Logarithmic scaling: score = log(1+count) / log(1+max)"""
+if access_count &lt;= 0 :
+return 0.
+normalized = math.log1p(access_count) / math.log1p(max_accesses)
+return min(1.0, normalized)
+```
+```
+def calculate_priority_score(self, metadata: MemoryMetadata) -&gt; float:
+"""RFM formula: Priority = (R×0.3) + (F×0.2) + (I×0.5)"""
+return metadata.priority_score # Uses @property
+```
+### Update add_memory() Method :
+
+```
+async def add_memory(
+self,
+memory: Memory | str,
+importance: Optional[float] = None
+) -&gt; str:
+"""Add memory with full RFM scoring and metadata."""
+```
+```
+# Convert string to EpisodicMemory if needed
+if isinstance(memory, str):
+memory = EpisodicMemory(
+text_content=memory,
+metadata=MemoryMetadata(importance_score=importance or 0.5)
+)
+elif importance is not None:
+memory.metadata.importance_score = importance
+```
+```
+# Calculate dynamic scores
+memory.metadata.recency_score = self.calculate_recency_score(
+memory.created_at
+)
+memory.metadata.frequency_score = self.calculate_frequency_score(
+memory.metadata.access_count
+)
+```
+```
+# Generate embeddings
+dense_vector = self._embed_text(memory.text_content)
+sparse_vector = self._embed_sparse([memory.text_content])[ 0 ]
+```
+```
+# Build vector payload
+vector_payload = {self.agent_dense_name: dense_vector}
+if self.agent_sparse_name:
+vector_payload[self.agent_sparse_name] = sparse_vector
+```
+```
+# Create point with comprehensive payload
+point = models.PointStruct(
+id=memory.id,
+vector=vector_payload,
+payload=memory.to_qdrant_payload() # 20+ fields
+)
+```
+```
+# Upsert to Qdrant
 ```
 
-Running `mypy` on this code catches attribute errors, type mismatches, and other issues before runtime, while Pydantic ensures any data creating Memory instances conforms to the schema.[39][40]
+```
+client = await self.client
+await client.upsert(
+collection_name=self.collection_name,
+points=[point],
+wait=True
+)
+```
+```
+logger.info(
+f"Added {memory.memory_type.value} memory '{memory.id}' "
+f"with priority {memory.metadata.priority_score:.3f}"
+)
+return memory.id
+```
+### Add Access Tracking Method :
 
-### Factory Pattern and Dependency Injection
+```
+async def update_memory_access(
+self,
+memory_id: str,
+increment_count: bool = True
+) -&gt; None:
+"""Update metadata after retrieval."""
+client = await self.client
+```
+```
+# Retrieve current point
+point = await client.retrieve(
+collection_name=self.collection_name,
+ids=[memory_id],
+with_payload=True
+)
+```
+```
+if not point:
+logger.warning(f"Memory {memory_id} not found")
+return
+```
+```
+payload = point[ 0 ].payload
+new_access_count = payload.get("access_count", 0 ) + ( 1 if increment_count else 0 )
+new_frequency_score = self.calculate_frequency_score(new_access_count)
+```
+```
+# Update
+await client.set_payload(
+collection_name=self.collection_name,
+points=[memory_id],
+payload={
+"access_count": new_access_count,
+"frequency_score": new_frequency_score,
+"last_accessed_at": datetime.now(UTC).timestamp(),
+}
+)
+```
+### Fix Async Client Issue :
 
-The architecture employs **factory patterns with dependency injection** to ensure system resilience and rapid adaptability. Rather than hardcoding object creation throughout the codebase, factories centralize instantiation logic while dependency injection provides required components externally.[42][43][44][45][1]
+### All methods using self.client must await it: client = await self.client
 
-**Factory functions** create and wire dependencies, keeping main application code clean and focused on business logic rather than object assembly:[42]
+### Already done in the updated methods above
 
+
+### File : test_qdrant_write.py
+
+### Purpose : Validate that memories write correctly to Qdrant VM
+
+### Test Cases :
+
+### Expected Output :
+
+```
+2025-11-07 14:30:00 - INFO - Testing priority score calculations...
+2025-11-07 14:30:00 - INFO - High importance fresh memory: 0.800 (expected ~0.8)
+2025-11-07 14:30:00 - INFO - Low importance frequent memory: 0.450 (expected ~0.45)
+2025-11-07 14:30:00 - INFO - Balanced memory: 0.650 (expected ~0.65)
+2025-11-07 14:30:00 - INFO - ✓ Priority scoring tests complete
+```
+```
+2025-11-07 14:30:01 - INFO - Loading configuration...
+2025-11-07 14:30:01 - INFO - Initializing Qdrant connection...
+2025-11-07 14:30:02 - INFO - Creating test memory...
+2025-11-07 14:30:02 - INFO - Writing memory to Qdrant...
+2025-11-07 14:30:03 - INFO - ✓ Successfully wrote memory with ID: abc123...
+2025-11-07 14:30:03 - INFO - Retrieving memory from Qdrant...
+2025-11-07 14:30:04 - INFO - ✓ Successfully retrieved memory
+2025-11-07 14:30:04 - INFO - Collection 'agent_memory' stats:
+2025-11-07 14:30:04 - INFO - - Points count: 1
+2025-11-07 14:30:04 - INFO - - Vectors config: {'text-dense': VectorParams(...)}
+```
+```
+============================================================
+✓ ALL TESTS PASSED - Qdrant write system is working!
+============================================================
+```
+### Run Command :
+
+```
+python test_qdrant_write.py
+```
+## Step 3: Create Test Script (20 minutes)
+
+### 1. test_priority_scoring() : Verify RFM calculations
+
+### High importance + fresh → priority ~0.
+
+### Low importance + frequent → priority ~0.
+
+### Balanced → priority ~0.
+
+### 2. test_qdrant_write() : End-to-end write/read
+
+### Initialize connection
+
+### Create EpisodicMemory with tags
+
+### Write via add_memory()
+
+### Retrieve via retrieve_context()
+
+### Verify payload fields
+
+### Check collection stats
+
+
+### Checklist :
+
+## Step 4: Validation (10 minutes)
+
+### 1. VM Connectivity :
+
+### ping -c 3 192.168.122.40 → Success
+
+### curl http://192.168.122.40:6333/collections → Returns JSON
+
+### 2. Environment Variables :
+
+### echo $GEMINI_API_KEY → Shows key
+
+### OR echo $MISTRAL_API_KEY → Shows key
+
+### 3. Dependencies :
+
+```
+pip install qdrant-client pydantic sentence-transformers fastembed
+```
+### 4. Run Test Script :
+
+```
+python test_qdrant_write.py
+```
+### Should exit with code 0
+
+### Should print "ALL TESTS PASSED"
+
+### 5. Verify in Qdrant UI :
+
+### Open http://192.168.122.40:6333/dashboard
+
+### Navigate to Collections → agent_memory
+
+### Click on a point to inspect payload
+
+### Confirm all 20+ fields present:
+
+### memory_id, memory_type, text_content
+
+### created_at, updated_at
+
+### recency_score, frequency_score, importance_score, priority_score
+
+### access_count, tags, agent_name
+
+### event_type, context, etc.
+
+### 6. Type Check with mypy :
+
+```
+mypy src/memory/models.py
+mypy src/memory/qdrant_memory.py
+```
+### Should report 0 errors
+
+
+### Issue : VM at 192.168.122.40 becomes unreachable
+
+### Impact : Cannot write to Qdrant
+
+### Probability : Low (KVM VMs are stable)
+
+### Mitigation :
+
+### Issue : First run downloads large models (>1GB)
+
+### Impact : 5-10 minute delay
+
+### Probability : High on first run
+
+### Mitigation :
+
+### Issue : Incorrect await usage causes RuntimeError
+
+### Impact : Script crashes
+
+### Probability : Medium (common async mistake)
+
+### Mitigation :
+
+## Section 4: Risk Assessment & Mitigation
+
+## High-Risk Issues
+
+## Risk 1: VM Network Connectivity
+
+### Pre-flight ping test
+
+### Check libvirt network: virsh net-list
+
+### Verify port forwarding: ss -tulpn | grep 6333
+
+### Restart VM if needed: virsh start &lt;vm-name&gt;
+
+## Risk 2: Embedding Model Download Time
+
+### Use cached models if available: ~/.cache/huggingface
+
+### Start download early in background
+
+### Use smaller model temporarily: BAAI/bge-small-en-v1.5 (133MB)
+
+### Monitor with: watch -n 1 ls -lh ~/.cache/huggingface/hub
+
+## Risk 3: Async Pattern Errors
+
+### Test with simple examples first
+
+### Use asyncio.run() at top level
+
+### Ensure all coroutines awaited
+
+### Add try/except blocks for debugging
+
+
+### Issue : Changing payload structure breaks existing data
+
+### Impact : Need to migrate all points
+
+### Probability : Medium (as requirements evolve)
+
+### Mitigation :
+
+### Issue : Collection grows unbounded without pruning
+
+### Impact : Slow queries, high storage
+
+### Probability : High over weeks/months
+
+### Mitigation :
+
+### Issue : Typo in TOML breaks initialization
+
+### Impact : Clear error message, easy to fix
+
+### Probability : Low
+
+### Mitigation : TOML syntax checking, use default values
+
+## Medium-Risk Issues
+
+## Risk 4: Schema Evolution
+
+### Version payload schema: schema_version = "1.0"
+
+### Write migration scripts before breaking changes
+
+### Test on copy of collection first
+
+### Use set_payload() to update in place
+
+## Risk 5: Memory Bloat
+
+### Implement pruning in Phase 2
+
+### Monitor collection size: collection_info.points_count
+
+### Set alerts at 100k, 1M points
+
+### Archive old memories to separate collection
+
+## Low-Risk Issues
+
+## Risk 6: Config Errors
+
+## Section 5: Post-Implementation Roadmap
+
+## Immediate Next Steps (After Today)
+
+### 1. Implement Memory Pruning (Phase 1, 45 min)
+
+### Delete memories older than prune_days with low priority
+
+### Batch delete with scroll + filter
+
+### Log pruning stats
+
+
+### 2. Enhanced Error Handling (Phase 1, 30 min)
+
+### Retry logic with tenacity
+
+### Better logging with structlog
+
+### Connection pooling
+
+### 3. Multi-Provider Embeddings (Phase 2, 1 hour)
+
+### Simultaneous Google + Mistral embeddings
+
+### Store multiple vectors per memory
+
+### Late interaction retrieval
+
+## Short-Term Goals (Next Week)
+
+### 4. System 1 Memory Analyst Agent (Phase 2, 3-4 hours)
+
+### Lightweight LLM (Mistral 7B or Phi-3)
+
+### Classifies incoming memories
+
+### Enriches metadata automatically
+
+### Runs before storage
+
+### 5. Query Complexity Classification (Phase 2, 2 hours)
+
+### Route simple queries to single-vector search
+
+### Route complex queries to multi-vector + graph
+
+### Adaptive strategy selection
+
+### 6. Working Memory Buffer (Phase 4, 2 hours)
+
+### 4-chunk capacity limit
+
+### Temporary context storage
+
+### Automatic cleanup
+
+## Medium-Term Goals (Next Month)
+
+### 7. Consolidation Pipeline (Phase 3, 6-8 hours)
+
+### Batch job: episodic → semantic
+
+### LLM-guided synthesis
+
+### Conflict resolution
+
+### Parent-child linking
+
+### 8. Memory Synthesizer Agent (Phase 2, 3-4 hours)
+
+### Pre-storage enrichment
+
+### Automatic tagging
+
+### Context extraction
+
+### 9. Graph Relationship Traversal (Phase 5, 4-6 hours)
+
+
+### All code is provided in the attached implementation plan. Key files:
+
+### Parent-child memory links
+
+### Causal chains
+
+### Multi-hop reasoning
+
+## Long-Term Vision (Next Quarter)
+
+### 10. Multimodal Memory (Phase 5, 8-10 hours)
+
+### Image embeddings (CLIP)
+
+### Code snippet storage
+
+### Diagram understanding
+
+### 11. Meta-Learning (Phase 5, 10-12 hours)
+
+### System learns to improve itself
+
+### Adaptive consolidation strategies
+
+### Self-optimizing retrieval
+
+### 12. Comprehensive Metrics (All Phases, ongoing)
+
+### Retrieval quality (NDCG, Recall@k)
+
+### Consolidation ratio
+
+### System health dashboards
+
+## Section 6: Complete Code Deliverables
+
+## src/memory/models.py (NEW)
+
+### ~150 lines
+
+### 7 Pydantic model classes
+
+### Full type safety with validators
+
+### Comprehensive payload generation
+
+## src/memory/qdrant_memory.py (MODIFIED)
+
+### ~100 lines added
+
+### 3 new methods for RFM scoring
+
+### Updated add_memory() signature
+
+### Access tracking implementation
+
+### Fixed async client usage
+
+
+### YES , with 1.5-2 hours of implementation work.
+
+### Total: ~95 minutes to working system
+
+### Focus on Phase 1 completion (today's goal) before moving to Phase 2. The current implementation
+
+### is 30% complete; after today's work it will be 80% complete for Phase 1.
+
+### Correctness over speed : Take time to test thoroughly. A working system today is better than a
+
+### broken system rushed to completion.
+
+## test_qdrant_write.py (NEW)
+
+### ~80 lines
+
+### Priority scoring tests
+
+### End-to-end write/read validation
+
+### Collection stats reporting
+
+## agentic-tools.toml (MODIFIED)
+
+### Add [knowledge_bank_ingestion] section
+
+### Add pruning parameters
+
+### Add priority scoring weights
+
+## Conclusion
+
+## Can You Write to Qdrant Today?
+
+## What's the Minimum Viable Path?
+
+### 1. Fix async client bug (5 min) - CRITICAL BLOCKER
+
+### 2. Create Pydantic models (30 min) - CRITICAL for type safety
+
+### 3. Update add_memory() (30 min) - CRITICAL for full metadata
+
+### 4. Create test script (20 min) - CRITICAL for validation
+
+### 5. Run and verify (10 min) - CRITICAL for confirmation
+
+## What Happens After?
+
+### Memories will write with full metadata (20+ fields)
+
+### Priority scoring will enable intelligent retrieval
+
+### Type safety will prevent data corruption
+
+### Foundation ready for Phase 2 (System 1 agents)
+
+## Recommendation
+
+
+```
+# Pre-flight checks
+ping -c 3 192.168.122.
+curl http://192.168.122.40:6333/collections
+ss -tulpn | grep 6333
+```
+```
+# Install dependencies
+pip install qdrant-client pydantic sentence-transformers fastembed
+```
+```
+# Set environment variables
+export GEMINI_API_KEY="your-key-here"
+```
+```
+# Run test
+python test_qdrant_write.py
+```
+```
+# Type check
+mypy src/memory/models.py src/memory/qdrant_memory.py
+```
+```
+# Qdrant UI
+# Browser: http://192.168.122.40:6333/dashboard
+```
+### End of Audit Report
+
+
+
+# Cognitive Memory System: Complete Audit & Implementation Plan
+
+
+I've completed a **comprehensive detailed audit** of your project against the MEMORY.md specification. Here's the executive summary:
+
+## Current Status: 30% Complete (Phase 1 Foundation)
+
+**Good News**: Your project has solid Qdrant connectivity and can write to the VM. The infrastructure (qdrant_client_manager.py) is excellent.
+
+**Critical Finding**: Current `add_memory()` **WILL work** but stores minimal metadata (only text_content, timestamp, day_of_week). To align with MEMORY.md, you need to implement **comprehensive payload fields with RFM priority scoring**.
+
+## What You Need to Do Today (1.5-2 hours)
+
+### Phase 1: Immediate Implementation
+
+**Step 1: Create Pydantic Models** (30 min)
+- New file: `src/memory/models.py`
+- Define type-safe schemas: Memory, EpisodicMemory, SemanticMemory, MemoryMetadata
+- Implement RFM priority scoring as a @property
+- Add comprehensive to_qdrant_payload() methods with 20+ fields
+
+**Step 2: Update qdrant_memory.py** (1 hour)
+- Fix critical async client bug (line 102: must await get_client())
+- Add calculate_recency_score() - exponential decay formula
+- Add calculate_frequency_score() - logarithmic scaling
+- Update add_memory() to accept Memory models
+- Enhance payload from 3 fields to 20+ fields
+- Add update_memory_access() for frequency tracking
+
+**Step 3: Create Test Script** (20 min)
+- New file: `test_qdrant_write.py`
+- Validate priority calculations
+- Test end-to-end write/read
+- Verify payload in Qdrant UI
+
+**Step 4: Validate** (10 min)
+- Run test script
+- Check Qdrant dashboard at http://192.168.122.40:6333/dashboard
+- Verify all metadata fields present
+
+## Critical Issues Found
+
+### 11 Issues Identified (Prioritized)
+
+**P0 - BLOCKER**:
+- Issue #6: Async client not awaited (5 min fix)
+
+**P1 - CRITICAL** (blocks MEMORY.md compliance):
+- Issue #1: No Pydantic type safety (30 min)
+- Issue #2: Missing RFM priority scoring (20 min)
+- Issue #3: Minimal payload metadata - need 20+ fields (30 min)
+
+**P2 - HIGH** (important for functionality):
+- Issue #4: prune_memories() not implemented (45 min)
+- Issue #5: No access tracking/frequency updates (20 min)
+- Issue #7: No episodic/semantic separation (included in #3)
+
+**P3 - MEDIUM** (can defer):
+- Issue #9: No multi-provider embeddings (1 hour, Phase 2)
+- Issue #10: Config section mismatch (2 min)
+
+**P4 - LOW**:
+- Issue #8: FastEmbed return type (5 min)
+- Issue #11: Prune stub in main.py (depends on #4)
+
+## MEMORY.MD Compliance
+
+### Phase 1 Requirements (Core Foundation)
+- ✓ Multi-vector storage: **COMPLETE**
+- ✓ Provider abstraction: **WORKING**
+- ✗ Type-safe schemas: **MISSING** (today's work)
+- ✗ RFM priority scoring: **MISSING** (today's work)
+- ✗ Episodic/semantic separation: **MISSING** (today's work)
+- ⚠️ Hierarchical metadata: **PARTIAL** (need parent_memory_id)
+
+**Phase 1 Completion: 33%** → After today: **80%**
+
+### Phase 2-5 Requirements
+Not started (0%). Can address after Phase 1 is solid.
+
+## Payload Schema Comparison
+
+**Current (Minimal)**:
 ```python
-def create_memory_service(config: Config) -> MemoryService:
-    """Factory centralizing memory service creation"""
-    # Select embedding provider based on config
-    if config.embedding_provider == "google":
-        embedder = GoogleEmbedder(api_key=config.google_api_key)
-    elif config.embedding_provider == "mistral":
-        embedder = MistralEmbedder(api_key=config.mistral_api_key)
-    else:
-        raise ValueError(f"Unknown provider: {config.embedding_provider}")
-    
-    # Wire dependencies
-    vector_store = QdrantClient(url=config.qdrant_url)
-    memory_store = MultiVectorStore(vector_store, embedder)
-    return MemoryService(memory_store)
+{
+    "text_content": str,
+    "timestamp": float,
+    "day_of_week": str
+}
 ```
 
-For larger systems, **dependency injection libraries** like `dependency-injector` automate wiring through declarative containers:[43][42]
-
+**Required (Full)**:
 ```python
-from dependency_injector import containers, providers
-
-class Container(containers.DeclarativeContainer):
-    config = providers.Configuration()
+{
+    # Core
+    "memory_id": str,
+    "memory_type": "episodic" | "semantic",
+    "text_content": str,
     
-    embedder = providers.Factory(
-        create_embedder,
-        provider=config.embedding_provider,
-        api_key=config.api_key
-    )
+    # Timestamps
+    "created_at": float,
+    "updated_at": float,
+    "last_accessed_at": float | None,
     
-    vector_store = providers.Singleton(
-        QdrantClient,
-        url=config.qdrant_url
-    )
+    # RFM Scoring
+    "recency_score": float,  # 0.0-1.0
+    "frequency_score": float,  # 0.0-1.0
+    "importance_score": float,  # 0.0-1.0
+    "priority_score": float,  # Calculated
+    "access_count": int,
     
-    memory_service = providers.Factory(
-        MemoryService,
-        embedder=embedder,
-        store=vector_store
-    )
+    # Classification
+    "tags": list[str],
+    "agent_name": str | None,
+    "day_of_week": str,
+    
+    # Type-specific fields
+    "event_type": str | None,  # episodic
+    "context": dict | None,  # episodic
+    "parent_memory_id": str | None,  # hierarchical
+    "source_memory_ids": list[str] | None,  # semantic
+    "confidence_score": float | None,  # semantic
+    "domain": str | None  # semantic
+}
 ```
 
-This approach delivers **critical benefits**: components become easily swappable for testing (mock embedders replace production services), configuration changes don't require code modifications, and the system remains resilient to provider API changes or service deprecations.[44][36][42]
+## Quick Start Commands
 
-### Experience Replay and Catastrophic Forgetting Mitigation
+```bash
+# Pre-flight checks
+ping -c 3 192.168.122.40
+curl http://192.168.122.40:6333/collections
 
-The architecture implements **experience replay** to prevent catastrophic forgetting—the phenomenon where neural networks drastically forget previous tasks when learning new ones. This challenge represents a fundamental limitation of standard neural architectures compared to human cognition, where continual learning occurs without interference between tasks.[46][47][48][49]
+# Install dependencies
+pip install qdrant-client pydantic sentence-transformers fastembed
 
-**Experience replay** stores agent experiences (state, action, reward, next state tuples) in a replay memory buffer, then randomly samples from this dataset during training. This technique, foundational to Deep Q-Networks, breaks temporal correlations in sequential data and enables learning from both recent and historical patterns. The replay memory essentially functions as an external episodic memory that the network can revisit, paralleling hippocampal replay in biological systems.[50][51][52][53][35]
+# Set API key
+export GEMINI_API_KEY="your-key-here"
 
-**Generative replay** extends this concept by synthesizing new samples from learned distributions rather than storing raw experiences. A generative model creates novel activation patterns representing category prototypes, enabling consolidation without requiring explicit storage of all past observations. Research demonstrates that generative replay was **more effective in later network layers** (functionally similar to lateral occipital cortex) than early visual cortex, drawing a distinction between neural replay and its relevance to consolidation.[54][53][27][35]
+# Run test
+python test_qdrant_write.py
 
-The architecture's consolidation pipeline implements this through LLM-guided synthesis where past episodic events merge into semantic generalizations, with the consolidation process using **both fresh and historical patterns** to prevent forgetting. This aligns with findings that category replay is **most beneficial for newly acquired knowledge**, suggesting replay helps agents adapt to environmental changes.[35][1]
+# Verify in UI
+# Open: http://192.168.122.40:6333/dashboard
+```
 
-**Selective replay** through reinforcement learning determines which memories to consolidate. Rather than uniformly replaying all experiences, the system learns to prioritize based on contribution to performance. Experiments show that RL-based replay systematically selects originally weaker categories more frequently ($$R^2 = 0.24$$, $$p < 0.001$$), resulting in their selective improvement while well-learned categories receive less replay. This "rebalancing" compensates for varying learning difficulty across categories, mirroring observations that the brain selectively consolidates weaker information.[52][35]
+## Recommendation
 
-Studies comparing continual learning approaches find that replay-based methods substantially outperform alternatives when scaling to realistic problems. The combination of generative replay with hierarchical consolidation enables the system to combat forgetting while avoiding biologically implausible mechanisms like explicitly storing all past observations.[53][55][46]
+**You CAN write to Qdrant today** with 1.5-2 hours of focused implementation. The complete code for all three files (models.py, updated qdrant_memory.py, test_qdrant_write.py) is provided in the PDF.
 
-## Adaptive Retrieval and Query Complexity Classification
+**Priority: Correctness over speed**. Take time to test thoroughly. A working system at 5 PM is better than a broken system rushed by 3 PM.
 
-The architecture implements **query complexity classification** to route requests through appropriate retrieval strategies:[1]
-
-**Simple queries** (single-concept lookups) utilize **single-vector semantic search** of consolidated facts, leveraging Qdrant's HNSW index for sub-millisecond retrieval. This approach excels for straightforward information needs where a pooled document embedding suffices.[17][1]
-
-**Moderate queries** (multi-faceted questions) employ **multi-vector, cross-model search** combining Google and Mistral embeddings. Late interaction through MaxSim enables nuanced matching between query concepts and relevant memory fragments, achieving the 12-28% accuracy improvements documented earlier.[11][12][1]
-
-**Complex queries** (multi-hop reasoning) combine **vector search with graph relationship traversal**. Qdrant payloads store lightweight relationship metadata enabling graph-like queries without dedicated graph databases. This hybrid approach unlocks reasoning chains, increasing multi-step recall by **up to 48%** in production systems.[1]
-
-The classification system itself can leverage lightweight System 1 models to rapidly categorize incoming queries, routing them to appropriate retrieval paths with minimal overhead. This mirrors cognitive processes where initial impressions (System 1) determine whether deliberate reasoning (System 2) is necessary.[6][2][1]
-
-## Performance Metrics and Validation
-
-The architecture defines **comprehensive evaluation metrics** ensuring system health and continuous improvement:[1]
-
-**Retrieval Metrics**: Precision@k, Recall@k, NDCG (Normalized Discounted Cumulative Gain) measure whether relevant memories surface in top results. Benchmarks demonstrate that proper multi-vector implementation achieves NDCG@10 scores of 0.343-0.347 on standard datasets.[1]
-
-**Latency Metrics**: Response latency targets sub-100ms for System 1 operations, with p95 and p99 percentiles tracked to catch tail latency issues. Qdrant achieves 50.3% lower p50 latency (4.74ms vs 9.54ms) and 63.2% lower p99 latency (5.79ms vs 15.73ms) at 90% recall compared to PostgreSQL with pgvector.[7][17][1]
-
-**Consolidation Metrics**: Consolidation ratio, storage efficiency, and forgetting rate quantify memory management effectiveness. These metrics reveal whether the system is over-consolidating (losing nuance) or under-consolidating (memory bloat).[1]
-
-**Task Performance**: Success rate, context relevance (user feedback), and task completion efficiency demonstrate real-world utility beyond pure retrieval metrics. HiAgent's doubling of success rate while reducing steps by 3.8 exemplifies this holistic evaluation approach.[10][1]
-
-**System Health**: Memory capacity utilization, query throughput (QPS), and error rates ensure operational stability. Production systems must balance accuracy with scalability, monitored through continuous observability.[17][1]
-
-## Implementation Roadmap and Phased Development
-
-The architecture prescribes a **five-phase implementation** strategy enabling incremental value delivery while managing complexity:[1]
-
-**Phase 1: Core Multi-Vector Memory Foundation** establishes provider abstraction, multi-vector memory store with Qdrant, type-checked metadata schemas (Pydantic), and priority scoring infrastructure. This phase creates the foundational data layer upon which all subsequent functionality builds.
-
-**Phase 2: System 1 Agent Implementation** deploys lightweight LLM-based Memory Analysts and Synthesizers, adaptive retrieval strategies, and real-time query complexity classification. This phase activates intelligent memory management, moving beyond passive storage to active curation.
-
-**Phase 3: Consolidation Pipeline** introduces LLM-guided consolidation, offline batch processing for efficiency, conflict resolution mechanisms, and selective semantic updating. This phase enables long-term learning and knowledge synthesis.
-
-**Phase 4: System 2 Integration** connects specialist agents to enriched memory context, implements explicit working memory with 4-chunk capacity limits, and enables inter-agent context sharing. This phase delivers sophisticated reasoning capabilities grounded in comprehensive memory.
-
-**Phase 5: Advanced Features** adds graph-based relationship memory, multimodal memory (code, diagrams, images), and meta-learning for continuous memory system improvement. This phase pushes toward human-level cognitive capabilities.[1]
-
-Each phase builds incrementally, enabling **testable milestones** and **measurable progress** rather than big-bang deployments that risk catastrophic failure.
-
-## Comparative Analysis: Beyond Standard RAG
-
-The architecture delivers **substantial improvements** over baseline Retrieval-Augmented Generation through multiple mechanisms:
-
-**Biological Inspiration**: Direct emulation of episodic, semantic, and working memory systems creates cognitive architectures that mirror human learning and reasoning. This differs fundamentally from RAG's simple "retrieve and inject" paradigm.[3][19][21][1]
-
-**Hybrid Vector-Graph Retrieval**: Combining pure vector similarity with relationship metadata enables multi-hop reasoning impossible in vanilla RAG. The 48% improvement in multi-step recall demonstrates this approach's power for complex questions requiring synthesis across multiple memories.[1]
-
-**Priority-Aware Memory Surfacing**: Scoring memories by recency, frequency, and importance rather than pure similarity ensures critical information surfaces even when semantically distant from queries. This mirrors human memory where emotional significance and repetition influence recall independently of semantic proximity.[31][1]
-
-**Adaptive System Architecture**: Dual-process separation (System 1/System 2) optimizes the tradeoff between speed and accuracy, allocating expensive computation only where necessary. Standard RAG systems lack this adaptive mechanism, applying uniform processing to all queries regardless of complexity.[2][5][1]
-
-**Provider-Agnostic Infrastructure**: Decoupling from specific embedding models, LLMs, and storage backends enables rapid technology adoption as the landscape evolves. RAG systems often tightly couple to particular providers, creating technical debt and vendor lock-in.[37][36][1]
-
-**Comprehensive Observability**: Type enforcement (Pydantic/mypy), structured logging (structlog), and extensive metrics collection enable debugging, tuning, and demonstrating value. Many RAG implementations lack this operational rigor, failing in production despite strong demo performance.[40][39][1]
-
-## Conclusion and Research Validation
-
-This cognitive memory architecture represents a **scientifically grounded, engineering-rigorous approach** to AI agent memory systems. The design synthesizes insights from neuroscience (episodic/semantic/working memory, System 1/System 2 processing, hippocampal replay), machine learning (multi-vector embeddings, late interaction, catastrophic forgetting mitigation), and software engineering (type safety, dependency injection, modular design).[19][21][28][12][46][53][2][3][11][39][40][42][1]
-
-Performance validations across multiple research domains confirm the architecture's effectiveness: **7x speed improvements** through MUVERA-based retrieval, **12-28% accuracy gains** from multi-vector embeddings, **2x success rate increases** from dual-process agent design, and **48% recall improvements** via hybrid vector-graph retrieval. These quantitative results demonstrate that biologically-inspired design delivers measurable advantages over engineering-only approaches.[5][12][10][1]
-
-The phased implementation roadmap, combined with comprehensive observability and strict design principles, ensures the system remains **maintainable, adaptable, and demonstrably valuable** as it scales from prototype to production. By following established patterns (factory, dependency injection), enforcing type safety (Pydantic, mypy), and prioritizing modularity, the architecture avoids technical debt that plagues many AI systems.[39][40][42][1]
-
-Future work should explore **meta-learning mechanisms** enabling the memory system to continuously improve its own consolidation, retrieval, and prioritization strategies. Additionally, extending to **multimodal memories** (integrating visual diagrams, code snippets, audio) will broaden applicability across diverse domains. The ultimate vision is AI agents capable of **human-like continual learning**—synthesizing knowledge across experiences, adapting to environmental changes, and reasoning flexibly without catastrophic forgetting.[1]
-
-[1](https://qdrant.tech/articles/muvera-embeddings/)
-[2](https://mnemoverse.com/docs/research/memory/cognitive-models/dual-process-learning)
-[3](https://www.geeksforgeeks.org/artificial-intelligence/episodic-memory-in-ai-agents/)
-[4](https://venturebeat.com/ai/deepminds-talker-reasoner-framework-brings-system-2-thinking-to-ai-agents)
-[5](https://aclanthology.org/2025.acl-long.206/)
-[6](https://www.alignmentforum.org/w/dual-process-theory-system-1-and-system-2)
-[7](https://sparkco.ai/blog/vector-database-benchmarking-in-2025-a-deep-dive)
-[8](https://agixtech.com/small-language-models-edge-ai-comparison/)
-[9](https://explodingtopics.com/blog/list-of-llms)
-[10](https://aclanthology.org/2025.acl-long.1575.pdf)
-[11](https://qdrant.tech/documentation/advanced-tutorials/using-multivector-representations/)
-[12](https://www.emergentmind.com/topics/colbert-style-late-interaction-mechanism)
-[13](https://weaviate.io/blog/late-interaction-overview)
-[14](https://www.lancedb.com/documentation/studies/late-interaction-colbert.html)
-[15](https://arxiv.org/html/2508.03555v1)
-[16](https://developer.ibm.com/articles/how-colbert-works/)
-[17](https://www.tigerdata.com/blog/pgvector-vs-qdrant)
-[18](https://www.firecrawl.dev/blog/best-vector-databases-2025)
-[19](https://www.digitalocean.com/community/tutorials/episodic-memory-in-ai)
-[20](https://www.ibm.com/think/topics/ai-agent-memory)
-[21](https://www.linkedin.com/pulse/memory-systems-ai-agents-techniques-long-term-context-odutola-xbbsc)
-[22](https://liquidmetal.ai/casesAndBlogs/smartmemory/)
-[23](https://www.jneuro.org/full-text/precursors-to-chunking-vanish-when-working-memory-capacity-is-exceeded)
-[24](https://arxiv.org/html/2508.10824v1)
-[25](https://arxiv.org/html/2508.13171v1)
-[26](http://papers.neurips.cc/paper/1837-hierarchical-memory-based-reinforcement-learning.pdf)
-[27](https://www.nature.com/articles/s41562-023-01799-z)
-[28](https://arxiv.org/abs/2105.14039)
-[29](https://proceedings.neurips.cc/paper/2021/file/ed519dacc89b2bead3f453b0b05a4a8b-Paper.pdf)
-[30](https://papers.nips.cc/paper/1837-hierarchical-memory-based-reinforcement-learning)
-[31](https://www.investopedia.com/terms/r/rfm-recency-frequency-monetary-value.asp)
-[32](https://www.expressanalytics.com/blog/rfm-analysis-customer-segmentation)
-[33](https://patchretention.com/blog/how-to-calculate-rfm-score)
-[34](https://clevertap.com/blog/rfm-analysis/)
-[35](https://pmc.ncbi.nlm.nih.gov/articles/PMC9758580/)
-[36](https://zbrain.ai/enterprise-ai-development-with-zbrain-agnostic-architecture/)
-[37](https://milvus.io/blog/we-benchmarked-20-embedding-apis-with-milvus-7-insights-that-will-surprise-you.md)
-[38](https://www.linkedin.com/pulse/embeddings-model-agnostic-approach-eduardo-sobrino-nrize)
-[39](https://testdriven.io/blog/python-type-checking/)
-[40](https://toolshelf.tech/blog/mastering-type-safe-python-pydantic-mypy-2025/)
-[41](https://stackoverflow.com/questions/75930775/pydantic-field-with-custom-data-type-and-mypy)
-[42](https://betterstack.com/community/guides/scaling-python/python-dependency-injection/)
-[43](https://python-dependency-injector.ets-labs.org/providers/factory.html)
-[44](https://stackoverflow.com/questions/557742/dependency-injection-vs-factory-pattern)
-[45](https://www.geeksforgeeks.org/system-design/dependency-injection-vs-factory-pattern/)
-[46](https://cacm.acm.org/news/forget-the-catastrophic-forgetting/)
-[47](https://www.cs.uic.edu/~liub/lifelong-learning/continual-learning.pdf)
-[48](https://arxiv.org/abs/2403.05175)
-[49](https://www.ibm.com/think/topics/catastrophic-forgetting)
-[50](https://deeplizard.com/learn/video/Bcuj2fTH4_4)
-[51](https://www.sciencedirect.com/science/article/abs/pii/S0166223621001442)
-[52](https://www.ijcai.org/proceedings/2019/0589.pdf)
-[53](https://www.nature.com/articles/s41467-020-17866-2)
-[54](https://pmc.ncbi.nlm.nih.gov/articles/PMC11449156/)
-[55](https://arxiv.org/abs/2503.20018)
-[56](https://arxiv.org/html/2509.12384v1)
-[57](https://ceur-ws.org/Vol-3332/paper3.pdf)
-[58](https://qdrant.tech/blog/qdrant-colpali/)
-[59](https://genesishumanexperience.com/2025/11/03/memory-in-agentic-ai-systems-the-cognitive-architecture-behind-intelligent-collaboration/)
-[60](https://www.reddit.com/r/vectordatabase/comments/1fzs6ho/vectordb_for_multivectors/)
-[61](https://www.reddit.com/r/AI_Agents/comments/1llnff6/humans_operate_using_a_combination_of_fast_and/)
-[62](https://github.com/qdrant/qdrant)
-[63](https://www.linkedin.com/pulse/generative-ais-cognitive-leap-journey-from-system-1-2-laura-kxloc)
-[64](https://www.instaclustr.com/blog/vector-search-benchmarking-setting-up-embeddings-insertion-and-retrieval-with-postgresql/)
-[65](https://milvus.io/blog/vdbbench-1-0-benchmarking-with-your-real-world-production-workloads.md)
-[66](https://aws.amazon.com/blogs/machine-learning/building-smarter-ai-agents-agentcore-long-term-memory-deep-dive/)
-[67](https://lakefs.io/blog/best-vector-databases/)
-[68](https://arxiv.org/html/2501.11739v2)
-[69](https://pmc.ncbi.nlm.nih.gov/articles/PMC9274316/)
-[70](https://www.sciencedirect.com/science/article/pii/S1877050920302465)
-[71](https://latenode.com/blog/ai-frameworks-technical-infrastructure/vector-databases-embeddings/best-vector-databases-for-rag-complete-2025-comparison-guide)
-[72](https://redis.io/blog/build-smarter-ai-agents-manage-short-term-and-long-term-memory-with-redis/)
-[73](https://discourse.numenta.org/t/hierarchical-temporal-memory-agent-in-standard-reinforcement-learning-environment/7113)
-[74](https://github.com/stanford-futuredata/ColBERT)
-[75](https://www.techtarget.com/searchdatamanagement/definition/RFM-analysis)
-[76](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)
-[77](https://www.omniconvert.com/blog/rfm-model/)
-[78](https://debmalyabiswas.substack.com/p/long-term-memory-for-ai-agents)
-[79](https://www.lighton.ai/lighton-blogs/pylate-flexible-training-and-retrieval-for-late-interaction-models)
-[80](https://ppcexpo.com/blog/recency-frequency-monetary-analysis)
-[81](https://elephas.app/blog/best-open-source-ai-models)
-[82](https://research.google/blog/introducing-nested-learning-a-new-ml-paradigm-for-continual-learning/)
-[83](https://www.madelyneriksen.com/blog/validated-container-types-python-pydantic)
-[84](https://www.reddit.com/r/LocalLLaMA/comments/1lbd2jy/what_llm_is_everyone_using_in_june_2025/)
-[85](https://www.reddit.com/r/Python/comments/1hzk4vb/python_with_type_hints_and_mypy_regret_for_not/)
-[86](https://www.binadox.com/blog/best-local-llms-for-cost-effective-ai-development-in-2025/)
-[87](https://www.amazon.science/publications/preventing-catastrophic-forgetting-in-continual-learning-of-new-natural-language-tasks)
-[88](https://github.com/pydantic/pydantic/pull/995)
-[89](https://www.koyeb.com/blog/best-open-source-llms-in-2025)
-[90](https://www.techrxiv.org/users/886228/articles/1264296-continual-learning-overcoming-catastrophic-forgetting-for-adaptive-ai-systems)
-[91](https://testdouble.com/insights/pydantically-perfect-a-beginners-guide-to-pydantic-for-python-type-safety)
-[92](https://python-dependency-injector.ets-labs.org/examples-other/factory-of-factories.html)
-[93](https://c3.ai/blog/meet-charm-c3-ais-foundation-embedding-model-for-time-series/)
-[94](https://www.bentoml.com/blog/a-guide-to-open-source-embedding-models)
-[95](https://www.reddit.com/r/javahelp/comments/15mcudc/is_dependency_injection_and_factory_pattern_the/)
-[96](https://www.couchbase.com/blog/cloud-native-vs-cloud-agnostic/)
-[97](https://python-patterns.guide/gang-of-four/factory-method/)
-[98](https://www.reddit.com/r/reinforcementlearning/comments/1d0mfgg/electric_ripples_in_the_resting_brain_tag/)
