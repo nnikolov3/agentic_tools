@@ -25,9 +25,9 @@ import uuid
 from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Final, Optional
+from typing import Any, Final
 
 # Third-Party Library Imports
 import httpx
@@ -166,7 +166,7 @@ class KnowledgeBankIngestor:
             device=self.memory_config.device,
         )
         # Lazily initialize embedding_size to avoid blocking call in constructor.
-        self.embedding_size: Optional[int] = None
+        self.embedding_size: int | None = None
 
         self.qdrant_manager = QdrantClientManager(self.memory_config.qdrant_config)
         self.qdrant_client = self.qdrant_manager.get_client()
@@ -182,8 +182,8 @@ class KnowledgeBankIngestor:
         }
 
         # These will be resolved at runtime by inspecting the Qdrant collection.
-        self.kb_dense_name: Optional[str] = None
-        self.kb_sparse_name: Optional[str] = None
+        self.kb_dense_name: str | None = None
+        self.kb_sparse_name: str | None = None
 
     @staticmethod
     def clean_text(text: str) -> str:
@@ -447,9 +447,9 @@ class KnowledgeBankIngestor:
             payload={
                 TEXT_CONTENT_FIELD: summary,
                 ORIGINAL_FILE_PATH_FIELD: str(file_path),
-                "ingestion_date": datetime.now(timezone.utc).isoformat(),
+                "ingestion_date": datetime.now(UTC).isoformat(),
                 "modification_date": datetime.fromtimestamp(
-                    file_path.stat().st_mtime, tz=timezone.utc
+                    file_path.stat().st_mtime, tz=UTC
                 ).isoformat(),
             },
         )
@@ -480,9 +480,9 @@ class KnowledgeBankIngestor:
                 PROCESSED_CONTENT_HASH_FIELD: chunk_hash,
                 CHUNK_ID_FIELD: index,
                 "file_extension": file_path.suffix,
-                "ingestion_date": datetime.now(timezone.utc).isoformat(),
+                "ingestion_date": datetime.now(UTC).isoformat(),
                 "modification_date": datetime.fromtimestamp(
-                    file_path.stat().st_mtime, tz=timezone.utc
+                    file_path.stat().st_mtime, tz=UTC
                 ).isoformat(),
             }
 
@@ -610,9 +610,9 @@ class KnowledgeBankIngestor:
             # Check if the file is old
             file_stat = await asyncio.to_thread(file_path.stat)
             modification_time = datetime.fromtimestamp(
-                file_stat.st_mtime, tz=timezone.utc
+                file_stat.st_mtime, tz=UTC
             )
-            age = datetime.now(timezone.utc) - modification_time
+            age = datetime.now(UTC) - modification_time
             if age > timedelta(days=self.ingestion_config.old_file_threshold_days):
                 warning = (
                     f"Warning: This document is from {modification_time.year} and may be outdated. "

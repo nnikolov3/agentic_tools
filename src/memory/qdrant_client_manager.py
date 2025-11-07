@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 from qdrant_client import AsyncQdrantClient, models
 
@@ -13,7 +13,7 @@ class QdrantClientManager:
         "none": None,
     }
 
-    def __init__(self, config: Dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any]) -> None:
         self._init_connection_config(config)
         self._init_collection_config(config)
         self._init_indexing_config(config)
@@ -32,7 +32,7 @@ class QdrantClientManager:
             grpc_options=self.grpc_options,
         )
 
-    def _init_connection_config(self, config: Dict[str, Any]):
+    def _init_connection_config(self, config: dict[str, Any]):
         mem_config = config.get("memory", config)
         self.qdrant_url = os.getenv(
             "QDRANT_URL", mem_config.get("qdrant_url", "http://192.168.122.40:6333")
@@ -42,7 +42,7 @@ class QdrantClientManager:
         self.api_key = None  # No API key as per requirements
         self.grpc_options = mem_config.get("grpc_options")
 
-    def _init_collection_config(self, config: Dict[str, Any]):
+    def _init_collection_config(self, config: dict[str, Any]):
         mem_config = config.get("memory", config)
         self.dense_vector_name = mem_config.get("dense_vector_name", "text-dense")
         self.sparse_vector_name = mem_config.get("sparse_vector_name", "text-sparse")
@@ -55,7 +55,7 @@ class QdrantClientManager:
         self.replication_factor = mem_config.get("replication_factor", 1)
         self.write_consistency_factor = mem_config.get("write_consistency_factor", 1)
 
-    def _init_indexing_config(self, config: Dict[str, Any]):
+    def _init_indexing_config(self, config: dict[str, Any]):
         mem_config = config.get("memory", config)
         default_hnsw = {
             "m": 32,
@@ -72,7 +72,7 @@ class QdrantClientManager:
         self.wal_config = self._normalize_config(mem_config.get("wal_config", {}))
         self.quantization_config = mem_config.get("quantization_config", {})
 
-    def _normalize_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+    def _normalize_config(self, config: dict[str, Any]) -> dict[str, Any]:
         if config.get("max_indexing_threads") == -1:
             config["max_indexing_threads"] = os.cpu_count() or 0
         if config.get("max_optimization_threads") == -1:
@@ -89,7 +89,7 @@ class QdrantClientManager:
         self,
         collection_name: str,
         embedding_size: int,
-        payload_indexes: Optional[List[Tuple[str, Union[str, Dict[str, Any]]]]] = None,
+        payload_indexes: list[tuple[str, str | dict[str, Any]]] | None = None,
     ) -> None:
         client = await self.get_client()
 
@@ -152,7 +152,7 @@ class QdrantClientManager:
         self,
         client: AsyncQdrantClient,
         collection_name: str,
-        payload_indexes: List[Tuple[str, Union[str, Dict[str, Any]]]],
+        payload_indexes: list[tuple[str, str | dict[str, Any]]],
     ) -> None:
         for field_name, field_schema in payload_indexes:
             await client.create_payload_index(
@@ -165,7 +165,7 @@ class QdrantClientManager:
             )
 
     @staticmethod
-    def _to_vector_params(spec: Dict[str, Any]) -> models.VectorParams:
+    def _to_vector_params(spec: dict[str, Any]) -> models.VectorParams:
         dist = str(spec.get("distance", "COSINE")).upper()
         return models.VectorParams(
             size=int(spec["size"]),
@@ -175,7 +175,7 @@ class QdrantClientManager:
 
     def _build_vectors_config(
         self, default_size: int
-    ) -> Union[models.VectorParams, Dict[str, models.VectorParams]]:
+    ) -> models.VectorParams | dict[str, models.VectorParams]:
         if isinstance(self.vectors_config, dict) and "size" not in self.vectors_config:
             return {
                 name: self._to_vector_params(v)
@@ -193,7 +193,7 @@ class QdrantClientManager:
             )
         }
 
-    def _build_sparse_vectors_config(self) -> Dict[str, models.SparseVectorParams]:
+    def _build_sparse_vectors_config(self) -> dict[str, models.SparseVectorParams]:
         if isinstance(self.sparse_vectors_config, dict) and self.sparse_vectors_config:
             return {
                 name: self._parse_sparse_params(params)
@@ -217,7 +217,7 @@ class QdrantClientManager:
                 modifier = getattr(models.Modifier, mod_upper, None)
         return models.SparseVectorParams(index=index, modifier=modifier)
 
-    def _create_quantization_config(self) -> Optional[models.ScalarQuantization]:
+    def _create_quantization_config(self) -> models.ScalarQuantization | None:
         q_type_str = str(self.quantization_config.get("type", "int8")).lower()
         q_enum = self.QUANTIZATION_TYPE_MAP.get(q_type_str)
         if q_enum is None:

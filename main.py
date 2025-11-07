@@ -1,242 +1,191 @@
+# main.py (Root: ./main.py)
+
+"""
+Main async entry for Agentic Tools MCP server.
+VM-aware config load, knowledge seeding, multi-agent orchestration, periodic prune.
+Uses FastMCP (pip install fastmcp) or fallback custom server.
+"""
+
 from __future__ import annotations
 
 import argparse
 import asyncio
 import logging
-import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
-from fastmcp import Client, FastMCP
+from fastmcp import FastMCP  # MCP lib for agent coordination
 
 from src.agents.agent import Agent
-from src.configurator import get_available_agents, get_config_dictionary
+from src.configurator import (
+    find_config,
+    get_agent_config,
+    get_available_agents,
+    get_config_dictionary,
+)
+from src.memory.qdrant_client_manager import QdrantClientManager
+from src.memory.qdrant_memory import QdrantMemory
+from src.scripts.ingest_knowledge_bank import IngestionConfig, KnowledgeBankIngestor
 
-# --- Constants ---
-MCP_NAME: str = "agentic-tools"
-DEFAULT_HOST: str = "0.0.0.0"
-DEFAULT_PORT: int = 8000
+load_dotenv()
 
-# --- Logging Setup ---
+MCP_NAME = "agentic-tools"
+DEFAULT_HOST = "0.0.0.0"
+DEFAULT_PORT = 8000
+
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 
-# --- Custom Exceptions ---
 class ConfigError(Exception):
-    """Custom exception for configuration errors."""
-
     pass
 
 
 class AgentExecutionError(Exception):
-    """Custom exception for agent execution errors."""
-
     pass
 
 
 class PromptFileError(Exception):
-    """Custom exception for prompt file errors."""
-
     pass
 
 
-# --- CLI Setup ---
-def _setup_cli_parser(available_agents: List[str]) -> argparse.ArgumentParser:
-    """Set up the CLI argument parser with all commands and options."""
-    description = (
-        "Agentic Tools: A command-line tool for AI-driven software development.\n\n"
-        "This tool operates in two primary modes:\n"
-        "1. Server Mode (default): Runs the FastMCP server, exposing agents as tools.\n"
-        "   To run: python main.py\n\n"
-        "2. CLI Mode ('run-agent'): Manually executes a single agent task.\n"
-        "   To run: python main.py run-agent <AGENT_NAME> [options]"
+def setup_parser(available_agents: list[str]) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser("Agentic Tools MCP")
+    parser.add_argument("--host", default=DEFAULT_HOST)
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--agents", nargs="*", choices=available_agents)
+    parser.add_argument(
+        "--ingest", action="store_true", help="Seed knowledge bank first"
     )
-
-    parent_parser = argparse.ArgumentParser(add_help=False)
-    parent_parser.add_argument(
-        "--config",
-        type=str,
-        default=None,
-        help="Path to a specific override configuration file.",
+    parser.add_argument(
+        "--config", default=None, type=Path, help="Override config path (VM/host)"
     )
-    parent_parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Run in debug mode.",
-    )
-
-    parser = argparse.ArgumentParser(
-        description=description,
-        formatter_class=argparse.RawTextHelpFormatter,
-        parents=[parent_parser],
-    )
-
-    subparsers = parser.add_subparsers(dest="command", required=False)
-
-    # Build help text for agent_name argument
-    agent_help_lines = ["The name of the agent to run. Available agents are:\n"]
-    max_len = max(len(name) for name in available_agents) if available_agents else 0
-    for name in available_agents:
-        agent_help_lines.append(f"  {name:<{max_len}}")
-    agent_help_text = "\n".join(agent_help_lines)
-
-    run_agent_parser = subparsers.add_parser(
-        "run-agent",
-        help="Manually execute a single agent task.",
-        parents=[parent_parser],
-    )
-    run_agent_parser.add_argument(
-        "agent_name",
-        type=str,
-        choices=available_agents,
-        help=agent_help_text,
-    )
-    run_agent_parser.add_argument(
-        "--chat",
-        type=str,
-        default=None,
-        help="The chat prompt or context for the agent.",
-    )
-    run_agent_parser.add_argument(
-        "--prompt-file",
-        type=str,
-        default=None,
-        help="The path to a file containing the prompt for the agent.",
-    )
-    run_agent_parser.add_argument(
-        "--filepath",
-        type=str,
-        default=None,
-        help="The path to the file or directory for the agent to process.",
-    )
-    run_agent_parser.add_argument(
-        "--target_directory",
-        type=str,
-        default=None,
-        help="The root directory of the project. Defaults to the current working directory.",
-    )
-
+    parser.add_argument("--prune", action="store_true", help="Run memory prune")
     return parser
 
 
-# --- Dynamic Tool Registration ---
-async def register_agent_tools(
-    mcp: FastMCP,
-    agents: List[str],
-    agent_metadata: Dict[str, Dict[str, Any]],
-    config: Dict[str, Any],
-) -> None:
-    """Register all available agents as tools with the MCP server."""
-    registered_tools = set()
-
-    async with Client(mcp) as client:
-        for agent_name in agents:
-            if agent_name in agent_metadata and agent_name not in registered_tools:
-                func_name = f"{agent_name}_tool"
-
-                # Create a minimal agent instance for registration
-                agent = Agent(
-                    configuration=config,
-                    agent_name=agent_name,
-                    chat=None,
-                    filepath=None,
-                    target_directory=None,
-                )
-
-                # Register the agent's run_agent method as a tool
-                # NOTE: FastMCP's call_tool does NOT accept a 'description' argument
-                await client.call_tool(func_name, agent.run_agent)
-                registered_tools.add(agent_name)
-                logger.info(f"Registered tool: {func_name}")
+async def handle_ingest(config_path: Path) -> None:
+    config = get_config_dictionary(config_path)
+    general_config = config.get("general", {})
+    if general_config.get("debug_mode"):
+        logging.getLogger().setLevel(logging.DEBUG)
+    ingestion_config = IngestionConfig(
+        source_dir=Path(config.get("ingestion", {}).get("source_dir", "docs/knowledge")),
+        output_dir=Path(config.get("ingestion", {}).get("output_dir", ".ingested")),
+        **config.get("memory", {}),
+        **config.get("ingestion", {}),
+    )
+    ingestor = KnowledgeBankIngestor(ingestion_config)
+    results = await ingestor.run()
+    logger.info("Seeding complete: %s files processed", len(results) if results else 0)
 
 
-# --- Agent Execution ---
-async def _run_cli_mode(args: argparse.Namespace, config: Dict[str, Any]) -> None:
-    """Execute the selected agent task in CLI mode."""
-    chat_prompt = args.chat
-
-    if args.prompt_file:
-        try:
-            with open(args.prompt_file, "r", encoding="utf-8") as prompt_file:
-                chat_prompt = prompt_file.read()
-        except FileNotFoundError as error:
-            logger.error("Prompt file not found at '%s'.", args.prompt_file)
-            raise PromptFileError(f"Prompt file not found: {error}") from error
-        except OSError as error:
-            logger.error("Error reading prompt file: %s", error)
-            raise PromptFileError(f"Error reading prompt file: {error}") from error
-
-    try:
-        agent = Agent(
-            configuration=config,
-            agent_name=args.agent_name,
-            chat=chat_prompt,
-            filepath=args.filepath,
-            target_directory=args.target_directory,
-        )
-        result = await agent.run_agent()
-        logger.info("--- Agent Result ---")
-        print(result)
-        logger.info("--------------------")
-    except Exception as error:
-        logger.critical(
-            "Script execution failed. Please review the logs for details. Error: %s",
-            error,
-        )
-        raise AgentExecutionError(f"Agent execution failed: {error}") from error
-
-
-# --- Main Execution ---
-async def main() -> None:
-    """Main entry point for the application."""
-    load_dotenv()
-
-    # --- Load Configuration ---
-    current_working_directory = Path(__file__).parent
-    configuration_path = current_working_directory / f"{MCP_NAME}.toml"
-    try:
-        configuration = get_config_dictionary(configuration_path)
-    except Exception as error:
-        logger.critical("Failed to load configuration: %s", error)
-        raise ConfigError(f"Configuration loading failed: {error}") from error
-
-    available_agents = get_available_agents(configuration)
-
-    # --- CLI Setup ---
-    parser = _setup_cli_parser(available_agents)
-    args = parser.parse_args()
-
-    # --- MCP Setup ---
-    mcp = FastMCP(MCP_NAME)
-    await register_agent_tools(
-        mcp, available_agents, configuration["agentic-tools"]["agents"], configuration
+async def handle_prune(memory: QdrantMemory) -> None:
+    count = await memory.prune_memories()
+    logger.info(
+        "Pruned %d memories (prune_days=%d, confidence=%.2f)",
+        count,
+        memory.config.get("prune_days", 365),
+        memory.config.get("prune_confidence", 0.5),
     )
 
-    # --- Run Mode ---
-    if args.command == "run-agent":
-        await _run_cli_mode(args, configuration)
+
+async def main():
+    # VM-aware config load
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--config", default=None, type=Path)
+    temp_args, _ = parser.parse_known_args()
+    config_path = temp_args.config or Path("agentic-tools.toml")  # Internal default
+    try:
+        config_path = find_config(Path.cwd())  # Search parents/host
+        logger.info("Loaded VM/host config: %s", config_path)
+    except FileNotFoundError:
+        if not config_path.exists():
+            raise ConfigError(
+                f"No config found: Use --config or place {config_path} in current dir."
+            )
+        logger.warning("Using internal config: %s (no host found)", config_path)
+
+    config = get_config_dictionary(config_path)
+    available_agents = get_available_agents(config)  # Nested load
+    logger.info("Available agents: %s", available_agents)
+    general_config = config.get("general", {})
+    mcp_config = config.get("mcp", {})
+
+    # Setup logging from config
+    log_level = mcp_config.get("log_level", "INFO").upper()
+    log_file = general_config.get("log_file", "agentic-tools.log")
+    logging.basicConfig(
+        level=getattr(logging, log_level, logging.INFO),
+        filename=log_file,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+    if general_config.get("debug_mode", False):
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    full_parser = setup_parser(available_agents)
+    args = full_parser.parse_args()
+
+    if args.prune:
+        qdrant_manager = QdrantClientManager(config)
+        await qdrant_manager.initialize()
+        memory = await QdrantMemory.create(config, qdrant_manager)
+        await handle_prune(memory)
+        return
+
+    if args.ingest:
+        await handle_ingest(config_path)
+        if not args.agents:  # Exit if only ingest
+            logger.info("Ingestion done; run without --ingest for MCP.")
+            return
+
+    # MCP setup with config
+    mcp = FastMCP(
+        name=mcp_config.get("name", MCP_NAME),
+        host=args.host or mcp_config.get("host", DEFAULT_HOST),
+        port=args.port or mcp_config.get("port", DEFAULT_PORT),
+    )
+
+    qdrant_manager = QdrantClientManager(config)
+    await qdrant_manager.initialize()
+    memory = await QdrantMemory.create(config, qdrant_manager)
+
+    selected_agents = args.agents or available_agents
+    for name in selected_agents:
+        agent_cfg = get_agent_config(config, name)
+        if agent_cfg and agent_cfg.get("name") == name:  # Valid
+            agent = Agent(configuration=config, agent_name=name, memory=memory)
+            mcp.add_agent(agent)
+            logger.info(
+                "Added agent: %s (tools: %s, weight: %.1f)",
+                name,
+                agent_cfg.get("tools", []),
+                agent_cfg.get("memory_weight", 0.5),
+            )
+
+    # Periodic prune (every hour, from [memory])
+    async def prune_loop():
+        while True:
+            await asyncio.sleep(3600)
+            await handle_prune(memory)
+
+    if mcp.agents:  # Only if agents added
+        if mcp_config.get("enable_multi_agent", True):
+            asyncio.create_task(prune_loop())
+        logger.info(
+            "Starting MCP server: %s on %s:%d with %d agents (coord: %s)",
+            mcp.name,
+            mcp.host,
+            mcp.port,
+            len(mcp.agents),
+            mcp_config.get("agent_coordination", "sequential"),
+        )
+        await mcp.run()
     else:
-        logger.info(f"Starting FastMCP server on {DEFAULT_HOST}:{DEFAULT_PORT}")
-        await mcp.run(transport="http", host=DEFAULT_HOST, port=DEFAULT_PORT)
+        logger.warning("No agents selected or available. Use --agents <name>.")
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except ConfigError as e:
-        logger.critical("Configuration error: %s", e)
-        sys.exit(1)
-    except AgentExecutionError as e:
-        logger.critical("Agent execution error: %s", e)
-        sys.exit(1)
-    except PromptFileError as e:
-        logger.critical("Prompt file error: %s", e)
-        sys.exit(1)
-    except Exception as e:
-        logger.critical("Unexpected error: %s", e)
-        sys.exit(1)
+    asyncio.run(main())

@@ -1,108 +1,143 @@
-# Standard Library
+# src/tools/api_tools.py
+
+"""
+Async Mistral API tools for chat, embed, OCR.
+Uses mistralai client; retries with tenacity; base64 for images.
+Config from [mistral] section.
+"""
+
 import asyncio
-import json
-import os
-from typing import Any, Dict
+import base64
+import logging
+from typing import Any
 
-# Third-Party Libraries
-from google.genai import Client as GoogleClient
-from google.genai import types as google_types
-from mistralai import Mistral
+from mistralai import AsyncMistral  # pip install mistralai
+from mistralai.models.chat_completion import ChatMessage
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+logger = logging.getLogger(__name__)
 
 
-class ApiTools:
-    """Abstract base class for all LLM APIs."""
+class MistralTools:
+    def __init__(self, config: dict[str, Any]):
+        self.config = config
+        mistral_cfg = config.get("mistral", {})
+        api_key = os.getenv(mistral_cfg.get("api_key_name", "MISTRAL_API_KEY"))
+        if not api_key:
+            raise ValueError("MISTRAL_API_KEY not set")
+        self.client = AsyncMistral(api_key=api_key)
+        self.embedding_model = mistral_cfg.get("embedding_model", "mistral-embed")
+        self.ocr_model = mistral_cfg.get("ocr_model", "mistral-ocr-latest")
+        self.summary_model = mistral_cfg.get("summary_model", "mistral-large-latest")
+        self.max_tokens = mistral_cfg.get("max_tokens_summary", 2000)
+        self.batch_size = mistral_cfg.get("batch_size_embed", 50)
+        self.retries = mistral_cfg.get("retries", 3)
+        self.timeout = mistral_cfg.get("timeout_api", 120)
+        self.include_base64 = mistral_cfg.get("include_image_base64", True)
 
-    def __init__(self, agent: str, config: Dict[str, Any]) -> None:
-        """Initializes ApiTools with agent-specific configuration."""
-        self.config: Dict[str, Any] = config
-        self.agent_config: Dict[str, Any] = self.config.get(agent, {})
-        self.agent_prompt: str | None = self.agent_config.get("prompt")
-        self.agent_api_key: str | None = self.agent_config.get("api_key")
-        self.agent_model_name: str = self.agent_config.get("model_name", "")
-        self.agent_temperature: float = self.agent_config.get("temperature", 0.7)
-        self.agent_model_provider: str = self.agent_config.get("model_provider", "")
-        self.payload: Dict[str, Any] = {}
-        self.google_client: GoogleClient | None = None
-        self.mistral_client: Mistral | None = None
+    @retry(
+        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10)
+    )
+    async def chat(
+        self, prompt: str, model: str = None, messages: list[ChatMessage] = None
+    ) -> str:
+        model = model or self.summary_model
+        try:
+            if messages:
+                response = await asyncio.wait_for(
+                    self.client.chat_completion(
+                        model=model,
+                        messages=messages,
+                        max_tokens=self.max_tokens,
+                    ),
+                    timeout=self.timeout,
+                )
+            else:
+                messages = [ChatMessage(role="user", content=prompt)]
+                response = await asyncio.wait_for(
+                    self.client.chat_completion(
+                        model=model,
+                        messages=messages,
+                        max_tokens=self.max_tokens,
+                    ),
+                    timeout=self.timeout,
+                )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.error("Mistral chat failed: %s", e)
+            raise
 
-    async def run_api(self, payload: Dict[str, Any]) -> Any:
-        """Routes the payload to the appropriate provider-specific method."""
-        self.payload = payload
-        provider: str = self.agent_model_provider
-        if not hasattr(self, provider):
-            raise ValueError(f"Unsupported provider '{provider}' for agent.")
-        method = getattr(self, provider)
-        return await method()
+    @retry(
+        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10)
+    )
+    async def embed(self, texts: list[str], model: str = None) -> list[list[float]]:
+        model = model or self.embedding_model
+        embeddings = []
+        for i in range(0, len(texts), self.batch_size):
+            batch = texts[i : i + self.batch_size]
+            try:
+                response = await asyncio.wait_for(
+                    self.client.embeddings(
+                        model=model,
+                        inputs=batch,
+                    ),
+                    timeout=self.timeout,
+                )
+                batch_emb = [emb.embedding for emb in response.data]
+                embeddings.extend(batch_emb)
+            except Exception as e:
+                logger.error("Mistral embed failed for batch %d: %s", i, e)
+                embeddings.extend([[0.0] * 1024 for _ in batch])  # Fallback zero vec
+        return embeddings
 
-    async def google(self) -> str:
-        """Calls the Google Generative AI API (Gemini) with the constructed payload."""
-        api_key: str | None = (
-            os.getenv(self.agent_api_key) if self.agent_api_key else None
-        )
-        if not api_key or api_key.strip() == "":
-            raise ValueError(
-                f"Missing or empty environment variable '{self.agent_api_key}'."
+    @retry(
+        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10)
+    )
+    async def ocr(self, image_path: str) -> str:
+        with open(image_path, "rb") as img_file:
+            img_base64 = base64.b64encode(img_file.read()).decode("utf-8")
+        prompt = "Extract text from this image/PDF page, including structure."
+        messages = [
+            ChatMessage(
+                role="user",
+                content=[
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"},
+                    },
+                ],
             )
-
-        self.google_client = GoogleClient(api_key=api_key)
-
-        async with self.google_client.aio as a_client:
-            system_instruction: str | None = self.agent_prompt
-            config = google_types.GenerateContentConfig(
-                temperature=self.agent_temperature,
-                system_instruction=system_instruction,
-                thinking_config=google_types.ThinkingConfig(thinking_budget=-1),
+        ]
+        try:
+            response = await asyncio.wait_for(
+                self.client.chat_completion(
+                    model=self.ocr_model,
+                    messages=messages,
+                    max_tokens=self.max_tokens,
+                ),
+                timeout=self.timeout,
             )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.error("Mistral OCR failed: %s", e)
+            return ""
 
-            chat_message: str = self.payload.get("chat", "")
-            json_payload: Dict[str, Any] = {
-                k: v for k, v in self.payload.items() if k != "chat"
-            }
-            text_content = f"{chat_message}\n{json.dumps(json_payload)}"
-            contents: list[google_types.Part] = [
-                google_types.Part.from_text(text=text_content)
-            ]
-
-            response = await a_client.models.generate_content(
-                model=self.agent_model_name,
-                contents=contents,
-                config=config,
-            )
-
-            response_text: str = response.text if response.text else ""
-            return response_text
-
-    async def mistral(self) -> str:
-        """Calls the Mistral AI API with the constructed payload."""
-        api_key: str | None = (
-            os.getenv(self.agent_api_key) if self.agent_api_key else None
-        )
-        if not api_key or api_key.strip() == "":
-            raise ValueError(
-                f"Missing or empty environment variable '{self.agent_api_key}'."
-            )
-
-        self.mistral_client = Mistral(api_key=api_key)
-
-        chat_message: str = self.payload.get("chat", "")
-        json_payload: Dict[str, Any] = {
-            k: v for k, v in self.payload.items() if k != "chat"
-        }
-        text_content = f"{chat_message}\n{json.dumps(json_payload)}"
-
-        response = self.mistral_client.chat.complete(
-            model=self.agent_model_name,
-            messages=[{"role": "user", "content": text_content}],
-            temperature=self.agent_temperature,
-        )
-
-        response_text: str = (
-            response.choices[0].message.content if response.choices else ""
-        )
-        return response_text
+    # Execute for MCP payload
+    async def execute(self, payload: dict[str, Any]) -> Any:
+        tool_type = payload.get("type", "chat")
+        if tool_type == "chat":
+            return await self.chat(payload.get("prompt", ""), payload.get("model"))
+        elif tool_type == "embed":
+            texts = payload.get("texts", [])
+            return await self.embed(texts, payload.get("model"))
+        elif tool_type == "ocr":
+            image_path = payload.get("image_path", "")
+            return await self.ocr(image_path)
+        else:
+            raise ValueError(f"Unknown tool type: {tool_type}")
 
 
-# Rate limiting for concurrent API calls
-_GEMINI_SEMAPHORE = asyncio.Semaphore(2)
-_MISTRAL_SEMAPHORE = asyncio.Semaphore(2)
+# Fallback if no config
+def get_mistral_tool(config: dict[str, Any]) -> MistralTools:
+    return MistralTools(config)

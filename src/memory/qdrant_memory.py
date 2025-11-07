@@ -1,130 +1,209 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import math
 import uuid
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
-from typing import Any, Coroutine, Dict, List, Optional, Tuple, Union, cast
+from typing import Any
 
-import httpx
-import torch
-from faker import Faker
-from fastembed.rerank.cross_encoder import TextCrossEncoder
-from mistralai.embeddings import MistralEmbeddings
 from qdrant_client import models
 from sentence_transformers import SparseEncoder
+
+from src.memory.embedding_models import create_embedder
+from src.memory.qdrant_client_manager import QdrantClientManager
 
 logger = logging.getLogger(__name__)
 
 
+
+
+
 class QdrantMemory:
-    CONTEXT_HEADER = "--- FastEmbed Reranked Memories Retrieved ---\n"
+
+    CONTEXT_HEADER = "--- Memories Retrieved ---\n"
+
+
 
     def __init__(
-        self, config: Dict[str, Any], qdrant_manager, agent_name: Optional[str] = None
-    ):
-        self._init_config(config, agent_name)
-        self._init_embedding_models(config)
-        self._init_qdrant(qdrant_manager)
-        self._init_reranker(config)
-        self.faker = Faker()
 
-    def _init_config(self, config: Dict[str, Any], agent_name: Optional[str]):
+        self,
+
+        config: dict[str, Any],
+
+        qdrant_manager: QdrantClientManager,
+
+        agent_name: str | None = None,
+
+    ) -> None:
+
+        self._init_config(config, agent_name)
+
+        self._init_embedding_models(config)
+
+        self._init_qdrant(qdrant_manager)
+
+
+
+    def _init_config(self, config: dict[str, Any], agent_name: str | None) -> None:
+
         mem_config = config.get("memory", config)
+
         self.collection_name = mem_config.get("collection_name", "agent_memory")
+
         self.knowledge_bank_collection_name = mem_config.get(
+
             "knowledge_bank", "knowledge-bank"
+
         )
+
         self.total_memories_to_retrieve = mem_config.get(
+
             "total_memories_to_retrieve", 20
+
         )
+
         self.query_points_hnsw_ef = mem_config.get("query_points_hnsw_ef", 128)
+
         self._set_retrieval_weights(config, agent_name)
 
-    def _set_retrieval_weights(self, config: Dict[str, Any], agent_name: Optional[str]):
+
+
+    def _set_retrieval_weights(
+
+        self, config: dict[str, Any], agent_name: str | None
+
+    ) -> None:
+
         def get_weight(key: str, default: float) -> float:
+
             agent_cfg = (
+
                 config.get(agent_name, {}).get("memory", {}) if agent_name else {}
+
             )
+
             return float(
+
                 agent_cfg.get(key, config.get("memory", config).get(key, default))
+
             )
+
+
 
         weight_keys = [
+
             "hourly",
+
             "daily",
+
             "weekly",
+
             "two_weeks",
+
             "monthly",
+
             "ninety_days",
+
             "one_eighty_days",
+
             "three_sixty_days",
+
             "knowledge_bank",
+
         ]
+
         self.retrieval_weights = {
+
             k: get_weight(f"{k}_retrieval_weight", 0.1 if k == "hourly" else 0.05)
+
             for k in weight_keys
+
         }
 
-    def _init_embedding_models(self, config: Dict[str, Any]):
+
+
+    def _init_embedding_models(self, config: dict[str, Any]) -> None:
+
         mem_config = config.get("memory", config)
-        self.device = mem_config.get("device", "cpu")
-        if self.device == "cuda" and not torch.cuda.is_available():
-            logger.warning("CUDA not available, falling back to CPU")
-            self.device = "cpu"
 
-        self.embedding_model = MistralEmbeddings(
-            model_name="mistral-embed", device=self.device
-        )
-        self.embedding_size = 1024
+        self.embedding_model = create_embedder(mem_config.get("embedding_model", {}))
+
+        self.embedding_size = mem_config.get("embedding_size", 1024)
+
         self.sparse_embedder = SparseEncoder(
+
             mem_config.get("sparse_embedding_model", "naver/splade-v3")
+
         )
 
-    def _init_qdrant(self, qdrant_manager):
-        self.qdrant_manager = qdrant_manager
-        self.client = qdrant_manager.get_client()
-        self.agent_dense_name = self.agent_sparse_name = self.kb_dense_name = (
-            self.kb_sparse_name
-        ) = None
 
-    def _init_reranker(self, config: Dict[str, Any]):
-        reranker_config = config.get("reranker", {})
-        if reranker_config.get("enabled", True):
-            self.reranker = TextCrossEncoder(
-                model_name=reranker_config.get(
-                    "model_name", "jinaai/jina-reranker-v2-base-multilingual"
-                ),
-                device=self.device,
-            )
-        else:
-            self.reranker = None
+
+    def _init_qdrant(self, qdrant_manager: QdrantClientManager) -> None:
+
+        self.qdrant_manager = qdrant_manager
+
+        self.client = qdrant_manager.get_client()
+
+        self.agent_dense_name = None
+
+        self.agent_sparse_name = None
+
+        self.kb_dense_name = None
+
+        self.kb_sparse_name = None
+
+
 
     @lru_cache(maxsize=1000)
-    def _embed_text(self, text: str) -> List[float]:
+
+    def _embed_text(self, text: str) -> list[float]:
+
+        if not self.embedding_model:
+
+            logger.warning("Embedding model not initialized. Returning zero vector.")
+
+            return [0.0] * self.embedding_size
+
         try:
-            return self.embedding_model.embed(text).tolist()
+
+            return self.embedding_model.embed(text)
+
         except Exception as e:
+
             logger.error(f"Embedding failed: {e}")
+
             raise RuntimeError("Embedding generation failed") from e
 
-    def _embed_sparse(self, texts: List[str]) -> List[models.SparseVector]:
+
+
+    def _embed_sparse(self, texts: list[str]) -> list[models.SparseVector]:
+
         embeddings = self.sparse_embedder.encode_document(texts)
+
         return [
+
             models.SparseVector(
-                indices=emb.coalesce().indices().squeeze().tolist(),
-                values=emb.coalesce().values().squeeze().tolist(),
+
+                indices=emb.indices().squeeze().tolist(),
+
+                values=emb.values().squeeze().tolist(),
+
             )
+
             for emb in embeddings
+
         ]
 
-    async def create(self, config: Dict[str, Any], agent_name: Optional[str] = None):
+    async def create(
+        self, config: dict[str, Any], agent_name: str | None = None
+    ) -> QdrantMemory:
         instance = self.__class__(config, self.qdrant_manager, agent_name)
         await instance._setup_collections()
         return instance
 
-    async def _setup_collections(self):
+    async def _setup_collections(self) -> None:
         await self.qdrant_manager.ensure_collection_exists(
             self.collection_name, self.embedding_size
         )
@@ -138,7 +217,7 @@ class QdrantMemory:
             self.knowledge_bank_collection_name
         )
 
-    async def _resolve_vector_names(self, collection: str) -> Tuple[str, Optional[str]]:
+    async def _resolve_vector_names(self, collection: str) -> tuple[str, str | None]:
         info = await self.client.get_collection(collection_name=collection)
         params = info.config.params
 
@@ -161,12 +240,11 @@ class QdrantMemory:
             sparse_vector = self._embed_sparse([text_content])[0]
 
             point_id = str(uuid.uuid4())
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             payload = {
                 "text_content": text_content,
                 "timestamp": now.timestamp(),
                 "day_of_week": now.strftime("%A"),
-                "random_fact": self.faker.text(),
             }
 
             vector_payload = {self.agent_dense_name: dense_vector}
@@ -207,17 +285,16 @@ class QdrantMemory:
         if not unique_texts:
             return ""
 
-        ranked_texts = self._rerank_results(query_text, unique_texts)
-        return f"{self.CONTEXT_HEADER}{'\n'.join(ranked_texts)}"
+        return f"{self.CONTEXT_HEADER}{' '.join(unique_texts)}"
 
-    def _calculate_retrieval_limits(self) -> Tuple[int, ...]:
+    def _calculate_retrieval_limits(self) -> tuple[int, ...]:
         return tuple(
             math.ceil(self.total_memories_to_retrieve * w)
             for w in self.retrieval_weights.values()
         )
 
-    def _get_time_boundaries(self) -> Tuple[float, ...]:
-        now = datetime.now(timezone.utc)
+    def _get_time_boundaries(self) -> tuple[float, ...]:
+        now = datetime.now(UTC)
         return tuple(
             (now - timedelta(**{unit: value})).timestamp()
             for unit, value in [
@@ -232,7 +309,9 @@ class QdrantMemory:
             ]
         )
 
-    def _build_query_tasks(self, dense_vec, sparse_vec, limits, timestamps):
+    def _build_query_tasks(
+        self, dense_vec, sparse_vec, limits, timestamps
+    ) -> list[Any]:
         tasks = []
         time_filters = self._create_time_filters(timestamps)
 
@@ -274,7 +353,7 @@ class QdrantMemory:
 
         return tasks
 
-    def _create_time_filters(self, timestamps):
+    def _create_time_filters(self, timestamps) -> list[models.Filter | None]:
         filters = []
         for i in range(len(timestamps) - 1):
             filters.append(
@@ -290,7 +369,14 @@ class QdrantMemory:
         filters.append(None)  # No filter for knowledge bank
         return filters
 
-    def _create_prefetch(self, dense_vec, sparse_vec, limit, dense_name, sparse_name):
+    def _create_prefetch(
+        self,
+        dense_vec,
+        sparse_vec,
+        limit,
+        dense_name,
+        sparse_name,
+    ) -> models.Prefetch | None:
         if not sparse_name:
             return None
         return models.Prefetch(
@@ -301,7 +387,7 @@ class QdrantMemory:
             query=models.FusionQuery(fusion=models.Fusion.RRF),
         )
 
-    def _process_results(self, query_results):
+    def _process_results(self, query_results) -> list[str]:
         points = []
         for result in query_results:
             if isinstance(result, BaseException):
@@ -317,17 +403,9 @@ class QdrantMemory:
                 unique_texts.append(str(text))
         return unique_texts
 
-    def _rerank_results(self, query_text, memory_texts):
-        if not self.reranker:
-            return memory_texts
-        try:
-            scores = list(self.reranker.rerank(query_text, memory_texts))
-            return [
-                text
-                for text, _ in sorted(
-                    zip(memory_texts, scores), key=lambda x: x[1], reverse=True
-                )
-            ]
-        except Exception as e:
-            logger.warning(f"Reranking failed: {e}")
-            return memory_texts
+
+
+    async def prune_memories(self) -> int:
+        logger.warning("Memory pruning is not yet implemented.")
+        return 0
+

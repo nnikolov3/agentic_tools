@@ -1,9 +1,12 @@
 # =============================================================================
-# FILE PROCESSING RULES
+# FILE PROCESSING RULES (For ShellTools/FileBrowser)
 # =============================================================================
 [file_processing]
-include_extensions = [".go", ".py", ".md", ".toml"]
-exclude_files = ["__init__.py"]
+# Extensions to include during directory scans (e.g., for ingest_knowledge_bank.py)
+include_extensions = [".go", ".py", ".md", ".toml", ".json", ".txt", ".yaml"]
+# Files to exclude explicitly
+exclude_files = ["__init__.py", ".env", "secrets.py"]
+# Directories to skip (safety: avoids git noise, venvs, builds)
 exclude_directories = [
     ".git",
     ".github",
@@ -14,33 +17,75 @@ exclude_directories = [
     "dist",
     "build",
     "target",
+    ".mypy_cache",
+    "node_modules"
 ]
-max_file_bytes = 26214400  # 25 MiB limit per file
+# Max file size for processing (25 MiB; prevents large binaries)
+max_file_bytes = 26214400
 
+# Git ops defaults (used in ShellTools for get_git_context_for_patch)
 git_diff_command = ["diff", "HEAD", "--patch-with-raw", "--minimal", "--patience", ":!uv.lock", ":!MANIFEST.in"]
-git_log_command = ["log", "--pretty"]
-commit_number = 3
-tree_depth = 3
+git_log_command = ["log", "--pretty=format:%h %s %an %ar", "-n"]
+commit_number = 3  # Recent commits for context
+tree_depth = 3     # Directory tree depth in get_project_tree
 
 # =============================================================================
-# MEMORY & VECTOR DATABASE CONFIGURATION
+# TOOLS CONFIGURATION (For tool.py Registry: CodeInterpreter, FileBrowser, WebSearch, etc.)
+# =============================================================================
+[tools]
+# Global tool settings
+timeout = 30  # Default subprocess/await timeout (seconds)
+temp_base = "/tmp/agentic"  # Base for temp dirs (CodeInterpreter cleans up via atexit)
+
+# CodeInterpreter: Multi-lang safe executor (Python ast-safe, Go/C compile-run, Bash restricted)
+[code_interpreter]
+supported_langs = ["python", "go", "c", "bash"]  # From payload["language"]
+timeout = 5  # Per-lang execution timeout
+temp_base = "/tmp/agentic"  # Temp files for Go/C/Bash compiles
+allowed_commands = ["go", "gcc", "bash"]  # Restrict subprocess (no rm/mkfs/dd)
+unsafe_patterns = ["rm -rf", "dd if=", "mkfs"]  # Bash safety scan
+
+# FileBrowser: Pathlib-based async walker (no shell; uses config exclusions)
+[file_browser]
+max_depth = 3  # Recursion limit (avoids deep nests)
+include_extensions = [".py", ".go", ".md", ".toml"]  # Override [file_processing] if needed
+
+# WebSearch: Async DDGS (DuckDuckGo; filters ads, caps results)
+[web_search]
+max_results = 10  # Default; cap at 20 in execute for rate-limits
+proxy = ""  # Optional: "http://your-vm-proxy:port" for VM firewall
+
+# ShellTools: Wrapper for git/file ops (aliases git_ops to shell_exec)
+[shell_exec]
+allowed_commands = ["git", "tree", "sync"]  # Explicit allow-list (safety)
+allowed_patterns = ["git diff", "git log", "tree -L"]  # No destructive cmds
+
+# API Tools (Mistral fallback for api_call/mistral_chat/embed)
+[api_call]
+model = "mistral-large-latest"  # Or "openai/gpt-4o" if keys set
+api_key_env = "MISTRAL_API_KEY"  # Load from os.getenv
+max_tokens = 4096
+temperature = 0.3
+
+# =============================================================================
+# MEMORY & QDRANT CONFIGURATION (For qdrant_memory.py / QdrantClientManager)
 # =============================================================================
 [memory]
 enabled = true
-collection_name = "agent_memory"
-knowledge_bank = "knowledge-bank"
-embedding_model = "mistral-embed"  # Mistral's local embedding model
-embedding_size = 1024  # Native dimension for Mistral embeddings
-qdrant_url = "http://192.168.122.40:6333"  # Keep the existing VM URL
-timeout = 30
-total_memories_to_retrieve = 20
-device = "cpu"  # or "cuda" if GPU is available
+collection_name = "agent_memory"  # Agent-specific memories
+knowledge_bank_collection_name = "knowledge-bank"  # Global KB (ingest_knowledge_bank.py)
+embedding_model = "mistral-embed"  # Mistral local (device: cpu/cuda)
+embedding_size = 1024  # Mistral dim
+sparse_embedding_model = "naver/splade-v3"  # For hybrid search
+qdrant_url = "http://192.168.122.40:6333"  # Your KVM VM (gRPC:6334 if prefer_grpc=true)
+timeout = 60  # Connection timeout
+prefer_grpc = true  # For faster async (ports 6334/6335 forwarded)
+api_key = ""  # None for local VM
+device = "cpu"  # Fallback to cuda if torch.cuda.is_available()
+total_memories_to_retrieve = 20  # Total from all time buckets
+query_points_hnsw_ef = 128  # HNSW search param (balance speed/accuracy)
 
-
-# HNSW search parameter for balancing accuracy vs. speed.
-search_hnsw_ef = 128
-
-# Weights for time-based memory retrieval decay.
+# Time-decay retrieval weights (0.0 for fresh focus; knowledge_bank=1.0 heavy)
 hourly_retrieval_weight = 0.0
 daily_retrieval_weight = 0.0
 weekly_retrieval_weight = 0.0
@@ -51,143 +96,144 @@ one_eighty_days_retrieval_weight = 0.0
 three_sixty_days_retrieval_weight = 0.0
 knowledge_bank_retrieval_weight = 1.0
 
+# Qdrant collection/indexing (from QdrantClientManager)
+[tools.qdrant]
+vectors_config = { size = 1024, distance = "COSINE", on_disk = true }
+sparse_vectors_config = { text-sparse = { index = {}, modifier = "NONE" } }
+hnsw_config = { m = 32, ef_construct = 400, max_indexing_threads = -1, on_disk = true }  # -1 = cpu_count()
+optimizers_config = { max_optimization_threads = -1, indexing_threshold = 20000 }
+wal_config = { wal_capacity_mb = 1024, wal_segment_size_mb = 256 }
+quantization_config = { type = "int8", quantile = 0.99, always_ram = false }
+
+# Payload indexes for memory points (timestamp, text_content, etc.)
+payload_indexes = [
+    { field_name = "timestamp", field_schema = "keyword" },
+    { field_name = "text_content", field_schema = "text" },
+    { field_name = "day_of_week", field_schema = "keyword" }
+]
+
+# Reranker (fastembed; disabled if no GPU)
+[reranker]
+enabled = true
+model_name = "jinaai/jina-reranker-v2-base-multilingual"
+device = "cpu"
+
 # =============================================================================
-# AGENT CONFIGURATIONS
+# AGENT CONFIGURATIONS (For agent.py / MCP Multi-Agent Flow)
 # =============================================================================
-[agentic-tools.agents]
-# Common settings for all agents
+[agentic-tools]
 default_temperature = 0.3
 default_device = "cpu"
+design_docs = ["DESIGN_PRINCIPLES_GUIDE.md", "PYTHON_CODING_STANDARDS.md"]  # For get_design_docs_content
+project_directories = ["src", "tests", "docs"]  # For process_directory scans
+encoding = "utf-8"
 
-# =============================================================================
-# INDIVIDUAL AGENT CONFIGURATIONS
-# =============================================================================
-[agentic-tools.agents.developer]
+[agents]
+# Developer: Refactors single files with latest libs (e.g., ddgs, async)
+[agents.developer]
 name = "developer"
 temperature = 0.2
-skills = ["expert python and go developer", "debugging and code analysis", "adherence to mypy, ruff, and black standards", "problem decomposition", "meticulous attention to detail"]
+skills = ["expert python/go developer", "async patterns", "debugging", "mypy/ruff/black compliance", "problem decomposition"]
 prompt = '''
-You are the 'developer', an expert software engineer.
-You are provided with a single source code file to refactor, optimize, and enhance.
-Your goal is to produce a complete, working file that strictly adheres to the provided Design Principles and Python Coding Standards.
-ALWAYS USE THE LATEST LIBRARY SPECIFICATIONS.
+You are the 'developer', an expert async Python/Go engineer for MCP agents.
+Refactor/optimize the given file using latest libs (e.g., ddgs for search, aiofiles for I/O).
+Adhere to Design Principles: Explicit > Implicit, Simple > Complex, DRY/KISS.
+Output ONLY the complete file—no explanations.
 '''
 
-[agentic-tools.agents.architect]
+# Architect: Plans system (e.g., Qdrant + multi-agent)
+[agents.architect]
 name = "architect"
 temperature = 0.3
-skills = ["software architecture", "system design", "problem decomposition", "technical planning", "adherence to design principles"]
+skills = ["system design", "vector DB integration", "MCP protocols", "scalability"]
 prompt = '''
-You are a senior expert Software and Hardware Architect.
-Your task is to create the architecture and planning for the given problem.
-You must adhere strictly to the provided Design Principles.
+You are a senior Architect for AI/multi-agent systems (Qdrant, Mistral, async tools).
+Create detailed architecture/plans for the problem, following Golden Rules.
+Include diagrams in Markdown, focus on modularity.
 '''
 
-[agentic-tools.agents.approver]
+# Approver: Reviews diffs (JSON output for automation)
+[agents.approver]
 name = "approver"
 temperature = 0.1
-skills = ["code review", "quality assurance", "decision making", "technical analysis", "standards compliance", "risk assessment", "context analysis"]
+skills = ["code review", "standards enforcement", "risk assessment"]
 prompt = '''
-You are a senior software engineer reviewing a git diff.
-You will be given a complete context including design documents and the code changes.
-Review the changes against the core design principles provided to you.
-
-Return ONLY a single, valid JSON object with this exact structure:
-{
-  "decision": "APPROVED" | "CHANGES_REQUESTED",
-  "summary": "A concise summary of your decision and reasoning.",
-  "positive_points": ["A list of specific strengths of the change."],
-  "negative_points": ["A list of specific weaknesses or concerns."],
-  "required_actions": ["A list of explicit actions the developer must take. (Empty if approved)"],
-  "commit_message_if_approved": ["A multi-line conventional commit message. (Empty if changes are requested)"]
-}
+Senior engineer: Review git diff against principles/standards.
+Output ONLY JSON: {"decision": "APPROVED|CHANGES_REQUESTED", "summary": "...", "positive_points": [...], "negative_points": [...], "required_actions": [...], "commit_message_if_approved": "..."}
 '''
 
-[agentic-tools.agents.readme_writer]
+# Readme Writer: Generates README from context
+[agents.readme_writer]
 name = "readme_writer"
 temperature = 0.3
-skills = ["technical writing", "documentation", "readme creation", "information synthesis", "content organization", "clarity and precision"]
+skills = ["technical docs", "structure", "examples"]
 prompt = '''
-You are the 'readme_writer', an expert technical writer.
-Your goal is to create an excellent, concise, and practical README.md file for this project based on the provided source code and context.
-
-## Structure of the README.md
-Your generated README.md should include the following sections:
-1. **Project Title and Description:** A clear and concise title and description of the project.
-2. **Key Features:** A list of the key features and capabilities of the project.
-3. **Prerequisites:** A list of the prerequisites for using the project.
-4. **Installation:** Clear and concise installation instructions.
-5. **Usage:** Examples of how to use the project.
-6. **Configuration:** Details about the configuration of the project, based on the actual configuration files.
-
-## What to Avoid
-- Do not duplicate information from the source code.
-- Do not use generic placeholders.
-- Keep the README concise and to the point.
-
-## Final Output
-Your final output must be the complete, updated README.md file content.
+Expert writer: Create/update README.md from code/context.
+Sections: Title/Desc, Features, Prereqs, Install, Usage, Config.
+Output ONLY the full README.md content.
 '''
 
-[agentic-tools.agents.expert]
+# Expert: Summarizes docs for KB ingestion
+[agents.expert]
 name = "expert"
 temperature = 0.3
-skills = ["technical writing", "documentation", "information synthesis", "content organization", "clarity and precision"]
+skills = ["summarization", "examples", "tagging"]
 prompt = '''
-You are an expert technical writer. Your task is to process the following document content.
-Create a detailed, comprehensive, and high-quality text that captures the key information, purpose, and main topics of the document.
-The output should be suitable for providing high-level context in a vector database search.
-Focus on examples. Describe everything in the form of an example.
-Your response must be a single JSON object with the following structure:
-{
-  "title": "<A concise and accurate title for the document>",
-  "short_summary": "<A one or two sentence summary of the document's purpose>",
-  "content": "<A detailed and comprehensive write-up with a lot of examples and of the document's key information>",
-  "tags": ["<A list of relevant keywords or tags>"],
-  "practical-examples": ["A list of relevant examples"]
-}
+Technical expert: Summarize doc for vector KB.
+JSON: {"title": "...", "short_summary": "...", "content": "(detailed w/ examples)", "tags": [...], "practical_examples": [...]}
 '''
 
-# =============================================================================
-# LINTER TOOL CONFIGURATION
-# =============================================================================
-[agentic-tools.linters]
-python = ['mypy', 'ruff', 'black']
-go = ['golangci-lint']
-
-[agentic-tools.linter_analyst]
+# Linter Analyst: Analyzes raw linter output (no fixes)
+[linter_analyst]
+name = "linter_analyst"
 temperature = 0.2
-skills = ["code analysis", "static analysis interpretation", "prioritization", "adherence to design principles", "technical writing"]
+skills = ["static analysis", "prioritization", "impact assessment"]
 prompt = '''
-You are an expert Senior Software Architect acting as a linter analyst.
-You have been provided with the raw output from several project linters.
-Your task is NOT to fix the code. Your task is to analyze the linter output in the context of the project's design principles and coding standards.
-
-Produce a comprehensive, step-by-step analysis of what should be fixed.
-Group related issues together. Prioritize fixes that improve maintainability, readability, and correctness over minor stylistic nits.
-For each major issue, explain WHY it violates a design principle and what the impact is.
-
-Your final output must be a clear, well-formatted Markdown report.
+Architect as linter analyst: Analyze mypy/ruff/golangci output vs. principles.
+Markdown report: Group issues, explain WHY/HOW to fix, prioritize (maintainability > style).
+No code changes.
 '''
 
 # =============================================================================
-# GOLDEN RULES
+# LINTER CONFIGURATION (For run_project_linters in ShellTools)
 # =============================================================================
-[agentic-tools.golden_rules]
+[linters]
+# Python: mypy (types), ruff (lint/style), black (format)
+python = ["mypy src --config-file pyproject.toml", "ruff check src --fix", "black src --check"]
+# Go: golangci-lint (comprehensive)
+go = ["golangci-lint run ./src/..."]
+
+# =============================================================================
+# GOLDEN RULES & STANDARDS (Loaded in Prompts for All Agents)
+# =============================================================================
+[golden_rules]
 rules = '''
-1. Write what you mean, and mean what you write.
-2. Smaller is faster.
-3. Simple is efficient.
-4. Explicit makes the intent clear.
-5. Use whole words for clear communication.
-6. Code that does things together, should live together.
-7. Nobody likes modifying hard coded values.
-8. If the information/spec/library is not fresh, it will start stinking.
-9. If you see a piece of garbage on the street you pick it up, do the same when finding trash code. Remove it.
-10. I always recommend reading the problem 3 times to understand it.
-11. Without a plan, you plan to fail.
-12. DRY (Don't Repeat Yourself)
-13. KISS (Keep It Simple, Stupid)
-14. Better and more accurate comments make life better.
+1. Write what you mean, mean what you write. (Explicit intent)
+2. Smaller is faster. (Concise code/functions)
+3. Simple is efficient. (KISS: Avoid over-engineering)
+4. Explicit > Implicit. (No magic; document assumptions)
+5. Use whole words. (Clear variable/names: e.g., user_name not un)
+6. Related code lives together. (Modular, co-located)
+7. No hard-coded values. (Use config/env)
+8. Fresh info/specs. (Latest libs: ddgs 0.7+, Qdrant 1.10+)
+9. Clean trash code. (Refactor on sight; no dead vars)
+10. Read problem 3x. (Understand before code)
+11. Plan first. (Architecture before implementation)
+12. DRY: Don't Repeat Yourself.
+13. KISS: Keep It Simple, Stupid.
+14. Accurate comments. (Explain WHY, not WHAT)
+15. Put love and care in your work. This is a craft.
+16. Making baseless assumptions is guessing, and guessing is like the lottery.
+17. If you don't know, ask someone who does know.
+18. Set the expectations early.
 '''
+
+# =============================================================================
+# MCP / MULTI-AGENT FLOW (For main.py / agent.py)
+# =============================================================================
+[mcp]
+providers = ["mistral", "openai", "groq"]  # API keys from env
+agent_sequence = ["architect", "developer", "linter_analyst", "approver", "readme_writer"]  # Workflow order
+max_iterations = 5  # Loop until approved
+log_level = "DEBUG"  # For logger in tool.py/shell_tools.py
 

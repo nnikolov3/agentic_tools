@@ -12,3 +12,5 @@ fastembed
 fastmcp
 faker
 sentence-transformers
+mistralai
+google-generativeai

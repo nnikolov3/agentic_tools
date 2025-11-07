@@ -178,7 +178,7 @@ class ShellTools:
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
                 process.communicate(), timeout=timeout
             )
-        except asyncio.TimeoutError as error:
+        except TimeoutError as error:
             command_str = shlex.join(command)
             logger.error("Command '%s' timed out.", command_str)
             try:
@@ -454,7 +454,7 @@ class ShellTools:
         except OSError as error:
             if temp_file_path and temp_file_path.exists():
                 temp_file_path.unlink(missing_ok=True)
-            raise IOError(f"Atomic write to {target_path} failed") from error
+            raise OSError(f"Atomic write to {target_path} failed") from error
         finally:
             if temp_file_path and temp_file_path.exists():
                 temp_file_path.unlink(missing_ok=True)
@@ -816,3 +816,4 @@ class ShellTools:
             return f"{diff_stdout}\n{log_stdout}"
         except (RuntimeError, FileNotFoundError) as error:
             raise RuntimeError("Failed to create git patch context") from error
+
