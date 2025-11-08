@@ -47,6 +47,10 @@ class QdrantMemory:
             "embedding_model",
             "mixedbread-ai/mxbai-embed-large-v1",
         )
+        self.embedding_task_type: str = global_memory_config.get(
+            "embedding_task_type", "RETRIEVAL_DOCUMENT"
+        )
+
         self.device: str = global_memory_config.get("device", "cpu")
         # self.embedder = TextEmbedding(model_name=self.embedding_model) # Removed, will use factory
 
@@ -137,16 +141,26 @@ class QdrantMemory:
     def _init_embedding_models(self, config: Dict[str, Any]) -> None:
         mem_config = config.get("memory", config)
         
-        # Initialize dense embedder using the factory
+        # Construct dense embedder config, ensuring provider, model, and size are passed
         dense_embedder_config = mem_config.get("embedding_model", {})
-        if isinstance(dense_embedder_config, str): # Handle case where it's still a string
-            dense_embedder_config = {"provider": dense_embedder_config}
+        if isinstance(dense_embedder_config, str):
+            # If just a model name string is provided, assume fastembed for backward compatibility
+            dense_embedder_config = {"provider": "fastembed", "model": dense_embedder_config}
+        
+        # Ensure embedding_size is explicitly passed to the embedder config
+        if "embedding_size" not in dense_embedder_config and "embedding_size" in mem_config:
+            dense_embedder_config["embedding_size"] = mem_config["embedding_size"]
+        elif "output_dimensionality" not in dense_embedder_config and "embedding_size" in mem_config:
+            dense_embedder_config["output_dimensionality"] = mem_config["embedding_size"]
+
         self.dense_embedder_instance = create_embedder(dense_embedder_config)
-        self.embedding_size = self.dense_embedder_instance.embedding_size # Assuming embedder has this attribute
+        self.embedding_size = self.dense_embedder_instance.embedding_size
 
         # Initialize sparse embedder
         self.sparse_embedder_instance = SparseTextEmbedding(
-            model_name=mem_config.get("sparse_embedding_model", "prithivida/Splade_PP_en_v1")
+            model_name=mem_config.get(
+                "sparse_embedding_model", "prithivida/Splade_PP_en_v1"
+            )
         )
 
     @classmethod
@@ -235,10 +249,10 @@ class QdrantMemory:
 
         return dense_name, sparse_name
 
-    def _embed_text(self, text: str) -> List[float]:
+    def _embed_text(self, text: str, task_type: Optional[str] = None) -> List[float]:
         try:
             # Use the dense embedder instance
-            return self.dense_embedder_instance.embed(text)
+            return self.dense_embedder_instance.embed(text, task_type=task_type)
         except (RuntimeError, ValueError) as e:
             logger.error("Failed to generate embedding for text: %s", e)
             raise RuntimeError("Embedding generation failed") from e
@@ -273,7 +287,9 @@ class QdrantMemory:
                 memory.metadata.access_count
             )
 
-            dense_vector = self._embed_text(memory.text_content)
+            dense_vector = self._embed_text(
+                memory.text_content, task_type="RETRIEVAL_DOCUMENT"
+            )
             sparse_vector = self._embed_sparse_documents([memory.text_content])[0]
 
             vector_payload: Dict[str, Any] = {}
@@ -670,7 +686,8 @@ class QdrantMemory:
             logger.warning("Reranking failed, returning original order. Error: %s", e)
             return memory_texts
 
-    async def retrieve_context(self, query_text: str) -> str:
+    async def retrieve_context(self, query_text: str, limit: Optional[int] = None) -> str:
+        effective_limit = limit if limit is not None else self.total_memories_to_retrieve
         limits = self._calculate_retrieval_limits()
         if sum(limits) == 0:
             return ""
@@ -686,7 +703,9 @@ class QdrantMemory:
         three_sixty_days_ts = (current_time - timedelta(days=365)).timestamp()
 
         try:
-            dense_query_vector = self._embed_text(query_text)
+            dense_query_vector = self._embed_text(
+                query_text, task_type="RETRIEVAL_QUERY"
+            )
             sparse_query_vector = self._embed_sparse_query(query_text)
         except RuntimeError:
             return ""
@@ -721,6 +740,6 @@ class QdrantMemory:
         if not unique_memory_texts:
             return ""
 
-        ranked_texts = self._rerank_results(query_text, unique_memory_texts)
+        ranked_texts = self._rerank_results(query_text, unique_memory_texts)[:effective_limit]
         context_body = "\n".join(ranked_texts)
         return f"{self.CONTEXT_HEADER}{context_body}"

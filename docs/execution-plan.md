@@ -44,15 +44,15 @@ mkdir -p src/memory
 ## PHASE 2: INSTALL DEPENDENCIES (10 minutes)
 
 ### Step 2.1: Create requirements.txt
-Create file `requirements.txt` with this content:
+Create file `requirements.txt` with this content. It is recommended to use the latest stable versions of these packages and not pin them to specific versions.
 ```text
-qdrant-client==1.11.3
-pydantic==2.9.2
-fastembed==0.4.2
-mistralai==1.2.3
-google-generativeai==0.8.3
-python-dotenv==1.0.1
-numpy==1.26.4
+qdrant-client
+pydantic
+fastembed
+mistralai
+google-generativeai
+python-dotenv
+numpy
 ```
 
 ### Step 2.2: Install with uv

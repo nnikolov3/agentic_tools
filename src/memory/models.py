@@ -66,6 +66,7 @@ class Memory(BaseModel):
             "tags": self.tags,
             "agent_name": self.agent_name,
             "day_of_week": self.created_at.strftime("%A"),
+            "hour_of_day": self.created_at.hour,
         }
         return payload
 

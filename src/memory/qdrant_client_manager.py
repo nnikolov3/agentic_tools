@@ -47,9 +47,24 @@ class QdrantClientManager:
         self.dense_vector_name = mem_config.get("dense_vector_name", "text-dense")
         self.sparse_vector_name = mem_config.get("sparse_vector_name", "text-sparse")
         self.vector_name = mem_config.get("vector_name", self.dense_vector_name)
+        
         self.vectors_config = mem_config.get("vectors_config") or mem_config.get(
             "vectors"
         )
+
+        # Determine the embedding size for the collection
+        if isinstance(self.vectors_config, dict) and "size" in self.vectors_config:
+            self.embedding_size = self.vectors_config["size"]
+        else:
+            embedding_model_config = mem_config.get("embedding_model", {})
+            self.embedding_size = embedding_model_config.get("embedding_size", 3072) # Default to 3072
+
+        # Ensure vectors_config has the determined size if it's a single vector config
+        if isinstance(self.vectors_config, dict) and (
+            "distance" in self.vectors_config or "datatype" in self.vectors_config
+        ) and "size" not in self.vectors_config:
+            self.vectors_config["size"] = self.embedding_size
+
         self.sparse_vectors_config = mem_config.get("sparse_vectors_config")
         self.on_disk = True
         self.replication_factor = mem_config.get("replication_factor", 1)
@@ -94,10 +109,23 @@ class QdrantClientManager:
         client = await self.get_client()
 
         try:
-            if await client.collection_exists(collection_name=collection_name):
-                logger.debug("Collection '%s' already exists", collection_name)
-                return
+            collection_info = await client.get_collection(collection_name=collection_name)
+            vectors_config = collection_info.config.params.vectors
+            
+            # Assuming the first vector config is the one we care about
+            if isinstance(vectors_config, dict):
+                vector_params = next(iter(vectors_config.values()))
+                if vector_params.size != embedding_size:
+                    logger.warning(
+                        f"Collection '{collection_name}' exists with dimension {vector_params.size}, but {embedding_size} is required. Recreating collection."
+                    )
+                    await client.delete_collection(collection_name=collection_name)
+                    await self._create_collection_async(client, collection_name, embedding_size)
+                else:
+                    logger.debug("Collection '%s' already exists with the correct dimension.", collection_name)
+            return
 
+        except Exception: # Collection does not exist
             logger.info(
                 "Creating collection '%s' with embedding size %d",
                 collection_name,
@@ -111,11 +139,6 @@ class QdrantClientManager:
                 )
 
             logger.info("Created collection '%s'", collection_name)
-        except Exception as error:
-            logger.error("Failed to create collection '%s': %s", collection_name, error)
-            raise RuntimeError(
-                f"Collection creation failed for '{collection_name}'"
-            ) from error
 
     async def _create_collection_async(
         self,
@@ -176,15 +199,25 @@ class QdrantClientManager:
     def _build_vectors_config(
         self, default_size: int
     ) -> models.VectorParams | dict[str, models.VectorParams]:
-        if isinstance(self.vectors_config, dict) and "size" not in self.vectors_config:
+        # If vectors_config is a dictionary of parameters for a single default vector
+        if isinstance(self.vectors_config, dict) and (
+            "distance" in self.vectors_config or "datatype" in self.vectors_config or "size" in self.vectors_config
+        ):
+            # Create a single VectorParams for the default dense vector
+            # Merge default_size if "size" is not explicitly provided in self.vectors_config
+            vector_params_dict = self.vectors_config.copy()
+            if "size" not in vector_params_dict:
+                vector_params_dict["size"] = default_size
+            return {self.dense_vector_name: self._to_vector_params(vector_params_dict)}
+
+        # If vectors_config is a dictionary of named vectors (e.g., {"dense": {...}, "sparse": {...}})
+        if isinstance(self.vectors_config, dict): # This covers the case where keys are vector names
             return {
                 name: self._to_vector_params(v)
                 for name, v in self.vectors_config.items()
             }
 
-        if isinstance(self.vectors_config, dict) and "size" in self.vectors_config:
-            return self._to_vector_params(self.vectors_config)
-
+        # Fallback to a default VectorParams if no specific config is provided
         return {
             self.dense_vector_name: models.VectorParams(
                 size=int(default_size),

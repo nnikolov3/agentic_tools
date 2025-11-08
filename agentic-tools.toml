@@ -74,8 +74,8 @@ temperature = 0.3
 enabled = true
 collection_name = "agent_memory"  # Agent-specific memories
 knowledge_bank_collection_name = "knowledge-bank"  # Global KB (ingest_knowledge_bank.py)
-embedding_model = { provider = "mistral", model = "mistral-embed" }  # Mistral local (device: cpu/cuda)
-embedding_size = 1024  # Mistral dim
+embedding_model = { provider = "google", model = "gemini-embedding-001" }  # Google Gemini Embedding
+embedding_size = 3072  # Gemini embedding-001 default dim
 sparse_embedding_model = "prithivida/Splade_PP_en_v1"  # For hybrid search
 qdrant_url = "http://192.168.122.40:6333"  # Your KVM VM (gRPC:6334 if prefer_grpc=true)
 timeout = 60  # Connection timeout
@@ -110,6 +110,7 @@ frequency_max_accesses = 100
 recency_half_life_days = 30.0
 
 [knowledge_bank_ingestion]
+embedding_size = 3072
 source_directory = "docs/knowledge"
 output_directory = ".ingested"
 supported_extensions = [".json", ".md", ".pdf"]
@@ -122,7 +123,7 @@ model = "gemini-2.0-flash-exp"
 google_api_key_name = "GEMINI_API_KEY"
 
 [tools.qdrant]
-vectors_config = { size = 1024, distance = "COSINE", on_disk = true }
+vectors_config = { size = 3072, distance = "COSINE", on_disk = true }
 sparse_vectors_config = { text-sparse = { index = {}, modifier = "NONE" } }
 hnsw_config = { m = 32, ef_construct = 400, max_indexing_threads = -1, on_disk = true }  # -1 = cpu_count()
 optimizers_config = { max_optimization_threads = -1, indexing_threshold = 20000 }
@@ -260,4 +261,15 @@ providers = ["mistral", "openai", "groq"]  # API keys from env
 agent_sequence = ["architect", "developer", "linter_analyst", "approver", "readme_writer"]  # Workflow order
 max_iterations = 5  # Loop until approved
 log_level = "DEBUG"  # For logger in tool.py/shell_tools.py
+
+# =============================================================================
+# TEST CONFIGURATION (For test_qdrant_write.py)
+# =============================================================================
+[test]
+collection_name = "agent_memory_test_new"
+knowledge_bank_collection_name = "knowledge_bank_test"
+embedding_model = { provider = "google", model = "gemini-embedding-001", embedding_size = 3072 }
+hourly_retrieval_weight = 0.8
+daily_retrieval_weight = 0.0
+knowledge_bank_retrieval_weight = 0.2
 

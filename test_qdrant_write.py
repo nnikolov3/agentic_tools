@@ -1,4 +1,6 @@
 import asyncio
+from src.memory.rfm_calculator import RFMCalculator
+from src.memory.prune_memories import prune_memories
 import logging
 import os
 from datetime import datetime, UTC, timedelta
@@ -22,11 +24,6 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-
-# Ensure Qdrant VM is running and accessible
-QDRANT_HOST = "192.168.122.40"
-QDRANT_PORT = 6333
-QDRANT_GRPC_PORT = 6334
 
 if not os.getenv("HF_TOKEN"):
     logger.warning(
@@ -74,17 +71,14 @@ async def test_priority_scoring():
 
 async def test_qdrant_write():
     logger.info("Loading configuration...")
-    config_path = find_config()
-    config = get_config_dictionary(config_path)
-
-    # Override Qdrant host for testing
-    config["memory"]["qdrant_host"] = QDRANT_HOST
-    config["memory"]["qdrant_port"] = QDRANT_PORT
-    config["memory"]["qdrant_grpc_port"] = QDRANT_GRPC_PORT
+    # Load the test-specific configuration from the main config file
+    # This ensures tests are isolated and use a dedicated configuration
+    full_config = get_config_dictionary('agentic-tools.toml')
+    config = full_config.get("test", {})
 
     logger.info("Initializing Qdrant connection...")
     qdrant_manager = QdrantClientManager(config)
-    qdrant_memory = await QdrantMemory.create(config, qdrant_manager)
+    qdrant_memory = await QdrantMemory.create(config)
 
     test_collection_name = qdrant_memory.collection_name
 
@@ -107,11 +101,6 @@ async def test_qdrant_write():
         context={"user_id": "123", "session_id": "abc"},
         metadata=MemoryMetadata(importance_score=0.7),
     )
-
-    # Simulate an older memory for recency score testing
-    old_created_at = datetime.now(UTC) - timedelta(days=10)
-    test_memory.created_at = old_created_at
-    test_memory.updated_at = old_created_at
 
     logger.info("Writing memory to Qdrant...")
     memory_id = await qdrant_memory.add_memory(test_memory)
@@ -200,12 +189,39 @@ async def test_qdrant_write():
     logger.info(f"✓ Collection '{test_collection_name}' deleted.")
 
 
+async def test_memory_metadata_validation():
+    """Test Pydantic validation for MemoryMetadata"""
+    logger.info("\n========== Testing MemoryMetadata Validation ==========")
+
+    # Test default values
+    meta_default = MemoryMetadata()
+    assert meta_default.importance_score == 0.5
+    assert meta_default.recency_score == 1.0
+    assert meta_default.frequency_score == 0.0
+    logger.info("✓ Default values are set correctly")
+
+    # Test out-of-range values
+    try:
+        MemoryMetadata(importance_score=1.5)
+    except ValueError:
+        logger.info("✓ Correctly raised ValueError for importance_score > 1.0")
+    else:
+        assert False, "Should have raised ValueError for out-of-range importance_score"
+
+    try:
+        MemoryMetadata(recency_score=-0.5)
+    except ValueError:
+        logger.info("✓ Correctly raised ValueError for recency_score < 0.0")
+    else:
+        assert False, "Should have raised ValueError for out-of-range recency_score"
+
+    logger.info("✓ MemoryMetadata validation tests PASSED")
+
+
 async def main():
     await test_priority_scoring()
     await test_qdrant_write()
-    logger.info("\n============================================================")
-    logger.info("✓ ALL TESTS PASSED - Qdrant write system is working!")
-    logger.info("============================================================")
+    await test_memory_metadata_validation()
 
 
 if __name__ == "__main__":
