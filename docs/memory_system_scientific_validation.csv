@@ -1,0 +1,9 @@
+Component,Scientific_Basis,Implementation,Validation_Method
+Hippocampus (Episodic),MIT 2017: Simultaneous encoding in hippocampus + cortex,"EpisodicMemory model with event_type, context, timestamp","Test: Create episodic, verify timestamp + event_type stored"
+Neocortex (Semantic),Squire & Alvarez 1995: Systems consolidation model,"SemanticMemory model with domain, confidence_score, source_ids",Test: Consolidate 5 episodics → 1 semantic with source_ids
+Working Memory,Cowan 2001: 4 chunk capacity (not 7),Buffer of 4 recent memories for context injection,Test: Retrieve only 4 most recent memories for injection
+Consolidation,Nature 2023: Hippocampal-thalamocortical sync during sleep,Nightly batch job: episodic → semantic via LLM synthesis,"Test: Run batch processor, verify semantic created"
+Recency Decay,Ebbinghaus 1885: Exponential forgetting curve,"exp(-t / 2592000) where t in seconds, half-life 30 days","Test: Memory at t=30d has recency=0.5, t=60d has 0.25"
+Frequency Scaling,RFM Analysis: Logarithmic frequency returns,log10(count + 1) / log10(101) normalized 0-1,"Test: 10 accesses → 0.304, 100 accesses → 0.999"
+Importance Weight,Marketing science: 50% weight for high-value customers,User-defined float 0.0-1.0 or LLM auto-classification,"Test: Set importance=0.9, verify priority > 0.45"
+Priority Formula,Weighted sum: R×0.3 + F×0.2 + I×0.5,Computed property in MemoryMetadata Pydantic model,Test: High priority (0.9) retrieved before low (0.2)
