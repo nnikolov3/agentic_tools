@@ -55,12 +55,18 @@ class CodeInterpreter:
             .get("code_interpreter", {})
             .get("supported_langs", ["python", "go", "c", "bash"])
         )
-        self.timeout = config.get("tools", {}).get("code_interpreter", {}).get("timeout", 5)
-        self.temp_base = config.get("tools", {}).get("code_interpreter", {}).get(
-            "temp_base", "/tmp/agentic"
+        self.timeout = (
+            config.get("tools", {}).get("code_interpreter", {}).get("timeout", 5)
         )
-        self.allowed_commands = config.get("tools", {}).get("shell_exec", {}).get(
-            "allowed_commands", ["go", "gcc", "bash"]
+        self.temp_base = (
+            config.get("tools", {})
+            .get("code_interpreter", {})
+            .get("temp_base", "/tmp/agentic")
+        )
+        self.allowed_commands = (
+            config.get("tools", {})
+            .get("shell_exec", {})
+            .get("allowed_commands", ["go", "gcc", "bash"])
         )  # Restrict
         self.temp_dir = Path(f"{self.temp_base}-{uuid.uuid4().hex}")
         self.temp_dir.mkdir(exist_ok=True)
@@ -315,8 +321,8 @@ class FileBrowser:
                 [".py", ".go", ".md", ".toml", ".pdf", ".json", ".txt"],
             )
         )
-        self.max_depth = config.get("tools", {}).get("file_browser", {}).get(
-            "max_depth", 3
+        self.max_depth = (
+            config.get("tools", {}).get("file_browser", {}).get("max_depth", 3)
         )
 
     async def execute(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -328,6 +334,7 @@ class FileBrowser:
             raise ValueError(f"Invalid directory path: {path_str}")
 
         files, dirs = [], []
+
         async def walk(p: Path, d: int):
             if d > depth or p.name in self.exclude_dirs:
                 return
@@ -367,8 +374,8 @@ class WebSearch:
 
     def __init__(self, config: dict[str, Any]):
         self.config = config
-        self.max_results = config.get("tools", {}).get("web_search", {}).get(
-            "max_results", 10
+        self.max_results = (
+            config.get("tools", {}).get("web_search", {}).get("max_results", 10)
         )
         self.ddgs = DDGS()
 
@@ -389,7 +396,9 @@ class WebSearch:
                 for r in search_results:
                     if (
                         r.get("href")
-                        and not r["href"].startswith(("http://redirect", "https://redirect"))
+                        and not r["href"].startswith(
+                            ("http://redirect", "https://redirect")
+                        )
                         and r.get("body")
                         and len(r["body"]) > 20  # Non-ad, relevant
                     ):
@@ -438,4 +447,3 @@ async def execute_tool(payload: dict[str, Any], config: dict[str, Any]) -> Any:
     tool_name = payload.get("tool", "api_call")
     tool = get_tool(tool_name, config)
     return await tool.execute(payload)
-

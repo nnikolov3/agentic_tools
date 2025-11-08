@@ -74,9 +74,9 @@ temperature = 0.3
 enabled = true
 collection_name = "agent_memory"  # Agent-specific memories
 knowledge_bank_collection_name = "knowledge-bank"  # Global KB (ingest_knowledge_bank.py)
-embedding_model = "mistral-embed"  # Mistral local (device: cpu/cuda)
+embedding_model = { provider = "mistral", model = "mistral-embed" }  # Mistral local (device: cpu/cuda)
 embedding_size = 1024  # Mistral dim
-sparse_embedding_model = "naver/splade-v3"  # For hybrid search
+sparse_embedding_model = "prithivida/Splade_PP_en_v1"  # For hybrid search
 qdrant_url = "http://192.168.122.40:6333"  # Your KVM VM (gRPC:6334 if prefer_grpc=true)
 timeout = 60  # Connection timeout
 prefer_grpc = true  # For faster async (ports 6334/6335 forwarded)
@@ -96,7 +96,31 @@ one_eighty_days_retrieval_weight = 0.0
 three_sixty_days_retrieval_weight = 0.0
 knowledge_bank_retrieval_weight = 1.0
 
-# Qdrant collection/indexing (from QdrantClientManager)
+# Pruning settings
+prune_enabled = true
+prune_days = 365
+prune_confidence_threshold = 0.0
+prune_batch_size = 100
+
+# Priority scoring parameters
+priority_recency_weight = 0.3
+priority_frequency_weight = 0.2
+priority_importance_weight = 0.5
+frequency_max_accesses = 100
+recency_half_life_days = 30.0
+
+[knowledge_bank_ingestion]
+source_directory = "docs/knowledge"
+output_directory = ".ingested"
+supported_extensions = [".json", ".md", ".pdf"]
+chunk_size = 1024
+chunk_overlap = 256
+qdrant_batch_size = 128
+concurrency_limit = 2
+prompt = "Summarize this document with practical examples."
+model = "gemini-2.0-flash-exp"
+google_api_key_name = "GEMINI_API_KEY"
+
 [tools.qdrant]
 vectors_config = { size = 1024, distance = "COSINE", on_disk = true }
 sparse_vectors_config = { text-sparse = { index = {}, modifier = "NONE" } }

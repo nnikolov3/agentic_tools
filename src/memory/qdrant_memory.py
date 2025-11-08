@@ -1,411 +1,726 @@
-from __future__ import annotations
-
+# src/memory/qdrant_memory.py
 import asyncio
 import logging
 import math
 import uuid
-from datetime import UTC, datetime, timedelta
-from functools import lru_cache
-from typing import Any
+from datetime import datetime, timedelta, timezone
+from typing import Any, Coroutine, Dict, List, Optional, Tuple, Union, cast
 
+from faker import Faker
+from fastembed import TextEmbedding, SparseTextEmbedding
+from fastembed.rerank.cross_encoder import TextCrossEncoder
+
+import httpx
 from qdrant_client import models
-from sentence_transformers import SparseEncoder
-
 from src.memory.embedding_models import create_embedder
 from src.memory.qdrant_client_manager import QdrantClientManager
+from src.memory.models import (
+    Memory, EpisodicMemory, SemanticMemory,
+    MemoryMetadata, MemoryQuery, MemoryType, EventType
+)
 
-logger = logging.getLogger(__name__)
-
-
-
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class QdrantMemory:
-
-    CONTEXT_HEADER = "--- Memories Retrieved ---\n"
-
-
+    CONTEXT_HEADER: str = "--- FastEmbed Reranked Memories Retrieved ---\n"
 
     def __init__(
-
         self,
-
-        config: dict[str, Any],
-
+        config: Dict[str, Any],
         qdrant_manager: QdrantClientManager,
-
-        agent_name: str | None = None,
-
+        agent_name: Optional[str] = None,
     ) -> None:
+        # Determine the source of the global memory configuration (full project config vs. memory-only config)
+        global_memory_config = config.get("memory", config)
 
-        self._init_config(config, agent_name)
-
-        self._init_embedding_models(config)
-
-        self._init_qdrant(qdrant_manager)
-
-
-
-    def _init_config(self, config: dict[str, Any], agent_name: str | None) -> None:
-
-        mem_config = config.get("memory", config)
-
-        self.collection_name = mem_config.get("collection_name", "agent_memory")
-
-        self.knowledge_bank_collection_name = mem_config.get(
-
-            "knowledge_bank", "knowledge-bank"
-
+        self.collection_name: str = global_memory_config.get(
+            "collection_name", "agent_memory"
         )
-
-        self.total_memories_to_retrieve = mem_config.get(
-
-            "total_memories_to_retrieve", 20
-
-        )
-
-        self.query_points_hnsw_ef = mem_config.get("query_points_hnsw_ef", 128)
-
-        self._set_retrieval_weights(config, agent_name)
-
-
-
-    def _set_retrieval_weights(
-
-        self, config: dict[str, Any], agent_name: str | None
-
-    ) -> None:
-
-        def get_weight(key: str, default: float) -> float:
-
-            agent_cfg = (
-
-                config.get(agent_name, {}).get("memory", {}) if agent_name else {}
-
-            )
-
-            return float(
-
-                agent_cfg.get(key, config.get("memory", config).get(key, default))
-
-            )
-
-
-
-        weight_keys = [
-
-            "hourly",
-
-            "daily",
-
-            "weekly",
-
-            "two_weeks",
-
-            "monthly",
-
-            "ninety_days",
-
-            "one_eighty_days",
-
-            "three_sixty_days",
-
+        self.knowledge_bank_collection_name: str = global_memory_config.get(
             "knowledge_bank",
-
-        ]
-
-        self.retrieval_weights = {
-
-            k: get_weight(f"{k}_retrieval_weight", 0.1 if k == "hourly" else 0.05)
-
-            for k in weight_keys
-
-        }
-
-
-
-    def _init_embedding_models(self, config: dict[str, Any]) -> None:
-
-        mem_config = config.get("memory", config)
-
-        self.embedding_model = create_embedder(mem_config.get("embedding_model", {}))
-
-        self.embedding_size = mem_config.get("embedding_size", 1024)
-
-        self.sparse_embedder = SparseEncoder(
-
-            mem_config.get("sparse_embedding_model", "naver/splade-v3")
-
+            "knowledge-bank",
         )
 
+        # Embeddings
+        self.embedding_model: str = global_memory_config.get(
+            "embedding_model",
+            "mixedbread-ai/mxbai-embed-large-v1",
+        )
+        self.device: str = global_memory_config.get("device", "cpu")
+        # self.embedder = TextEmbedding(model_name=self.embedding_model) # Removed, will use factory
 
+        self.sparse_embedding_model: str = global_memory_config.get(
+            "sparse_embedding_model",
+            "prithivida/Splade_PP_en_v1", # Changed to FastEmbed SPLADE model
+        )
+        # self.sparse_embedder = SparseEncoder(self.sparse_embedding_model) # Removed, will use FastEmbed SparseTextEmbedding
 
-    def _init_qdrant(self, qdrant_manager: QdrantClientManager) -> None:
+        self.embedding_size: int = 0 # Will be set by the dense embedder
+        self.total_memories_to_retrieve: int = global_memory_config.get(
+            "total_memories_to_retrieve", 20
+        )
+        self.query_points_hnsw_ef: int = global_memory_config.get(
+            "query_points_hnsw_ef", 128
+        )
+
+        # Optional preferred names from config (used as hints if they exist in the collection)
+        self.preferred_dense_vector_name: Optional[str] = global_memory_config.get(
+            "dense_vector_name"
+        )
+        self.preferred_sparse_vector_name: Optional[str] = global_memory_config.get(
+            "sparse_vector_name"
+        )
+
+        agent_specific_config = config.get(agent_name, {}) if agent_name else {}
+        agent_memory_config = agent_specific_config.get("memory", {})
+
+        # Helper function to get weight with fallback: Agent -> Global -> Hardcoded
+        def get_weight(key: str, default: float) -> float:
+            return float(
+                agent_memory_config.get(
+                    key,
+                    global_memory_config.get(key, default),
+                )
+            )
+
+        self.hourly_retrieval_weight: float = get_weight("hourly_retrieval_weight", 0.1)
+        self.daily_retrieval_weight: float = get_weight("daily_retrieval_weight", 0.2)
+        self.weekly_retrieval_weight: float = get_weight("weekly_retrieval_weight", 0.3)
+        self.two_weeks_retrieval_weight: float = get_weight(
+            "two_weeks_retrieval_weight", 0.1
+        )
+        self.monthly_retrieval_weight: float = get_weight(
+            "monthly_retrieval_weight", 0.1
+        )
+        self.ninety_days_retrieval_weight: float = get_weight(
+            "ninety_days_retrieval_weight", 0.05
+        )
+        self.one_eighty_days_retrieval_weight: float = get_weight(
+            "one_eighty_days_retrieval_weight", 0.05
+        )
+        self.three_sixty_days_retrieval_weight: float = get_weight(
+            "three_sixty_days_retrieval_weight", 0.05
+        )
+        self.knowledge_bank_retrieval_weight: float = get_weight(
+            "knowledge_bank_retrieval_weight", 0.05
+        )
 
         self.qdrant_manager = qdrant_manager
+        self.client: Any = None # Will be set in async_init
 
-        self.client = qdrant_manager.get_client()
-
-        self.agent_dense_name = None
-
-        self.agent_sparse_name = None
-
-        self.kb_dense_name = None
-
-        self.kb_sparse_name = None
-
-
-
-    @lru_cache(maxsize=1000)
-
-    def _embed_text(self, text: str) -> list[float]:
-
-        if not self.embedding_model:
-
-            logger.warning("Embedding model not initialized. Returning zero vector.")
-
-            return [0.0] * self.embedding_size
-
-        try:
-
-            return self.embedding_model.embed(text)
-
-        except Exception as e:
-
-            logger.error(f"Embedding failed: {e}")
-
-            raise RuntimeError("Embedding generation failed") from e
-
-
-
-    def _embed_sparse(self, texts: list[str]) -> list[models.SparseVector]:
-
-        embeddings = self.sparse_embedder.encode_document(texts)
-
-        return [
-
-            models.SparseVector(
-
-                indices=emb.indices().squeeze().tolist(),
-
-                values=emb.values().squeeze().tolist(),
-
+        # Reranker
+        self.reranker: Optional[TextCrossEncoder] = None
+        reranker_config = config.get("reranker", {})
+        if reranker_config.get("enabled", True):
+            model_name = reranker_config.get(
+                "model_name",
+                "jinaai/jina-reranker-v2-base-multilingual",
             )
+            self.reranker = TextCrossEncoder(model_name=model_name, device=self.device)
 
-            for emb in embeddings
+        self.faker = Faker()
 
-        ]
+        # Resolved names per collection (filled in create)
+        self.agent_dense_name: Optional[str] = None
+        self.agent_sparse_name: Optional[str] = None
+        self.kb_dense_name: Optional[str] = None
+        self.kb_sparse_name: Optional[str] = None
 
+        # Embedder instances
+        self.dense_embedder_instance: Any = None
+        self.sparse_embedder_instance: Any = None
+
+        # Call _init_embedding_models to set up embedder instances
+        self._init_embedding_models(config)
+
+    def _init_embedding_models(self, config: Dict[str, Any]) -> None:
+        mem_config = config.get("memory", config)
+        
+        # Initialize dense embedder using the factory
+        dense_embedder_config = mem_config.get("embedding_model", {})
+        if isinstance(dense_embedder_config, str): # Handle case where it's still a string
+            dense_embedder_config = {"provider": dense_embedder_config}
+        self.dense_embedder_instance = create_embedder(dense_embedder_config)
+        self.embedding_size = self.dense_embedder_instance.embedding_size # Assuming embedder has this attribute
+
+        # Initialize sparse embedder
+        self.sparse_embedder_instance = SparseTextEmbedding(
+            model_name=mem_config.get("sparse_embedding_model", "prithivida/Splade_PP_en_v1")
+        )
+
+    @classmethod
     async def create(
-        self, config: dict[str, Any], agent_name: str | None = None
-    ) -> QdrantMemory:
-        instance = self.__class__(config, self.qdrant_manager, agent_name)
-        await instance._setup_collections()
+        cls,
+        config: Dict[str, Any],
+        agent_name: Optional[str] = None,
+    ) -> "QdrantMemory":
+        qdrant_manager = QdrantClientManager(config)
+        instance = cls(config, qdrant_manager, agent_name)
+        instance.client = await instance.qdrant_manager.get_client() # Set client asynchronously
+
+        # Respect existing collections; just ensure they exist (no schema change)
+        await qdrant_manager.ensure_collection_exists(
+            collection_name=instance.collection_name,
+            embedding_size=instance.embedding_size,
+        )
+        await qdrant_manager.ensure_collection_exists(
+            collection_name=instance.knowledge_bank_collection_name,
+            embedding_size=instance.embedding_size,
+        )
+
+        # Resolve actual vector names from each collection
+        (
+            instance.agent_dense_name,
+            instance.agent_sparse_name,
+        ) = await instance._resolve_vector_names(instance.collection_name)
+        (
+            instance.kb_dense_name,
+            instance.kb_sparse_name,
+        ) = await instance._resolve_vector_names(
+            instance.knowledge_bank_collection_name
+        )
+
+        logger.info(
+            f"Resolved vector names: agent_memory(dense='{instance.agent_dense_name}', sparse='{instance.agent_sparse_name}'), "
+            f"knowledge_bank(dense='{instance.kb_dense_name}', sparse='{instance.kb_sparse_name}')"
+        )
+
         return instance
 
-    async def _setup_collections(self) -> None:
-        await self.qdrant_manager.ensure_collection_exists(
-            self.collection_name, self.embedding_size
-        )
-        await self.qdrant_manager.ensure_collection_exists(
-            self.knowledge_bank_collection_name, self.embedding_size
-        )
-        self.agent_dense_name, self.agent_sparse_name = (
-            await self._resolve_vector_names(self.collection_name)
-        )
-        self.kb_dense_name, self.kb_sparse_name = await self._resolve_vector_names(
-            self.knowledge_bank_collection_name
-        )
-
-    async def _resolve_vector_names(self, collection: str) -> tuple[str, str | None]:
+    async def _resolve_vector_names(self, collection: str) -> Tuple[str, Optional[str]]:
+        """
+        Inspect an existing collection and return:
+        - dense_name: name of the dense vector to use. Empty string "" if the collection has a single unnamed dense vector.
+        - sparse_name: name of the sparse vector if configured, else None.
+        Preference order for dense:
+          1) preferred_dense_vector_name if present in collection
+          2) first named dense vector
+          3) "" (unnamed dense)
+        Preference order for sparse:
+          1) preferred_sparse_vector_name if present
+          2) first configured sparse name
+          3) None (no sparse configured)
+        """
         info = await self.client.get_collection(collection_name=collection)
         params = info.config.params
 
-        dense_name = (
-            next(iter(params.vectors.keys()))
-            if isinstance(params.vectors, dict)
-            else ""
-        )
-        sparse_name = (
-            next(iter(params.sparse_vectors.keys()))
-            if hasattr(params, "sparse_vectors") and params.sparse_vectors
-            else None
-        )
+        # Dense
+        dense_name: str
+        if isinstance(params.vectors, dict):
+            if (
+                self.preferred_dense_vector_name
+                and self.preferred_dense_vector_name in params.vectors
+            ):
+                dense_name = self.preferred_dense_vector_name
+            else:
+                dense_name = next(iter(params.vectors.keys()))
+        else:
+            dense_name = ""  # unnamed dense vector
+
+        # Sparse
+        sparse_name: Optional[str] = None
+        if (
+            hasattr(params, "sparse_vectors")
+            and isinstance(params.sparse_vectors, dict)
+            and params.sparse_vectors
+        ):
+            if (
+                self.preferred_sparse_vector_name
+                and self.preferred_sparse_vector_name in params.sparse_vectors
+            ):
+                sparse_name = self.preferred_sparse_vector_name
+            else:
+                sparse_name = next(iter(params.sparse_vectors.keys()))
 
         return dense_name, sparse_name
 
-    async def add_memory(self, text_content: str) -> None:
+    def _embed_text(self, text: str) -> List[float]:
         try:
-            dense_vector = self._embed_text(text_content)
-            sparse_vector = self._embed_sparse([text_content])[0]
+            # Use the dense embedder instance
+            return self.dense_embedder_instance.embed(text)
+        except (RuntimeError, ValueError) as e:
+            logger.error("Failed to generate embedding for text: %s", e)
+            raise RuntimeError("Embedding generation failed") from e
 
-            point_id = str(uuid.uuid4())
-            now = datetime.now(UTC)
-            payload = {
-                "text_content": text_content,
-                "timestamp": now.timestamp(),
-                "day_of_week": now.strftime("%A"),
-            }
+    def _embed_sparse_documents(
+        self, documents: List[str]
+    ) -> List[models.SparseVector]:
+        # Use the sparse embedder instance and convert the iterable to a list
+        return list(self.sparse_embedder_instance.embed(documents))
 
-            vector_payload = {self.agent_dense_name: dense_vector}
+    def _embed_sparse_query(self, query: str) -> models.SparseVector:
+        # Use the sparse embedder instance and convert the iterable to a list
+        return list(self.sparse_embedder_instance.embed([query]))[0]
+
+    async def add_memory(self, memory: Memory | str, importance: Optional[float] = None) -> str:
+        """Add memory with full RFM scoring and metadata."""
+        try:
+            # Convert string to EpisodicMemory if needed
+            if isinstance(memory, str):
+                memory = EpisodicMemory(
+                    text_content=memory,
+                    metadata=MemoryMetadata(importance_score=importance or 0.5)
+                )
+            elif importance is not None:
+                memory.metadata.importance_score = importance
+
+            # Calculate dynamic scores
+            memory.metadata.recency_score = self.calculate_recency_score(
+                memory.created_at
+            )
+            memory.metadata.frequency_score = self.calculate_frequency_score(
+                memory.metadata.access_count
+            )
+
+            dense_vector = self._embed_text(memory.text_content)
+            sparse_vector = self._embed_sparse_documents([memory.text_content])[0]
+
+            vector_payload: Dict[str, Any] = {}
+            # Dense vector name can be "" (unnamed)
+            if self.agent_dense_name is None:
+                raise RuntimeError(
+                    "Dense vector name for agent collection is not resolved"
+                )
+            vector_payload[self.agent_dense_name] = dense_vector
+
+            # Only include sparse if the collection supports it
             if self.agent_sparse_name:
-                vector_payload[self.agent_sparse_name] = sparse_vector
+                vector_payload[self.agent_sparse_name] = {
+                    "indices": sparse_vector.indices,
+                    "values": sparse_vector.values,
+                }
 
             await self.client.upsert(
                 collection_name=self.collection_name,
                 points=[
                     models.PointStruct(
-                        id=point_id, vector=vector_payload, payload=payload
-                    )
+                        id=memory.id,
+                        vector=vector_payload,
+                        payload=memory.to_qdrant_payload(),
+                    ),
                 ],
                 wait=True,
             )
-            logger.info(f"Added memory ID '{point_id}' to '{self.collection_name}'")
-        except Exception as e:
-            logger.error(f"Failed to add memory: {e}")
+            logger.info(
+                f"Added {memory.memory_type.value} memory '{memory.id}' "
+                f"with priority {memory.metadata.priority_score:.3f}"
+            )
+            return memory.id
+        except (httpx.HTTPError, RuntimeError) as e:
+            logger.error("Failed to add memory: %s", e)
             raise RuntimeError("Memory addition failed") from e
 
-    async def retrieve_context(self, query_text: str) -> str:
-        limits = self._calculate_retrieval_limits()
-        if not sum(limits):
-            return ""
-
-        timestamps = self._get_time_boundaries()
-        dense_query_vector = self._embed_text(query_text)
-        sparse_query_vector = self._embed_sparse([query_text])[0]
-
-        query_tasks = self._build_query_tasks(
-            dense_query_vector, sparse_query_vector, limits, timestamps
-        )
-        if not query_tasks:
-            return ""
-
-        query_results = await asyncio.gather(*query_tasks, return_exceptions=True)
-        unique_texts = self._process_results(query_results)
-        if not unique_texts:
-            return ""
-
-        return f"{self.CONTEXT_HEADER}{' '.join(unique_texts)}"
-
-    def _calculate_retrieval_limits(self) -> tuple[int, ...]:
-        return tuple(
-            math.ceil(self.total_memories_to_retrieve * w)
-            for w in self.retrieval_weights.values()
-        )
-
-    def _get_time_boundaries(self) -> tuple[float, ...]:
-        now = datetime.now(UTC)
-        return tuple(
-            (now - timedelta(**{unit: value})).timestamp()
-            for unit, value in [
-                ("hours", 1),
-                ("days", 1),
-                ("weeks", 1),
-                ("weeks", 2),
-                ("days", 30),
-                ("days", 90),
-                ("days", 180),
-                ("days", 365),
-            ]
-        )
-
-    def _build_query_tasks(
-        self, dense_vec, sparse_vec, limits, timestamps
-    ) -> list[Any]:
-        tasks = []
-        time_filters = self._create_time_filters(timestamps)
-
-        for i, (limit, time_filter) in enumerate(zip(limits, time_filters)):
-            if limit > 0:
-                collection = (
-                    self.knowledge_bank_collection_name
-                    if i == len(limits) - 1
-                    else self.collection_name
-                )
-                dense_name = (
-                    self.kb_dense_name
-                    if i == len(limits) - 1
-                    else self.agent_dense_name
-                )
-                sparse_name = (
-                    self.kb_sparse_name
-                    if i == len(limits) - 1
-                    else self.agent_sparse_name
-                )
-
-                tasks.append(
-                    self.client.query_points(
-                        collection_name=collection,
-                        query=dense_vec,
-                        using=dense_name,
-                        query_filter=time_filter,
-                        limit=limit,
-                        with_payload=True,
-                        with_vectors=False,
-                        search_params=models.SearchParams(
-                            hnsw_ef=self.query_points_hnsw_ef, exact=False
-                        ),
-                        prefetch=self._create_prefetch(
-                            dense_vec, sparse_vec, limit, dense_name, sparse_name
-                        ),
-                    )
-                )
-
-        return tasks
-
-    def _create_time_filters(self, timestamps) -> list[models.Filter | None]:
-        filters = []
-        for i in range(len(timestamps) - 1):
-            filters.append(
-                models.Filter(
-                    must=[
-                        models.FieldCondition(
-                            key="timestamp", range=models.Range(lt=timestamps[i])
-                        )
-                    ]
-                )
-            )
-
-        filters.append(None)  # No filter for knowledge bank
-        return filters
-
-    def _create_prefetch(
+    def calculate_recency_score(
         self,
-        dense_vec,
-        sparse_vec,
-        limit,
-        dense_name,
-        sparse_name,
-    ) -> models.Prefetch | None:
+        created_at: datetime,
+        half_life_days: float = 30.0
+    ) -> float:
+        """Exponential decay: score = exp(-decay_rate * age_days)"""
+        now = datetime.now(timezone.utc)
+        age_days = (now - created_at).total_seconds() / 86400.0
+        decay_rate = math.log(2) / half_life_days
+        return math.exp(-decay_rate * age_days)
+
+    def calculate_frequency_score(
+        self,
+        access_count: int,
+        max_accesses: int = 100
+    ) -> float:
+        """Logarithmic scaling: score = log(1+count) / log(1+max)"""
+        if access_count <= 0:
+            return 0.0
+        normalized = math.log1p(access_count) / math.log1p(max_accesses)
+        return min(1.0, normalized)
+
+    def calculate_priority_score(self, metadata: MemoryMetadata) -> float:
+        """RFM formula: Priority = (R×0.3) + (F×0.2) + (I×0.5)"""
+        return metadata.priority_score # Uses @property
+
+    async def update_memory_access(
+        self,
+        memory_id: str,
+        increment_count: bool = True
+    ) -> None:
+        """Update metadata after retrieval."""
+        # Retrieve current point
+        retrieved_points = await self.client.retrieve(
+            collection_name=self.collection_name,
+            ids=[memory_id],
+            with_payload=True
+        )
+
+        if not retrieved_points:
+            logger.warning(f"Memory {memory_id} not found")
+            return
+
+        point = retrieved_points[0]
+        payload = point.payload
+        new_access_count = payload.get("access_count", 0) + (1 if increment_count else 0)
+        new_frequency_score = self.calculate_frequency_score(new_access_count)
+
+        # Update
+        await self.client.set_payload(
+            collection_name=self.collection_name,
+            points=[memory_id],
+            payload={
+                "access_count": new_access_count,
+                "frequency_score": new_frequency_score,
+                "last_accessed_at": datetime.now(timezone.utc).timestamp(),
+            }
+        )
+
+    def _calculate_retrieval_limits(
+        self,
+    ) -> Tuple[int, int, int, int, int, int, int, int, int]:
+        n = self.total_memories_to_retrieve
+        return (
+            math.ceil(n * self.hourly_retrieval_weight),
+            math.ceil(n * self.daily_retrieval_weight),
+            math.ceil(n * self.weekly_retrieval_weight),
+            math.ceil(n * self.two_weeks_retrieval_weight),
+            math.ceil(n * self.monthly_retrieval_weight),
+            math.ceil(n * self.ninety_days_retrieval_weight),
+            math.ceil(n * self.one_eighty_days_retrieval_weight),
+            math.ceil(n * self.three_sixty_days_retrieval_weight),
+            math.ceil(n * self.knowledge_bank_retrieval_weight),
+        )
+
+    def _make_prefetch(
+        self,
+        dense_query_vector: List[float],
+        sparse_query_vector: models.SparseVector,
+        limit: int,
+        dense_name: str,
+        sparse_name: Optional[str],
+    ) -> Optional[models.Prefetch]:
+        """
+        Build Fusion+Prefetch only if sparse_name is available for the target collection.
+        """
         if not sparse_name:
             return None
         return models.Prefetch(
             prefetch=[
-                models.Prefetch(query=dense_vec, using=dense_name, limit=limit),
-                models.Prefetch(query=sparse_vec, using=sparse_name, limit=limit),
+                models.Prefetch(
+                    query=dense_query_vector,
+                    using=dense_name,  # may be "" for unnamed
+                    limit=limit,
+                ),
+                models.Prefetch(
+                    query={
+                        "indices": sparse_query_vector.indices,
+                        "values": sparse_query_vector.values,
+                    },
+                    using=sparse_name,
+                    limit=limit,
+                ),
             ],
             query=models.FusionQuery(fusion=models.Fusion.RRF),
         )
 
-    def _process_results(self, query_results) -> list[str]:
-        points = []
+    def _query_args_for_collection(
+        self,
+        collection: str,
+        dense_vec: List[float],
+        sparse_vec: models.SparseVector,
+        limit: int,
+        qfilter: Optional[models.Filter],
+        dense_name: str,
+        sparse_name: Optional[str],
+    ) -> Dict[str, Any]:
+        kwargs: Dict[str, Any] = dict(
+            collection_name=collection,
+            query=dense_vec,
+            using=dense_name,  # "" if unnamed dense
+            query_filter=qfilter,
+            limit=limit,
+            with_payload=True,
+            with_vectors=False,
+            search_params=models.SearchParams(
+                hnsw_ef=self.query_points_hnsw_ef, exact=False
+            ),
+        )
+        prefetch = self._make_prefetch(
+            dense_vec, sparse_vec, limit, dense_name, sparse_name
+        )
+        if prefetch:
+            kwargs["prefetch"] = [prefetch]
+        return kwargs
+
+    def _build_query_tasks(
+        self,
+        dense_query_vector: List[float],
+        sparse_query_vector: models.SparseVector,
+        limits: Tuple[int, int, int, int, int, int, int, int, int],
+        timestamps: Tuple[float, float, float, float, float, float, float, float],
+    ) -> List[Coroutine[Any, Any, models.QueryResponse]]:
+        (
+            num_hourly,
+            num_daily,
+            num_weekly,
+            num_two_weeks,
+            num_monthly,
+            num_ninety_days,
+            num_one_eighty_days,
+            num_three_sixty_days,
+            num_kb,
+        ) = limits
+        (
+            hour_ts,
+            day_ts,
+            week_ts,
+            two_weeks_ts,
+            month_ts,
+            ninety_days_ts,
+            one_eighty_days_ts,
+            three_sixty_days_ts,
+        ) = timestamps
+
+        if self.agent_dense_name is None or self.kb_dense_name is None:
+            logger.error(
+                "Dense vector names were not resolved for one or more collections."
+            )
+            return []
+
+        tasks: List[Coroutine[Any, Any, models.QueryResponse]] = []
+
+        # Helper to make filters
+        def rng(
+            gte: Optional[float] = None, lt: Optional[float] = None
+        ) -> models.Filter:
+            must = []
+            if lt is not None:
+                must.append(
+                    models.FieldCondition(key="timestamp", range=models.Range(lt=lt))
+                )
+            if gte is not None:
+                must.append(
+                    models.FieldCondition(key="timestamp", range=models.Range(gte=gte))
+                )
+            return models.Filter(must=cast(List[Any], must))
+
+        # agent_memory tasks (time buckets)
+        if num_hourly > 0:
+            tasks.append(
+                self.client.query_points(
+                    **self._query_args_for_collection(
+                        self.collection_name,
+                        dense_query_vector,
+                        sparse_query_vector,
+                        num_hourly,
+                        rng(gte=hour_ts),
+                        self.agent_dense_name,
+                        self.agent_sparse_name,
+                    )
+                )
+            )
+        if num_daily > 0:
+            tasks.append(
+                self.client.query_points(
+                    **self._query_args_for_collection(
+                        self.collection_name,
+                        dense_query_vector,
+                        sparse_query_vector,
+                        num_daily,
+                        rng(gte=day_ts, lt=hour_ts),
+                        self.agent_dense_name,
+                        self.agent_sparse_name,
+                    )
+                )
+            )
+        if num_weekly > 0:
+            tasks.append(
+                self.client.query_points(
+                    **self._query_args_for_collection(
+                        self.collection_name,
+                        dense_query_vector,
+                        sparse_query_vector,
+                        num_weekly,
+                        rng(gte=week_ts, lt=day_ts),
+                        self.agent_dense_name,
+                        self.agent_sparse_name,
+                    )
+                )
+            )
+        if num_two_weeks > 0:
+            tasks.append(
+                self.client.query_points(
+                    **self._query_args_for_collection(
+                        self.collection_name,
+                        dense_query_vector,
+                        sparse_query_vector,
+                        num_two_weeks,
+                        rng(gte=two_weeks_ts, lt=week_ts),
+                        self.agent_dense_name,
+                        self.agent_sparse_name,
+                    )
+                )
+            )
+        if num_monthly > 0:
+            tasks.append(
+                self.client.query_points(
+                    **self._query_args_for_collection(
+                        self.collection_name,
+                        dense_query_vector,
+                        sparse_query_vector,
+                        num_monthly,
+                        rng(gte=month_ts, lt=two_weeks_ts),
+                        self.agent_dense_name,
+                        self.agent_sparse_name,
+                    )
+                )
+            )
+        if num_ninety_days > 0:
+            tasks.append(
+                self.client.query_points(
+                    **self._query_args_for_collection(
+                        self.collection_name,
+                        dense_query_vector,
+                        sparse_query_vector,
+                        num_ninety_days,
+                        rng(gte=ninety_days_ts, lt=month_ts),
+                        self.agent_dense_name,
+                        self.agent_sparse_name,
+                    )
+                )
+            )
+        if num_one_eighty_days > 0:
+            tasks.append(
+                self.client.query_points(
+                    **self._query_args_for_collection(
+                        self.collection_name,
+                        dense_query_vector,
+                        sparse_query_vector,
+                        num_one_eighty_days,
+                        rng(gte=one_eighty_days_ts, lt=ninety_days_ts),
+                        self.agent_dense_name,
+                        self.agent_sparse_name,
+                    )
+                )
+            )
+        if num_three_sixty_days > 0:
+            tasks.append(
+                self.client.query_points(
+                    **self._query_args_for_collection(
+                        self.collection_name,
+                        dense_query_vector,
+                        sparse_query_vector,
+                        num_three_sixty_days,
+                        rng(gte=three_sixty_days_ts, lt=one_eighty_days_ts),
+                        self.agent_dense_name,
+                        self.agent_sparse_name,
+                    )
+                )
+            )
+
+        # knowledge_bank query (no time filter, independent schema)
+        if num_kb > 0:
+            tasks.append(
+                self.client.query_points(
+                    **self._query_args_for_collection(
+                        self.knowledge_bank_collection_name,
+                        dense_query_vector,
+                        sparse_query_vector,
+                        num_kb,
+                        None,
+                        self.kb_dense_name,
+                        self.kb_sparse_name,
+                    )
+                )
+            )
+
+        return tasks
+
+    @staticmethod
+    def _process_and_deduplicate_results(
+        query_results: List[Union[models.QueryResponse, BaseException]],
+    ) -> List[str]:
+        all_points: List[models.ScoredPoint] = []
         for result in query_results:
             if isinstance(result, BaseException):
-                logger.warning(f"Query failed: {result}")
+                logger.warning(
+                    f"A Qdrant query failed during memory retrieval: {result}",
+                )
                 continue
-            points.extend(result.points)
+            all_points.extend(result.points)
 
-        seen_ids = set()
-        unique_texts = []
-        for point in points:
-            if point.id not in seen_ids and (text := point.payload.get("text_content")):
+        seen_ids: set[Union[str, int]] = set()
+        unique_memory_texts: List[str] = []
+        for point in all_points:
+            if point.id not in seen_ids:
                 seen_ids.add(point.id)
-                unique_texts.append(str(text))
-        return unique_texts
+                if point.payload and (
+                    text_content := point.payload.get("text_content")
+                ):
+                    unique_memory_texts.append(str(text_content))
+        return unique_memory_texts
 
+    def _rerank_results(self, query_text: str, memory_texts: List[str]) -> List[str]:
+        if not self.reranker:
+            return memory_texts
+        try:
+            rerank_scores = list(self.reranker.rerank(query_text, memory_texts))
+            ranked_pairs = sorted(
+                zip(memory_texts, rerank_scores),
+                key=lambda item: item[1],
+                reverse=True,
+            )
+            return [text for text, _ in ranked_pairs]
+        except (RuntimeError, ValueError) as e:
+            logger.warning("Reranking failed, returning original order. Error: %s", e)
+            return memory_texts
 
+    async def retrieve_context(self, query_text: str) -> str:
+        limits = self._calculate_retrieval_limits()
+        if sum(limits) == 0:
+            return ""
 
-    async def prune_memories(self) -> int:
-        logger.warning("Memory pruning is not yet implemented.")
-        return 0
+        current_time = datetime.now(timezone.utc)
+        hour_ts = (current_time - timedelta(hours=1)).timestamp()
+        day_ts = (current_time - timedelta(days=1)).timestamp()
+        week_ts = (current_time - timedelta(weeks=1)).timestamp()
+        two_weeks_ts = (current_time - timedelta(weeks=2)).timestamp()
+        month_ts = (current_time - timedelta(days=30)).timestamp()
+        ninety_days_ts = (current_time - timedelta(days=90)).timestamp()
+        one_eighty_days_ts = (current_time - timedelta(days=180)).timestamp()
+        three_sixty_days_ts = (current_time - timedelta(days=365)).timestamp()
 
+        try:
+            dense_query_vector = self._embed_text(query_text)
+            sparse_query_vector = self._embed_sparse_query(query_text)
+        except RuntimeError:
+            return ""
+
+        query_tasks = self._build_query_tasks(
+            dense_query_vector,
+            sparse_query_vector,
+            limits,
+            (
+                hour_ts,
+                day_ts,
+                week_ts,
+                two_weeks_ts,
+                month_ts,
+                ninety_days_ts,
+                one_eighty_days_ts,
+                three_sixty_days_ts,
+            ),
+        )
+        if not query_tasks:
+            return ""
+
+        try:
+            query_results = await asyncio.gather(*query_tasks, return_exceptions=True)
+        except (httpx.HTTPError, asyncio.TimeoutError) as e:
+            logger.error(
+                f"Unexpected error during asyncio.gather for Qdrant queries: {e}",
+            )
+            return ""
+
+        unique_memory_texts = self._process_and_deduplicate_results(query_results)
+        if not unique_memory_texts:
+            return ""
+
+        ranked_texts = self._rerank_results(query_text, unique_memory_texts)
+        context_body = "\n".join(ranked_texts)
+        return f"{self.CONTEXT_HEADER}{context_body}"

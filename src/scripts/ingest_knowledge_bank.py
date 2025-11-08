@@ -609,9 +609,7 @@ class KnowledgeBankIngestor:
 
             # Check if the file is old
             file_stat = await asyncio.to_thread(file_path.stat)
-            modification_time = datetime.fromtimestamp(
-                file_stat.st_mtime, tz=UTC
-            )
+            modification_time = datetime.fromtimestamp(file_stat.st_mtime, tz=UTC)
             age = datetime.now(UTC) - modification_time
             if age > timedelta(days=self.ingestion_config.old_file_threshold_days):
                 warning = (

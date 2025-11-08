@@ -72,7 +72,9 @@ async def handle_ingest(config_path: Path) -> None:
     if general_config.get("debug_mode"):
         logging.getLogger().setLevel(logging.DEBUG)
     ingestion_config = IngestionConfig(
-        source_dir=Path(config.get("ingestion", {}).get("source_dir", "docs/knowledge")),
+        source_dir=Path(
+            config.get("ingestion", {}).get("source_dir", "docs/knowledge")
+        ),
         output_dir=Path(config.get("ingestion", {}).get("output_dir", ".ingested")),
         **config.get("memory", {}),
         **config.get("ingestion", {}),

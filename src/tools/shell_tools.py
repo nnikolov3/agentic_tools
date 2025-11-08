@@ -816,4 +816,3 @@ class ShellTools:
             return f"{diff_stdout}\n{log_stdout}"
         except (RuntimeError, FileNotFoundError) as error:
             raise RuntimeError("Failed to create git patch context") from error
-
