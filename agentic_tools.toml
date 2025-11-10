@@ -1,0 +1,72 @@
+
+[project]
+project_name = "agenttech"
+
+# Source code and documentation paths used for context gathering.
+source_code = ["src"]
+documentation = ["docs"]
+design_docs = ["DEVELOPMENT_GUIDE.md"]
+tests_directory = ["tests"]
+misc_directories = []
+configuration="agentic-tools.toml"
+# File processing rules.
+include_extensions = [".py",".go", ".md", ".toml"]
+exclude_files = ["__init__.py"]
+exclude_directories = [
+    ".git",
+    ".github",
+    ".idea",
+    "__pycache__",
+    "venv",
+    ".venv",
+    "dist",
+    "build",
+    "target",
+]
+
+[tool-use]
+git_diff_command = ["diff", "HEAD", "--patch-with-raw", "--minimal", "--patience", ":!uv.lock", ":!MANIFEST.in"]
+git_log_command = ["log" ,"--pretty"]
+# =============================================================================
+# MEMORY & VECTOR DATABASE CONFIGURATION
+# =============================================================================
+[qdrant]
+enabled = true
+embedding_size = 3072
+timeout = 30
+url="http://192.168.122.40:6334"
+# HNSW search parameter for balancing accuracy vs. speed.
+search_hnsw_ef = 3072
+
+
+# =============================================================================
+# AGENT CONFIGURATIONS
+# =============================================================================
+
+[agents.architect]
+name = "architect"
+description = "A senior architect that creates the architecture and planning for a given task, adhering to design principles."
+model_name = "gemini-2.5-pro"
+model_provider = "google"
+api_key = "GEMINI_API_KEY_ARCHITECT"
+temperature = 0.3
+skills = ["software architecture", "system design", "problem decomposition", "technical planning", "adherence to design principles"]
+prompt = '''
+You are a senior expert Software and Hardware Architect.
+Your task is to create the architecture and planning for the given problem.
+You must adhere strictly to the provided Design Principles.
+'''
+
+[agents.developer]
+name = "developer"
+description = "A senior architect that creates the architecture and planning for a given task, adhering to design principles."
+model_name = "gemini-2.5-pro"
+model_provider = "google"
+api_key = "GEMINI_API_KEY_ARCHITECT"
+temperature = 0.3
+skills = ["software architecture", "system design", "problem decomposition", "technical planning", "adherence to design principles"]
+prompt = '''
+You are a senior expert Software and Hardware Architect.
+Your task is to create the architecture and planning for the given problem.
+You must adhere strictly to the provided Design Principles.
+'''
