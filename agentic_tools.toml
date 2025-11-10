@@ -1,72 +1,60 @@
-
 [project]
 project_name = "agenttech"
-
-# Source code and documentation paths used for context gathering.
 source_code = ["src"]
 documentation = ["docs"]
-design_docs = ["DEVELOPMENT_GUIDE.md"]
-tests_directory = ["tests"]
-misc_directories = []
-configuration="agentic-tools.toml"
-# File processing rules.
-include_extensions = [".py",".go", ".md", ".toml"]
-exclude_files = ["__init__.py"]
-exclude_directories = [
-    ".git",
-    ".github",
-    ".idea",
-    "__pycache__",
-    "venv",
-    ".venv",
-    "dist",
-    "build",
-    "target",
-]
+configuration = "agentic-tools.toml"
 
-[tool-use]
-git_diff_command = ["diff", "HEAD", "--patch-with-raw", "--minimal", "--patience", ":!uv.lock", ":!MANIFEST.in"]
-git_log_command = ["log" ,"--pretty"]
-# =============================================================================
-# MEMORY & VECTOR DATABASE CONFIGURATION
-# =============================================================================
-[qdrant]
-enabled = true
-embedding_size = 3072
+[memory]
+url = "http://192.168.122.40:6334"
 timeout = 30
-url="http://192.168.122.40:6334"
-# HNSW search parameter for balancing accuracy vs. speed.
-search_hnsw_ef = 3072
-
-
-# =============================================================================
-# AGENT CONFIGURATIONS
-# =============================================================================
+embedding_model = "gemini-embedding-001"
+embedding_size = 3072
+google_api_key_env = "GEMINI_API_KEY"
+episodic_collection = "episodic"
+working_collection = "working"
+semantic_collection = "semantic"
 
 [agents.architect]
 name = "architect"
-description = "A senior architect that creates the architecture and planning for a given task, adhering to design principles."
-model_name = "gemini-2.5-pro"
-model_provider = "google"
-api_key = "GEMINI_API_KEY_ARCHITECT"
+description = "Senior architect for system design and planning"
+model_name = "gemini-2.0-flash-exp"
+api_key = "GEMINI_API_KEY"
 temperature = 0.3
-skills = ["software architecture", "system design", "problem decomposition", "technical planning", "adherence to design principles"]
-prompt = '''
-You are a senior expert Software and Hardware Architect.
-Your task is to create the architecture and planning for the given problem.
-You must adhere strictly to the provided Design Principles.
-'''
+memory_enabled = true
+total_memories_to_retrieve = 30
+recent_weight = 0.4
+working_weight = 0.4
+semantic_weight = 0.2
+
+[agents.architect.tool_use]
+git_diff_command = ["diff", "HEAD", "--patch-with-raw"]
+git_log_command = ["log", "--pretty", "-20"]
 
 [agents.developer]
 name = "developer"
-description = "A senior architect that creates the architecture and planning for a given task, adhering to design principles."
-model_name = "gemini-2.5-pro"
-model_provider = "google"
-api_key = "GEMINI_API_KEY_ARCHITECT"
+description = "Senior developer for implementation"
+model_name = "gemini-2.0-flash-exp"
+api_key = "GEMINI_API_KEY"
 temperature = 0.3
-skills = ["software architecture", "system design", "problem decomposition", "technical planning", "adherence to design principles"]
-prompt = '''
-You are a senior expert Software and Hardware Architect.
-Your task is to create the architecture and planning for the given problem.
-You must adhere strictly to the provided Design Principles.
-'''
+memory_enabled = true
+total_memories_to_retrieve = 25
+recent_weight = 0.6
+working_weight = 0.3
+semantic_weight = 0.1
+
+[agents.developer.tool_use]
+git_diff_command = ["diff", "HEAD", "--patch-with-raw", "--minimal"]
+git_log_command = ["log", "--pretty", "-10"]
+
+[agents.ingestor]
+name = "ingestor"
+description = "Document ingestion agent"
+model_name = "gemini-2.0-flash-exp"
+api_key = "GEMINI_API_KEY"
+temperature = 0.0
+memory_enabled = true
+total_memories_to_retrieve = 5
+recent_weight = 0.2
+working_weight = 0.3
+semantic_weight = 0.5
+mistral_api_key_env = "MISTRAL_API_KEY"
