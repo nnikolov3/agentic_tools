@@ -1,4 +1,4 @@
-"""Three-layer memory system."""
+"""Three-layer memory (config-driven, no hardcoding)."""
 
 import logging
 import uuid
@@ -20,34 +20,26 @@ class Memory:
         config: Dict[str, Any],
         qdrant_client: AsyncQdrantClient,
         google_client: GoogleClient,
-        agent_name: str,
     ):
         mem_cfg = config.get("memory", {})
-        self.agent_name = agent_name
         self.episodic = mem_cfg.get("episodic_collection", "episodic")
         self.working = mem_cfg.get("working_collection", "working")
         self.semantic = mem_cfg.get("semantic_collection", "semantic")
-
         self.client = qdrant_client
         self.google = google_client
 
     @classmethod
-    async def create(cls, config: Dict[str, Any], agent_name: str) -> "Memory":
-        """Initialize memory."""
+    async def create(cls, config: Dict[str, Any]) -> "Memory":
+        """Factory: initialize Memory from config."""
+        google = GoogleClient(config)
+
         mem_cfg = config.get("memory", {})
-
-        google = GoogleClient(
-            api_key_env=mem_cfg.get("google_api_key_env", "GEMINI_API_KEY"),
-            model=mem_cfg.get("embedding_model", "gemini-embedding-001"),
-            size=int(mem_cfg.get("embedding_size", 3072)),
-        )
-
         qdrant = AsyncQdrantClient(
-            url=mem_cfg.get("url", "http://localhost:6333"),
+            url=mem_cfg.get("url", "http://192.168.122.40:6334"),
             timeout=int(mem_cfg.get("timeout", 30)),
         )
 
-        instance = cls(config, qdrant, google, agent_name)
+        instance = cls(config, qdrant, google)
 
         for coll in [instance.episodic, instance.working, instance.semantic]:
             await instance._ensure_collection(coll)
@@ -55,7 +47,6 @@ class Memory:
         return instance
 
     async def _ensure_collection(self, name: str) -> None:
-        """Create collection if missing."""
         if await self.client.collection_exists(name):
             return
 
@@ -71,21 +62,11 @@ class Memory:
             vectors_config=vectors_config,
         )
 
-        for field, field_type in [("timestamp", "float"), ("agent_name", "keyword")]:
-            try:
-                await self.client.create_payload_index(
-                    collection_name=name,
-                    field_name=field,
-                    field_schema=field_type,
-                )
-            except:
-                pass
-
     async def retrieve_context(self, query: str) -> str:
-        """Retrieve memories for agent context."""
+        """Retrieve memories for agent."""
         vector = self.google.embed(query)
-
         results = []
+
         for limit, collection in [
             (10, self.episodic),
             (5, self.working),
@@ -110,7 +91,7 @@ class Memory:
         return "\n---\n".join(texts) if texts else ""
 
     async def add_memory(self, text_content: str) -> str:
-        """Store memory."""
+        """Store agent response."""
         vector = self.google.embed(text_content)
         point_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).timestamp()
@@ -121,16 +102,11 @@ class Memory:
                 models.PointStruct(
                     id=point_id,
                     vector={"embedding": vector},
-                    payload={
-                        "text": text_content,
-                        "timestamp": now,
-                        "agent_name": self.agent_name,
-                    },
+                    payload={"text": text_content, "timestamp": now},
                 )
             ],
             wait=True,
         )
-
         return point_id
 
     async def add_to_semantic(
@@ -141,11 +117,7 @@ class Memory:
         point_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).timestamp()
 
-        payload = {
-            "text": text_content,
-            "timestamp": now,
-            "agent_name": self.agent_name,
-        }
+        payload = {"text": text_content, "timestamp": now}
         if metadata:
             payload.update(metadata)
 
@@ -160,5 +132,4 @@ class Memory:
             ],
             wait=True,
         )
-
         return point_id

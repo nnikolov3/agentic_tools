@@ -15,7 +15,7 @@ import logging
 from pathlib import Path
 from typing import Dict, Optional, Union
 
-from src.memory.qdrant_memory import QdrantMemory
+from src.memory.memory import Memory
 from src.tools.shell_tools import ShellTools
 from src.tools.tool import Tool
 
@@ -33,7 +33,6 @@ class Agent:
         chat: Optional[str],
         filepath: Optional[Union[str, Path]],
         target_directory: Optional[Path],
-        **kwargs,
     ) -> None:
         """Initializes agent with config and context.
 
@@ -57,7 +56,7 @@ class Agent:
         self.chat: Optional[str] = chat
         self.filepath: Optional[Union[str, Path]] = filepath
 
-        self.memory: Optional[QdrantMemory] = None
+        self.memory: Optional[Memory] = None
         self.memory_context: str = ""
         self.response: Optional[str] = None
 
@@ -157,7 +156,7 @@ class Agent:
 
         query = (self.chat or "") + self.agent_name
         self.memory = await asyncio.wait_for(
-            QdrantMemory.create(self.configuration, self.agent_name),
+            Memory.create(self.configuration),
             timeout=self.async_timeout,
         )
         retrieved_context = await self.memory.retrieve_context(query)
