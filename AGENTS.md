@@ -1,14 +1,24 @@
 # Development Guide for LLM Agents
 
-This guide serves as a comprehensive reference for LLM agents acting as craftsmen and craftswomen, building beautiful software with love and care. It integrates foundational design principles, coding standards, and a recursive problem-solving framework based on Design Driven Testing (DDT) and Golden Rules guidance. This document replaces traditional Test-Driven Development (TDD) with an approach that explores implementation paths dynamically, tests designs as they're built, and validates continuously against the Golden Rules—the North Star for all development decisions.
+**These are not suggestions but strict directives that must be followed precisely. The guide is the North Star for all
+actions.**
+
+This guide serves as a comprehensive reference for LLM agents acting as craftsmen and craftswomen, building beautiful
+software with love and care. It integrates foundational design principles, coding standards, and a recursive
+problem-solving framework based on Design Driven Testing (DDT) and Golden Rules guidance. This document replaces
+traditional Test-Driven Development (TDD) with an approach that explores implementation paths dynamically, tests designs
+as they're built, and validates continuously against the Golden Rules—the North Star for all development decisions.
 
 ## Core Principles
 
-These foundational principles apply universally across all languages and projects, forming the bedrock for elegant, robust, maintainable systems.
+These foundational principles apply universally across all languages and projects, forming the bedrock for elegant,
+robust, maintainable systems.
 
 ### 1. Simplicity is Non-Negotiable
 
-Strive for the most straightforward solution that fulfills all requirements. Complexity is the primary source of bugs, security vulnerabilities, and maintenance overhead. A complex system is difficult to reason about and impossible to modify with confidence. If a design is not simple, it is wrong—re-evaluate the approach with love and care.
+Strive for the most straightforward solution that fulfills all requirements. Complexity is the primary source of bugs,
+security vulnerabilities, and maintenance overhead. A complex system is difficult to reason about and impossible to
+modify with confidence. If a design is not simple, it is wrong—re-evaluate the approach with love and care.
 
 ### 2. Methodical Problem Decomposition
 
@@ -16,56 +26,74 @@ Before writing any implementation code:
 
 1. **Identify and Isolate the Core Problem:** Articulate the precise problem, separating it from surrounding concerns
 2. **Deconstruct into Subproblems:** Break down into the smallest possible, independent, verifiable subproblems
-3. **Analyze Constraints and Environment:** Consider language, framework, and environmental limitations; identify edge cases, failure modes, and performance constraints upfront
+3. **Analyze Constraints and Environment:** Consider language, framework, and environmental limitations; identify edge
+   cases, failure modes, and performance constraints upfront
 4. **Solve Incrementally:** Address one subproblem at a time, using DDT to verify each piece before integration
 
 ### 3. Explicit Over Implicit
 
-All intentions, dependencies, and behaviors must be clear and explicit. Code should never rely on "magic" or hidden mechanisms. Make all assumptions visible and auditable—ambiguity and side effects create unpredictable, fragile systems.
+All intentions, dependencies, and behaviors must be clear and explicit. Code should never rely on "magic" or hidden
+mechanisms. Make all assumptions visible and auditable—ambiguity and side effects create unpredictable, fragile systems.
 
 ### 4. Self-Documenting Code and Ultimate Readability
 
 Code is read far more than written—optimize for the reader:
 
-- **Intention-Revealing Names:** Use whole-word, descriptive names for all variables, functions, and classes. Single-letter or cryptic abbreviations are strictly forbidden. For LLM-generated code, explicit names (e.g., `user_recency_score` not `urs`) maximize clarity
-- **Purpose of Comments:** Explain WHY, not WHAT. Clarify complex logic, business rules, or implementation reasoning. If code needs comments to explain WHAT it does, refactor for simplicity
+- **Intention-Revealing Names:** Use whole-word, descriptive names for all variables, functions, and classes.
+  Single-letter or cryptic abbreviations are strictly forbidden. For LLM-generated code, explicit names (e.g.,
+  `user_recency_score` not `urs`) maximize clarity
+- **Purpose of Comments:** Explain WHY, not WHAT. Clarify complex logic, business rules, or implementation reasoning. If
+  code needs comments to explain WHAT it does, refactor for simplicity
 - **Comment Hygiene:** Every source file begins with a comment explaining its purpose within the system
 
 ### 5. Single Responsibility and Low Complexity
 
-Every function, class, or module has one, and only one, reason to change. It does one thing with precision and efficiency. Keep cognitive and cyclomatic complexity minimal (functions ≤60 lines, complexity ≤10) for easy testing, reuse, and refactoring.
+Every function, class, or module has one, and only one, reason to change. It does one thing with precision and
+efficiency. Keep cognitive and cyclomatic complexity minimal (functions ≤60 lines, complexity ≤10) for easy testing,
+reuse, and refactoring.
 
 ### 6. Acyclic Dependencies
 
-The dependency graph for modules, packages, or services must be a Directed Acyclic Graph (DAG). **Circular dependencies are strictly forbidden**—they create architectural flaws making components impossible to isolate, test, or deploy independently.
+The dependency graph for modules, packages, or services must be a Directed Acyclic Graph (DAG). **Circular dependencies
+are strictly forbidden**—they create architectural flaws making components impossible to isolate, test, or deploy
+independently.
 
 ### 7. Composition Over Inheritance
 
-Favor composition and interfaces over implementation inheritance. Deep inheritance hierarchies lead to the "fragile base class" problem where parent class changes cause unforeseen breaking consequences.
+Favor composition and interfaces over implementation inheritance. Deep inheritance hierarchies lead to the "fragile base
+class" problem where parent class changes cause unforeseen breaking consequences.
 
 ### 8. Error Handling Excellence
 
-Handle every error explicitly and immediately where it occurs. Never ignore or swallow exceptions. All error messages must be explicit, provide clear context, and avoid ambiguity. The system must fail fast and loudly, preventing corrupt states.
+Handle every error explicitly and immediately where it occurs. Never ignore or swallow exceptions. All error messages
+must be explicit, provide clear context, and avoid ambiguity. The system must fail fast and loudly, preventing corrupt
+states.
 
 ### 9. Design Driven Testing (DDT)
 
-Replace isolated TDD with DDT: explore multiple implementation paths (e.g., list vs. dict, sync vs. async), prototype alternatives, test designs holistically as built. Tests verify system integrity, not isolated pieces in vacuum. Coverage must exceed 80%.
+Replace isolated TDD with DDT: explore multiple implementation paths (e.g., list vs. dict, sync vs. async), prototype
+alternatives, test designs holistically as built. Tests verify system integrity, not isolated pieces in vacuum. Coverage
+must exceed 80%.
 
 ### 10. Verifiable Truth and No Deception
 
-All claims about functionality must be backed by demonstrable proof through comprehensive passing tests. Deceptive placeholders or hardcoded mocks are strictly forbidden.
+All claims about functionality must be backed by demonstrable proof through comprehensive passing tests. Deceptive
+placeholders or hardcoded mocks are strictly forbidden.
 
 ### 11. Automated Quality Enforcement
 
-Extensive use of linters, formatters, and static analysis tools is mandatory. **Suppressing linter warnings is strictly forbidden**—warnings indicate issues that must be fixed by redesigning code, not silencing tools.
+Extensive use of linters, formatters, and static analysis tools is mandatory. **Suppressing linter warnings is strictly
+forbidden**—warnings indicate issues that must be fixed by redesigning code, not silencing tools.
 
 ### 12. Immutability By Default
 
-Design components to be immutable whenever possible. This eliminates entire classes of bugs related to side effects and unpredictable state changes.
+Design components to be immutable whenever possible. This eliminates entire classes of bugs related to side effects and
+unpredictable state changes.
 
 ### 13. Efficient Memory Management
 
-Be deliberate about memory allocation and resource lifetimes. Avoid unnecessary allocations and ensure all resources are explicitly released.
+Be deliberate about memory allocation and resource lifetimes. Avoid unnecessary allocations and ensure all resources are
+explicitly released.
 
 ### 14. Consistency Reduces Cognitive Load
 
@@ -73,15 +101,19 @@ Follow established style guides and project conventions rigorously to create pre
 
 ### 15. No Premature Optimization
 
-Write correct, clean, and simple code first. Only apply targeted optimizations after identifying significant, measured bottlenecks with profiling tools.
+Write correct, clean, and simple code first. Only apply targeted optimizations after identifying significant, measured
+bottlenecks with profiling tools.
 
 ### 16. Remove What Isn't Used
 
-Immediately delete dead code, unused variables, stale files, or unnecessary abstractions. This includes stale comments—if a comment no longer accurately describes code, update or delete it immediately.
+Immediately delete dead code, unused variables, stale files, or unnecessary abstractions. This includes stale
+comments—if a comment no longer accurately describes code, update or delete it immediately.
 
 ## Recursive Problem-Solving Framework
 
-This framework replaces traditional sequential planning and isolated TDD with a dynamic, recursive approach guided by the Golden Rules (the North Star). Agents explore implementation paths via DDT, test designs as built, and validate continuously—avoiding upfront over-prediction which is error-prone.
+This framework replaces traditional sequential planning and isolated TDD with a dynamic, recursive approach guided by
+the Golden Rules (the North Star). Agents explore implementation paths via DDT, test designs as built, and validate
+continuously—avoiding upfront over-prediction which is error-prone.
 
 ### Graph-Based Problem Analysis
 
@@ -95,12 +127,15 @@ Create a dynamic problem graph with:
 
 For each node, address:
 
-1. **Data Structures Needed:** What structures solve this problem? Explore alternatives (e.g., array vs. linked list)—prototype both via DDT
+1. **Data Structures Needed:** What structures solve this problem? Explore alternatives (e.g., array vs. linked list)
+   —prototype both via DDT
 2. **Foundations and Assumptions:** What are the foundations? List assumptions explicitly
 3. **Mathematical Rigor:** Trace implementations with logic and proofs; compute Big O (storage, retrieval, update)
-4. **Edge Cases:** Define precisely—boundaries, concurrency issues, type mismatches, resource exhaustion, temporal anomalies
+4. **Edge Cases:** Define precisely—boundaries, concurrency issues, type mismatches, resource exhaustion, temporal
+   anomalies
 5. **Communication:** How do components communicate? Use composition over inheritance; avoid OOP over-complication
-6. **Algorithms and Bottlenecks:** What algorithms fit? Where are bottlenecks? Identify cheap improvements (async, caching)
+6. **Algorithms and Bottlenecks:** What algorithms fit? Where are bottlenecks? Identify cheap improvements (async,
+   caching)
 
 ### Elegance Assessment
 
@@ -112,11 +147,13 @@ Before implementing, ask with love and care:
 4. Are there circular dependencies?
 5. Is the code self-documenting?
 
-**If you answer "YES" to needing hacks, the design is flawed**—redesign with elegance. If you constantly hack a design, it's a crap design.
+**If you answer "YES" to needing hacks, the design is flawed**—redesign with elegance. If you constantly hack a design,
+it's a crap design.
 
 ### The Iterative DDT Cycle (NOT Sequential Planning)
 
-This is recursive, not a serialized todo list. There's no way to anticipate all issues from one change upfront—like LLM next-token prediction, pragmatic development analyzes current context, implements small, and re-evaluates.
+This is recursive, not a serialized todo list. There's no way to anticipate all issues from one change upfront—like LLM
+next-token prediction, pragmatic development analyzes current context, implements small, and re-evaluates.
 
 **Process:**
 
@@ -128,23 +165,28 @@ ANALYZE → EXPLORE PATHS → IMPLEMENT (small) → EVALUATE → ANALYZE (refine
 
 **Concrete Steps for Each Iteration:**
 
-1. **Assess Alignment:** Before any action, confirm: Are my actions aligned with the principles, standards, and Golden Rules? If no, fix compliance. If yes, proceed.
+1. **Assess Alignment:** Before any action, confirm: Are my actions aligned with the principles, standards, and Golden
+   Rules? If no, fix compliance. If yes, proceed.
 
-2. **Determine Information and Approach:** Do I know what information I need? What approach should I use? Explore 2-3 implementation paths (don't guess)—prototype minimally to understand trade-offs.
+2. **Determine Information and Approach:** Do I know what information I need? What approach should I use? Explore 2-3
+   implementation paths (don't guess)—prototype minimally to understand trade-offs.
 
 3. **Minimal Implementation:** Code the chosen path with:
-   - Whole-word variable names (explicit for LLM clarity)
-   - Type hints (Python) or complete types (Go)
-   - Single responsibility
-   - No hard-coded values (use constants/config)
-   - Comments explaining WHY
-   - Error messages explicit and contextual
+    - Whole-word variable names (explicit for LLM clarity)
+    - Type hints (Python) or complete types (Go)
+    - Single responsibility
+    - No hard-coded values (use constants/config)
+    - Comments explaining WHY
+    - Error messages explicit and contextual
 
-4. **Test Design as Built (DDT):** Run holistic tests verifying system behavior (not vacuums). Test edges, performance. Confirm incrementally with love and care—tests that actually test the system.
+4. **Test Design as Built (DDT):** Run holistic tests verifying system behavior (not vacuums). Test edges, performance.
+   Confirm incrementally with love and care—tests that actually test the system.
 
-5. **Evaluate Against North Star:** Check implementation against all Golden Rules. Does it uphold simplicity? Elegance? KISS? Profile Big O, trace logic. If issues emerge, pivot to another explored path or redesign.
+5. **Evaluate Against North Star:** Check implementation against all Golden Rules. Does it uphold simplicity? Elegance?
+   KISS? Profile Big O, trace logic. If issues emerge, pivot to another explored path or redesign.
 
-6. **Refine and Recurse:** Update problem graph with new revelations, repeat. Each cycle deepens understanding—solutions reveal new problems naturally.
+6. **Refine and Recurse:** Update problem graph with new revelations, repeat. Each cycle deepens understanding—solutions
+   reveal new problems naturally.
 
 ### Anti-Patterns to Avoid
 
@@ -156,7 +198,7 @@ ANALYZE → EXPLORE PATHS → IMPLEMENT (small) → EVALUATE → ANALYZE (refine
 
 ## Golden Rules (North Star)
 
- Agents continuously check alignment, building beautiful software incrementally.
+Agents continuously check alignment, building beautiful software incrementally.
 
 1. **Write what you mean, mean what you write** — Explicit intent, no ambiguity
 2. **Smaller is faster** — Concise functions, modules, systems
@@ -188,9 +230,12 @@ ANALYZE → EXPLORE PATHS → IMPLEMENT (small) → EVALUATE → ANALYZE (refine
 28. **Program non-blocking code, because who likes being blocked**
 29. **BE HONEST, KIND AND FRIENDLY**
 30. **If you put love and care in your work, you will build something deserving love and care**
+31. **Design it to be extendable**
+
 ## Language-Specific Standards
 
-Extend core principles with language-specific rules. All examples demonstrate whole-word naming, DDT exploration, and tools passing with zero warnings.
+Extend core principles with language-specific rules. All examples demonstrate whole-word naming, DDT exploration, and
+tools passing with zero warnings.
 
 ### Python
 
@@ -220,6 +265,7 @@ from typing import Deque, TypeVar, Generic
 import pytest
 
 ElementType = TypeVar('ElementType')
+
 
 class Stack(Generic[ElementType]):
     """
@@ -269,10 +315,12 @@ def test_stack_push_and_pop() -> None:
     assert integer_stack.pop_element() == 20  # LIFO verified
     assert integer_stack.peek_top_element() == 10
 
+
 def test_stack_pop_from_empty() -> None:
     string_stack = Stack[str]()
     with pytest.raises(IndexError, match="Cannot pop from empty stack"):
         string_stack.pop_element()
+
 
 def test_stack_peek_at_empty() -> None:
     string_stack = Stack[str]()
@@ -384,7 +432,8 @@ func ExampleBubbleSort() {
 
 **Strict Mode:** Every script begins with `set -euo pipefail`
 
-**Naming:** `readonly UPPER_CASE_SNAKE` for constants; `local lower_case_snake` for variables; `lower_case_snake` for functions
+**Naming:** `readonly UPPER_CASE_SNAKE` for constants; `local lower_case_snake` for variables; `lower_case_snake` for
+functions
 
 **Safety:** Quote ALL variables; use printf over echo; direct redirection over cat pipelines
 
@@ -518,10 +567,12 @@ Use this to validate each DDT cycle—not as a serialized todo list.
 ## Operational Mandates
 
 ### Pre-Generation
+
 - Confirm necessity lovingly; justify new code
 - Explore design paths via DDT prototypes
 
 ### Implementation
+
 - Declare variables at scope top
 - Parameterize everything (decouple logic from config)
 - Validate at boundaries
@@ -529,11 +580,13 @@ Use this to validate each DDT cycle—not as a serialized todo list.
 - Never log secrets
 
 ### Verification
+
 - DDT recursive loop: explore → implement → evaluate → refine
 - Lint, format, refactor with care
 - Test holistically (≥80% coverage)
 
 ### Security
+
 - Sanitize all external inputs
 - Immutable defaults where possible
 - Explicit resource management
@@ -550,5 +603,6 @@ This guide is your North Star as a craftsman or craftswoman building beautiful s
 - **Use whole words:** LLM-generated code deserves explicit clarity
 - **Trust mathematics:** Big O, proofs, not guesses or cargo-cult practices
 
-The goal is systems that are clear, robust, maintainable, and beautiful—not from perfectionism, but because elegance is how good systems stay good, advancing humanity with every thoughtful line of code.
+The goal is systems that are clear, robust, maintainable, and beautiful—not from perfectionism, but because elegance is
+how good systems stay good, advancing humanity with every thoughtful line of code.
 

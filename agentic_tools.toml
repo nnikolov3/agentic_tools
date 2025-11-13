@@ -1,60 +1,99 @@
 [project]
-project_name = "agenttech"
+project_name = "agentic-tools"
 source_code = ["src"]
 documentation = ["docs"]
 configuration = "agentic-tools.toml"
+responses_dir = "responses"
+
+[providers]
+
 
 [memory]
-url = "http://192.168.122.40:6334"
+host = "192.168.122.40"
+grpc_port = 6334
+prefer_grpc = true
 timeout = 30
 embedding_model = "gemini-embedding-001"
+embedding_provider = "google"
+augumentation_provider = "google"
+augumentation_model = "gemini-2.5-pro"
+augmentation_system_prompt = ""
+augumentation_user_prompt = ""
 embedding_size = 3072
-google_api_key_env = "GEMINI_API_KEY"
+embedding_api_key = "GEMINI_API_KEY"
 episodic_collection = "episodic"
 working_collection = "working"
 semantic_collection = "semantic"
 
+[content_extractor] # New section for content extractor configurations
+ocr_provider = "mistral"
+ocr_model = "mistral-ocr-latest"
+ocr_api_key = "MISTRAL_API_KEY"
+
 [agents.architect]
-name = "architect"
-description = "Senior architect for system design and planning"
-model_name = "gemini-2.5-pro"
-api_key = "GEMINI_API_KEY"
-temperature = 0.3
-memory_enabled = true
+agent_name = "architect"
+agent_description = "Senior architect for system design and planning"
+agent_provider = "google"
+agent_model_name = "gemini-2.5-pro"
+agent_api_key = "GEMINI_API_KEY"
+agent_temperature = 0.3
+agent_memory_enabled = true
 total_memories_to_retrieve = 30
-recent_weight = 0.4
-working_weight = 0.4
-semantic_weight = 0.2
+agent_episodic_weight = 0.4
+agent_working_weight = 0.4
+agent_semantic_weight = 0.2
 
 [agents.architect.tool_use]
 git_diff_command = ["diff", "HEAD", "--patch-with-raw"]
 git_log_command = ["log", "--pretty", "-20"]
 
-[agents.developer]
-name = "developer"
-description = "Senior developer for implementation"
-model_name = "gemini-2.5-flash"
-api_key = "GEMINI_API_KEY"
+[agents.knowledge_augmentor]
+name = "knowledge_augmentor"
+description = "Knowledge augmentation agent"
+embedding_model = "gemini-embedding-001"
+embedding_provider = "google"
+embedding_api_key = "GEMINI_API_KEY"
+augumentation_provider = "google"
+augumentation_model = "gemini-2.5-pro"
+augmentation_system_prompt = "You are an expert technical writer in rewriting content in the form of 'problem' and 'solution'. "
+augumentation_user_prompt = "Rewrite this focusing on concepts, and providing all concepts with detailed and proper examples, why clearly demonstrating who constitutes a good solution"
+embedding_size = 3072
+chunk_size = 128
+async_timeout = 60
 temperature = 0.3
-memory_enabled = true
-total_memories_to_retrieve = 25
-recent_weight = 0.6
-working_weight = 0.3
-semantic_weight = 0.1
 
-[agents.developer.tool_use]
-git_diff_command = ["diff", "HEAD", "--patch-with-raw", "--minimal"]
-git_log_command = ["log", "--pretty", "-10"]
+[golden_rules]
+rules = """
 
-[agents.ingestor]
-name = "ingestor"
-description = "Document ingestion agent"
-model_name = "gemini-2.5-flash"
-api_key = "GEMINI_API_KEY"
-temperature = 0.0
-memory_enabled = true
-total_memories_to_retrieve = 5
-recent_weight = 0.2
-working_weight = 0.3
-semantic_weight = 0.5
-mistral_api_key_env = "MISTRAL_API_KEY"
+1. **Write what you mean, mean what you write** — Explicit intent, no ambiguity
+2. **Smaller is faster** — Concise functions, modules, systems
+3. **Simple is efficient** — Avoid over-engineering (KISS)
+4. **Explicit > Implicit** — No magic; document assumptions
+5. **Use whole words** — LLM-generated code benefits from clarity: `recency_score` not `rs`
+6. **Related code lives together** — Modular, co-located
+7. **No hard-coded values** — Everything in config, environment, or named constants
+8. **Fresh info/specs** — Latest libraries, specifications, research (e.g., Qdrant 1.10+)
+9. **Clean trash code** — Refactor on sight; no dead variables or functions
+10. **Read problem 3x** — Define what you know before coding
+11. **Plan first** — Architecture before implementation (via problem graph)
+12. **DRY** — Don't Repeat Yourself
+13. **KISS** — Keep It Simple, Stupid
+14. **Accurate comments** — Explain WHY, not WHAT
+15. **Put love and care in your work** — This is a craft; you are a craftsman/craftswoman building beauty
+16. **No baseless assumptions** — Guessing is like the lottery; base decisions on science and prior art
+17. **If you don't know, ask** — Reference science, experts, and prior art
+18. **Set expectations early** — Clear scope and goals
+19. **Lean, clean, mean solutions** — Minimal viable elegance
+20. **Truthful, kind, helpful** — Advance humanity to a better state
+21. **Elegance is non-negotiable** — If you constantly hack a design, redesign it
+22. **Recursive analysis** — Iteratively refine as you build, not sequential planning
+23. **Mathematical rigor** — Big O analysis, proofs of correctness
+24. **Dynamic guidance** — Problem graphs and DDT, not checklists
+25. **Golden Rules are the North Star** — Every decision validated against these 25 rules
+26. **Design Driven Iteration** — Explore paths via DDT, test as built—never guess
+27. **ALWAYS return from a function**
+28. **Program non-blocking code, because who likes being blocked**
+29. **BE HONEST, KIND AND FRIENDLY**
+30. **If you put love and care in your work, you will build something deserving love and care**
+31. **Design it to be extendable, flexible and modifiable**
+"""

@@ -12,27 +12,51 @@ import os
 import sys
 import tomllib
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP
 
 from src.agent import Agent
-from src.agents.document_ingestor import DocumentIngestor
 from src.memory.memory import Memory
+from src.providers.provider_factory import ProviderFactory
+from src.utils.content_extractor import ContentExtractor
+from src.utils.document_processor import DocumentProcessor
+from src.utils.knowledge_augmentor import KnowledgeAugmentor
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
 logger: logging.Logger = logging.getLogger(__name__)
 
+# --- Configuration and Constants ---
 DEFAULT_CONFIGURATION_FILENAME: str = str(
     os.environ.get("AGENTIC_TOOLS_TOML", "agentic_tools.toml")
 )
 MCP_SERVER_NAME: str = str(os.environ.get("MCP_SERVER_NAME", "agentic-tools"))
-DEFAULT_SERVER_TRANSPORT: str = str(os.environ.get("FASTMCP_TRANSPORT", "http"))
+
+# --- Boundary Validation for Transport ---
+TransportLiteral = Literal["stdio", "http", "sse", "streamable-http"]
+ALLOWED_TRANSPORTS: List[TransportLiteral] = [
+    "stdio",
+    "http",
+    "sse",
+    "streamable-http",
+]
+DEFAULT_SERVER_TRANSPORT_STR: str = str(os.environ.get("FASTMCP_TRANSPORT", "http"))
+
+if DEFAULT_SERVER_TRANSPORT_STR not in ALLOWED_TRANSPORTS:
+    logger.error(
+        "Invalid FASTMCP_TRANSPORT: '%s'. Must be one of: %s",
+        DEFAULT_SERVER_TRANSPORT_STR,
+        ", ".join(ALLOWED_TRANSPORTS),
+    )
+    sys.exit(1)
+
+DEFAULT_SERVER_TRANSPORT: Literal = DEFAULT_SERVER_TRANSPORT_STR  # type: ignore
+
 DEFAULT_SERVER_HOST: str = str(os.environ.get("FASTMCP_HOST", "0.0.0.0"))
 DEFAULT_SERVER_PORT: int = int(os.environ.get("FASTMCP_PORT", "8000"))
 
@@ -46,10 +70,7 @@ class Configurator:
 
     def get_config_dictionary(self) -> Dict[str, Any]:
         """Loads TOML configuration from an explicit path using fail-fast validation."""
-        if (
-            not self.configuration_path.exists()
-            or not self.configuration_path.is_file()
-        ):
+        if not self.configuration_path.is_file():
             logger.error("Configuration file not found: %s", self.configuration_path)
             sys.exit(1)
 
@@ -67,24 +88,21 @@ def normalize_agent_configurations(
 
     if isinstance(agents_object, dict):
         agent_configurations: List[Dict[str, Any]] = []
-        for agent_key, agent_configuration in agents_object.items():
-            if not isinstance(agent_configuration, dict):
+        for agent_key, agent_config in agents_object.items():
+            if not isinstance(agent_config, dict):
                 logger.error(
                     "Invalid agent entry for key '%s'; expected table/object.",
                     agent_key,
                 )
                 sys.exit(1)
-            if "name" not in agent_configuration:
-                agent_configuration = {**agent_configuration, "name": agent_key}
-            agent_configurations.append(agent_configuration)
+            if "name" not in agent_config:
+                agent_config = {**agent_config, "name": agent_key}
+            agent_configurations.append(agent_config)
         return agent_configurations
 
     if isinstance(agents_object, list):
-        for index, agent_configuration in enumerate(agents_object):
-            if (
-                not isinstance(agent_configuration, dict)
-                or "name" not in agent_configuration
-            ):
+        for index, agent_config in enumerate(agents_object):
+            if not isinstance(agent_config, dict) or "name" not in agent_config:
                 logger.error("Invalid agent at index %d; need dict with 'name'.", index)
                 sys.exit(1)
         return agents_object
@@ -112,10 +130,8 @@ class Helpers:
         prompt_file_argument: Optional[str] = getattr(arguments, "prompt_file", None)
         if prompt_file_argument:
             prompt_file_path: Path = Path(prompt_file_argument)
-            if (
-                not prompt_file_path.exists()
-                or not prompt_file_path.is_file()
-                or not os.access(str(prompt_file_path), os.R_OK)
+            if not prompt_file_path.is_file() or not os.access(
+                str(prompt_file_path), os.R_OK
             ):
                 logger.error("Invalid prompt_file: %s", prompt_file_argument)
                 sys.exit(1)
@@ -131,7 +147,34 @@ class Helpers:
         if not path_object.exists() or not os.access(str(path_object), os.R_OK):
             logger.error("Invalid %s: %s", label, str(path_object))
             sys.exit(1)
-        return None
+
+
+def initialize_providers_for_agent(
+    agent_config: Dict[str, Any], global_config: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Initializes providers for a specific agent based on its configuration."""
+    providers: Dict[str, Any] = {}
+    provider_factory = ProviderFactory()
+    required_providers = {
+        agent_config.get("agent_provider"),
+        agent_config.get("embedding_provider"),
+        agent_config.get("augmentation_provider"),
+        global_config.get("content_extractor", {}).get("ocr_provider"),
+    }
+    required_providers.discard(None)
+
+    for provider_name in required_providers:
+        provider_config = global_config.get("providers", {}).get(provider_name, {})
+        try:
+            providers[provider_name] = provider_factory.get_provider(
+                provider_name, provider_config
+            )
+            logger.info("Provider '%s' initialized for agent.", provider_name)
+        except ValueError as e:
+            logger.error(
+                "Failed to initialize provider '%s' for agent: %s", provider_name, e
+            )
+    return providers
 
 
 async def build_agent_instance(
@@ -140,8 +183,13 @@ async def build_agent_instance(
     prompt_text: Optional[str],
     file_path_object: Optional[Path],
     target_directory_object: Path,
-) -> Agent:
+) -> Union[Agent, DocumentProcessor, KnowledgeAugmentor]:
     """Builds the Agent identically for both CLI and FastMCP server modes."""
+    golden_rules = configuration.get("golden_rules", {}).get("rules", "")
+    agent_configuration["golden_rules"] = golden_rules
+
+    providers = initialize_providers_for_agent(agent_configuration, configuration)
+
     project_name: str = agent_configuration.get(
         "project",
         configuration.get("project", {}).get("project_name", "agenttech"),
@@ -151,251 +199,88 @@ async def build_agent_instance(
         "prompt", "Execute task."
     )
 
-    memory = await Memory.create(configuration)
+    memory = await Memory.create(configuration, providers)
+    content_extractor = ContentExtractor(
+        configuration.get("content_extractor", {}), providers
+    )
+    document_processor = DocumentProcessor(
+        configuration.get("document_processor", {}),
+        memory,
+        providers,
+        content_extractor,
+    )
+    knowledge_augmentor = KnowledgeAugmentor(
+        configuration.get("knowledge_augmentor", {}),
+        memory,
+        providers,
+        content_extractor,
+    )
 
-    agent_instance: Agent = Agent(
-        configuration=configuration,
-        agent_name=agent_configuration["name"],
+    agent_name = agent_configuration["name"]
+    if agent_name == "ingestor":
+        return document_processor
+    if agent_name == "knowledge_augmentor":
+        return knowledge_augmentor
+
+    return Agent(
+        configuration=agent_configuration,
+        agent_name=agent_name,
         project=project_name,
         chat=effective_prompt,
         filepath=file_path_object,
         target_directory=target_directory_object,
+        memory=memory,
+        providers=providers,
+        document_processor=document_processor,
+        knowledge_augmentor=knowledge_augmentor,
     )
-
-    agent_instance.new_memory = memory
-
-    if agent_configuration["name"] == "ingestor":
-        agent_instance.document_ingestor = DocumentIngestor(configuration, memory)
-
-    return agent_instance
 
 
 async def run_agent_and_store(
-    agent_instance: Agent,
-    agent_name: str,
-    prompt_text: Optional[str],
+    agent_instance: Union[Agent, DocumentProcessor, KnowledgeAugmentor],
+    file_path: Optional[str],
 ) -> str:
     """Runs agent, stores conversation in episodic memory, returns response."""
-    response_text: Optional[str] = await agent_instance.run_agent()
+    if isinstance(agent_instance, DocumentProcessor):
+        if file_path:
+            await agent_instance.process_document(file_path)
+            return f"Successfully ingested document: {file_path}"
+        logger.warning("Ingestor agent called without a filepath.")
+        return "Ingestor agent requires a filepath to process a document."
 
-    if (
-        response_text
-        and hasattr(agent_instance, "new_memory")
-        and agent_instance.new_memory
-    ):
-        await agent_instance.new_memory.add_to_episodic(
-            content=f"User: {prompt_text}\n\nAgent: {response_text}",
-            metadata={
-                "agent_name": agent_name,
-                "prompt": prompt_text,
-                "response_length": len(response_text),
-            },
-        )
-        logger.info("Stored conversation in episodic memory")
+    if isinstance(agent_instance, KnowledgeAugmentor):
+        if file_path:
+            result = await agent_instance.run(file_path)
+            return f"Successfully augmented knowledge from document: {file_path}. Result: {result}"
+        logger.warning("Knowledge augmentor agent called without a filepath.")
+        return "Knowledge augmentor agent requires a filepath to process a document."
 
-    return response_text or ""
+    if isinstance(agent_instance, Agent):
+        return await agent_instance.run_agent()
 
-
-class DynamicArgumentParser:
-    """Builds a CLI with dynamic agent choices from configuration."""
-
-    def __init__(self, agent_names: List[str]) -> None:
-        self.agent_names: List[str] = agent_names
-
-    def setup_argument_parser(self) -> argparse.ArgumentParser:
-        """Creates and returns the top-level argument parser with detailed help."""
-        description_text: str = """Agentic Tools - Multi-Agent System
-
-MODES:
-  1. Server Mode (default): python main.py
-     Starts FastMCP server exposing agent tools via HTTP/SSE
-
-  2. CLI Mode: python main.py run <agent_name> [options]
-     Run a specific agent interactively from command line
-
-EXAMPLES:
-  # Start server
-  python main.py
-
-  # Run architect agent with inline prompt
-  python main.py run architect --chat "Design a REST API"
-
-  # Run developer agent with file prompt
-  python main.py run developer --prompt_file task.txt --target_directory ./project
-
-  # Run ingestor agent to process PDF
-  python main.py run ingestor --file_path document.pdf
-
-ENVIRONMENT VARIABLES:
-  AGENTIC_TOOLS_TOML  - Config file path (default: agentic_tools.toml)
-  MCP_SERVER_NAME     - Server name (default: agentic-tools)
-  FASTMCP_TRANSPORT   - Transport type (default: http)
-  FASTMCP_HOST        - Server host (default: 0.0.0.0)
-  FASTMCP_PORT        - Server port (default: 8000)
-"""
-
-        parser_object: argparse.ArgumentParser = argparse.ArgumentParser(
-            description=description_text,
-            formatter_class=argparse.RawDescriptionHelpFormatter,
-        )
-
-        subparsers_object = parser_object.add_subparsers(
-            dest="command",
-            help="Available commands",
-            required=False,
-        )
-
-        run_subparser = subparsers_object.add_parser(
-            "run",
-            help="Run an agent from the command line",
-            formatter_class=argparse.RawDescriptionHelpFormatter,
-            description=f"Run a configured agent by name.\n\nAvailable agents: {', '.join(self.agent_names)}",
-        )
-
-        run_subparser.add_argument(
-            "agent_name",
-            type=str,
-            choices=self.agent_names,
-            help="Name of the agent to run (from config)",
-        )
-
-        run_subparser.add_argument(
-            "--chat",
-            type=str,
-            default=None,
-            help="Inline prompt text for the agent",
-        )
-
-        run_subparser.add_argument(
-            "--prompt_file",
-            type=str,
-            default=None,
-            help="Path to file containing prompt text",
-        )
-
-        run_subparser.add_argument(
-            "--file_path",
-            type=str,
-            default=None,
-            help="Input file to process (PDF for ingestor, code file for developer, etc)",
-        )
-
-        run_subparser.add_argument(
-            "--target_directory",
-            type=str,
-            default=None,
-            help="Project root directory (default: current working directory)",
-        )
-
-        return parser_object
-
-
-class CommandLineInterface:
-    """Runs a configured agent by name using CLI inputs and shared factory."""
-
-    def __init__(
-        self, arguments: argparse.Namespace, configuration: Dict[str, Any]
-    ) -> None:
-        self.arguments: argparse.Namespace = arguments
-        self.configuration: Dict[str, Any] = configuration
-
-    async def run_cli(self) -> None:
-        """Resolves inputs, validates boundaries, builds Agent, and runs it."""
-        prompt_text: Optional[str] = Helpers.resolve_prompt_text(self.arguments)
-
-        file_path_object: Optional[Path] = (
-            Path(self.arguments.file_path)
-            if getattr(self.arguments, "file_path", None)
-            else None
-        )
-
-        if file_path_object is not None:
-            Helpers.validate_path_readable(file_path_object, "file_path")
-            if not file_path_object.is_file():
-                logger.error(
-                    "Invalid file_path (not a file): %s", str(file_path_object)
-                )
-                sys.exit(1)
-
-        target_directory_object: Path = (
-            Path(self.arguments.target_directory)
-            if getattr(self.arguments, "target_directory", None)
-            else Path.cwd()
-        )
-
-        Helpers.validate_path_readable(target_directory_object, "target_directory")
-        if not target_directory_object.is_dir():
-            logger.error(
-                "Invalid target_directory (not a directory): %s",
-                str(target_directory_object),
-            )
-            sys.exit(1)
-
-        agent_configurations: List[Dict[str, Any]] = normalize_agent_configurations(
-            self.configuration
-        )
-        agent_configuration: Optional[Dict[str, Any]] = next(
-            (
-                cfg
-                for cfg in agent_configurations
-                if cfg.get("name") == self.arguments.agent_name
-            ),
-            None,
-        )
-
-        if agent_configuration is None:
-            logger.error(
-                "Agent '%s' not found in configuration.", self.arguments.agent_name
-            )
-            sys.exit(1)
-
-        agent_instance: Agent = await build_agent_instance(
-            configuration=self.configuration,
-            agent_configuration=agent_configuration,
-            prompt_text=prompt_text,
-            file_path_object=file_path_object,
-            target_directory_object=target_directory_object,
-        )
-
-        response_text: str = await run_agent_and_store(
-            agent_instance=agent_instance,
-            agent_name=self.arguments.agent_name,
-            prompt_text=prompt_text,
-        )
-
-        if response_text:
-            print("\n" + "=" * 80)
-            print(f"AGENT: {self.arguments.agent_name}")
-            print("=" * 80)
-            print(response_text)
-            print("=" * 80 + "\n")
-        else:
-            logger.warning("No response from agent '%s'.", self.arguments.agent_name)
-
-        return None
+    logger.error("Unknown agent instance type: %s", type(agent_instance))
+    return "Error: Unknown agent type."
 
 
 class DynamicFastMCPServer(FastMCP):
-    """Registers one MCP tool per agent using the decorator API and runs the server."""
+    """Registers one MCP tool per agent and runs the server."""
 
     def __init__(
         self, arguments: argparse.Namespace, configuration: Dict[str, Any]
     ) -> None:
         super().__init__(MCP_SERVER_NAME)
-        self.configuration: Dict[str, Any] = configuration
-        self.arguments: argparse.Namespace = arguments
-        self.agent_configurations: List[Dict[str, Any]] = (
-            normalize_agent_configurations(self.configuration)
-        )
+        self.configuration = configuration
+        self.arguments = arguments
+        self.agent_configurations = normalize_agent_configurations(self.configuration)
 
     async def run_fastmcp(self) -> None:
-        """Registers per-agent tools and starts the server using the async API."""
+        """Registers per-agent tools and starts the server."""
         if not self.agent_configurations:
             logger.error("No agent configurations found.")
             sys.exit(1)
 
-        for agent_configuration in self.agent_configurations:
-            agent_name: str = agent_configuration["name"]
+        for agent_config in self.agent_configurations:
+            agent_name = agent_config["name"]
 
             @self.tool(
                 name=f"{agent_name}_run",
@@ -405,43 +290,25 @@ class DynamicFastMCPServer(FastMCP):
                 chat: Optional[str] = None,
                 file_path: Optional[str] = None,
                 target_directory: Optional[str] = None,
-                _bound_agent_configuration: Dict[str, Any] = agent_configuration,
-                _bound_agent_name: str = agent_name,
+                _bound_agent_config: Dict[str, Any] = agent_config,
             ) -> str:
-                file_path_object: Optional[Path] = (
-                    Path(file_path) if file_path else None
-                )
-                if file_path_object is not None:
-                    Helpers.validate_path_readable(file_path_object, "file_path")
-                    if not file_path_object.is_file():
-                        raise ValueError(
-                            f"Invalid file_path (not a file): {file_path_object}"
-                        )
+                file_path_obj = Path(file_path) if file_path else None
+                if file_path_obj:
+                    Helpers.validate_path_readable(file_path_obj, "file_path")
 
-                target_directory_object: Path = (
+                target_dir_obj = (
                     Path(target_directory) if target_directory else Path.cwd()
                 )
-                Helpers.validate_path_readable(
-                    target_directory_object, "target_directory"
-                )
-                if not target_directory_object.is_dir():
-                    raise ValueError(
-                        f"Invalid target_directory (not a directory): {target_directory_object}"
-                    )
+                Helpers.validate_path_readable(target_dir_obj, "target_directory")
 
-                agent_instance: Agent = await build_agent_instance(
+                agent_instance = await build_agent_instance(
                     configuration=self.configuration,
-                    agent_configuration=_bound_agent_configuration,
+                    agent_configuration=_bound_agent_config,
                     prompt_text=chat,
-                    file_path_object=file_path_object,
-                    target_directory_object=target_directory_object,
+                    file_path_object=file_path_obj,
+                    target_directory_object=target_dir_obj,
                 )
-
-                return await run_agent_and_store(
-                    agent_instance=agent_instance,
-                    agent_name=_bound_agent_name,
-                    prompt_text=chat,
-                )
+                return await run_agent_and_store(agent_instance, file_path)
 
         await self.run_async(
             transport=DEFAULT_SERVER_TRANSPORT,
@@ -449,54 +316,114 @@ class DynamicFastMCPServer(FastMCP):
             port=DEFAULT_SERVER_PORT,
         )
 
-        return None
 
+def create_argument_parser(agent_names: List[str]) -> argparse.ArgumentParser:
+    """Creates and configures the argument parser."""
+    parser = argparse.ArgumentParser(description="Agentic Tools CLI and FastMCP Server")
+    subparsers = parser.add_subparsers(dest="command", help="Command")
 
-async def cli_mode(
-    arguments: argparse.Namespace, configuration: Dict[str, Any]
-) -> None:
-    """Runs the CLI mode."""
-    command_line_interface: CommandLineInterface = CommandLineInterface(
-        arguments, configuration
+    # Run command
+    run_parser = subparsers.add_parser("run", help="Run an agent from the CLI")
+    run_parser.add_argument(
+        "--agent",
+        choices=agent_names,
+        required=True,
+        help="Name of the agent to run",
     )
-    await command_line_interface.run_cli()
-    return None
+    run_parser.add_argument("--chat", type=str, help="Chat message for the agent")
+    run_parser.add_argument(
+        "--prompt_file", type=str, help="Path to a file with the prompt"
+    )
+    run_parser.add_argument(
+        "--file_path", type=str, help="Path to a file for the agent to process"
+    )
+    run_parser.add_argument(
+        "--target_directory", type=str, help="Target directory for agent operations"
+    )
+
+    # Server command
+    server_parser = subparsers.add_parser("server", help="Start the FastMCP server")
+    server_parser.add_argument(
+        "--host", type=str, default=DEFAULT_SERVER_HOST, help="Server host"
+    )
+    server_parser.add_argument(
+        "--port", type=int, default=DEFAULT_SERVER_PORT, help="Server port"
+    )
+    server_parser.add_argument(
+        "--transport",
+        choices=ALLOWED_TRANSPORTS,
+        default=DEFAULT_SERVER_TRANSPORT,
+        help="Server transport",
+    )
+    return parser
 
 
-async def fastmcp_mode(
-    arguments: argparse.Namespace, configuration: Dict[str, Any]
-) -> None:
-    """Runs the FastMCP server mode."""
-    server: DynamicFastMCPServer = DynamicFastMCPServer(arguments, configuration)
-    await server.run_fastmcp()
-    return None
+class CommandLineInterface:
+    """Handles CLI arguments and orchestrates agent execution."""
+
+    def __init__(
+        self, arguments: argparse.Namespace, configuration: Dict[str, Any]
+    ) -> None:
+        self.arguments = arguments
+        self.configuration = configuration
+        self.agent_configurations = normalize_agent_configurations(self.configuration)
+
+    async def run_cli(self) -> None:
+        """Executes the agent based on CLI arguments."""
+        agent_name: str = self.arguments.agent
+        agent_config = next(
+            (ac for ac in self.agent_configurations if ac["name"] == agent_name), None
+        )
+
+        if not agent_config:
+            logger.error("Agent '%s' not found in configuration.", agent_name)
+            sys.exit(1)
+
+        prompt_text = Helpers.resolve_prompt_text(self.arguments)
+        file_path_obj = (
+            Path(self.arguments.file_path) if self.arguments.file_path else None
+        )
+        if file_path_obj:
+            Helpers.validate_path_readable(file_path_obj, "file_path")
+
+        target_dir_obj = (
+            Path(self.arguments.target_directory)
+            if self.arguments.target_directory
+            else Path.cwd()
+        )
+        Helpers.validate_path_readable(target_dir_obj, "target_directory")
+
+        agent_instance = await build_agent_instance(
+            configuration=self.configuration,
+            agent_configuration=agent_config,
+            prompt_text=prompt_text,
+            file_path_object=file_path_obj,
+            target_directory_object=target_dir_obj,
+        )
+
+        response = await run_agent_and_store(agent_instance, self.arguments.file_path)
+        print(response)
 
 
 async def main() -> None:
-    """Entry: loads config, parses args, dispatches CLI/server."""
+    """Entry point: loads config, parses args, and dispatches CLI/server."""
     load_dotenv()
+    configuration = get_full_configuration()
+    agent_configs = normalize_agent_configurations(configuration)
+    agent_names = [ac["name"] for ac in agent_configs]
 
-    configuration: Dict[str, Any] = get_full_configuration()
-    agent_configurations: List[Dict[str, Any]] = normalize_agent_configurations(
-        configuration
-    )
-    agent_names: List[str] = [
-        agent_configuration["name"] for agent_configuration in agent_configurations
-    ]
+    parser = create_argument_parser(agent_names)
+    parsed_args = parser.parse_args()
 
-    dynamic_argument_parser: DynamicArgumentParser = DynamicArgumentParser(agent_names)
-    parser_object: argparse.ArgumentParser = (
-        dynamic_argument_parser.setup_argument_parser()
-    )
-
-    parsed_arguments: argparse.Namespace = parser_object.parse_args()
-
-    if getattr(parsed_arguments, "command", None) == "run":
-        await cli_mode(parsed_arguments, configuration)
+    if parsed_args.command == "run":
+        cli = CommandLineInterface(parsed_args, configuration)
+        await cli.run_cli()
+    elif parsed_args.command == "server":
+        server = DynamicFastMCPServer(parsed_args, configuration)
+        await server.run_fastmcp()
     else:
-        await fastmcp_mode(parsed_arguments, configuration)
-
-    return None
+        parser.print_help()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
